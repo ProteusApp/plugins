@@ -21,6 +21,35 @@
       ],
       "commit": "ff0631f51809dc83c748d4b4d1a3ca07ff513389",
       "updated": "2026-09-30T05:08:34Z"
+    },
+    {
+      "id": "lang.toml",
+      "name": "TOML",
+      "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.settings",
+        "core.commands",
+        "core.files",
+        "editor.core",
+        "tools.registry",
+        "tools.diagnostics"
+      ],
+      "optional": [
+        "code.project",
+        "ui.notify"
+      ],
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/format.lua",
+        "lib/release.lua",
+        "lib/schemas.lua",
+        "lib/server.lua"
+      ],
+      "commit": "7f47083660e3900092d1438916c8241ab7c4d636",
+      "updated": "2026-09-30T06:24:29Z"
     }
   ]
 }
