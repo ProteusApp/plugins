@@ -4,7 +4,7 @@
 return {
   name = 'Sample Plugin',
   description = 'A sample plugin.',
-  version = '1.0.7',
+  version = '1.0.9',
   depends = { 'lib.ui', 'core.commands' },
   optional = { 'ui.notify', 'ui.toolbar', 'ui.menubar' },
 
