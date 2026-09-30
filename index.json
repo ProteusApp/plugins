@@ -1,4 +1,26 @@
 {
   "format": 1,
-  "plugins": []
+  "plugins": [
+    {
+      "id": "sample.plugin",
+      "name": "Sample Plugin",
+      "description": "A sample plugin.",
+      "version": "0.1.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.notify",
+        "ui.toolbar",
+        "ui.menubar"
+      ],
+      "files": [
+        "init.lua"
+      ],
+      "commit": "4d8eb9268e2cc830f96700b8d010bb1eab188ac6",
+      "updated": "2026-09-30T04:22:15Z"
+    }
+  ]
 }
