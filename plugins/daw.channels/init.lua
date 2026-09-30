@@ -184,8 +184,8 @@ end
 return {
   name = 'DAW channel rack',
   description = 'The Channel Rack: every instrument as a channel, with a step sequencer that writes into the Playlist.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'windows' } },
   permissions = {},
   depends = {
     'lib.ui',
@@ -193,7 +193,7 @@ return {
     'daw.devices',
     'daw.session',
     'daw.engine',
-    'daw.windows',
+    'ui.windows',
     'core.commands',
   },
   activate = function (app)
@@ -202,7 +202,7 @@ return {
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
     local engine = app.use ('daw.engine') --[[@as Daw.Engine]]
-    local windows = app.use ('daw.windows') --[[@as Daw.Windows]]
+    local windows = app.use ('windows')
     local commands = app.use ('commands')
     local esc = app.util.escape
     ui.css (CSS)
@@ -486,6 +486,7 @@ return {
     })
 
     windows.add ({
+      category = 'DAW',
       id = 'daw.channels',
       title = 'Channel rack',
       icon = 'grid3x3',

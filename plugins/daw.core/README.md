@@ -25,7 +25,7 @@ The marketplace lists the files `daw.engine` holds on its page, and **Forget** t
 
 ## The desktop
 
-`daw.windows` turns the middle of the window into a desktop, as FL Studio does. Every screen is a window on it:
+The app's builtin `ui.windows` turns the middle of the window into a desktop, as FL Studio does, and the profile names its tab **Studio**. Every screen is a window on it:
 
 | Window | Key | Plugin |
 |--------|-----|--------|
@@ -41,7 +41,7 @@ The marketplace lists the files `daw.engine` holds on its page, and **Forget** t
 - The layout, the stacking and what is open come back the next time. **View > Reset the Window Layout** puts every window back.
 - A window's title follows the selection, such as **Piano roll - Bass** or **Drums - Channel settings**.
 
-A screen adds its window with `windows.add ({ id, title, icon, key, content, x, y, w, h })`, where a position from 0 to 1 is a share of the desktop. When the screen's plugin stops, its window goes too. A screen without `daw.windows` falls back to the app's docks, so the other profiles and older layouts still work.
+A screen adds its window with the app's `windows` service: `windows.add ({ id, title, icon, key, content, x, y, w, h })`, where a position from 0 to 1 is a share of the desktop. The service is builtin because only a builtin plugin may put another plugin's element on screen. When the screen's plugin stops, its window goes too. Without `ui.windows`, each screen falls back to the app's docks.
 
 ### The Channel rack
 
@@ -65,7 +65,6 @@ plugins/daw.engine/        the plugin that keeps the page playing the session's 
   page/mixer.js            tracks, effect chains, faders, the scheduling of notes
   page/engine.js           the transport, live notes, recording, meters and rendering
   page/main.js             the messages to and from the plugin
-plugins/daw.windows/       the desktop and its floating windows
 plugins/daw.*/             the registry of devices, the builtin devices, and the screens
 profiles/daw/profile.lua   the profile
 ```
@@ -81,7 +80,6 @@ profiles/daw/profile.lua   the profile
 | `daw.session` | `daw.session` | The open song, its file in `songs/`, undo and redo, and what is selected. The only place a song changes. |
 | `daw.engine` | `daw.engine` | Runs the engine page and keeps it playing the session's song. Recording, the audio files the user picks, and Export as WAV. |
 | `daw.transport` | | Play, stop, record, loop, metronome, position, tempo and time signature, on the toolbar. |
-| `daw.windows` | `daw.windows` | The desktop of floating windows that every screen below opens in. |
 | `daw.channels` | | The Channel rack: every instrument channel, with a step sequencer. |
 | `daw.arrange` | | The Playlist: tracks and clips on a timeline, the ruler and the loop. |
 | `daw.pianoroll` | | The notes of one clip, with velocity. Without a clip picked, the selected channel's. |

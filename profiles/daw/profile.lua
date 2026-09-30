@@ -6,7 +6,7 @@
 return {
   name = 'DAW',
   description = 'Make music in floating windows, like FL Studio: a channel rack with steps, a playlist, a piano roll, a mixer, instruments and effects.',
-  version = '1.1.0',
+  version = '1.2.0',
   plugins = {
     'theme.midnight',
     'theme.daylight',
@@ -28,7 +28,7 @@ return {
     'daw.devices',
     'daw.session',
     'daw.engine',
-    'daw.windows',
+    'ui.windows',
     'daw.instruments',
     'daw.effects',
     -- The screens, each a window on the desktop, as in FL Studio.
@@ -45,5 +45,6 @@ return {
   },
   settings = {
     theme = 'midnight',
+    ['windows.title'] = 'Studio',
   },
 }
