@@ -5,7 +5,7 @@ import { submit } from '../scripts/submit.mjs';
 import { fakeGitHub } from './fake-github.mjs';
 
 const REPO = 'ProteusApp/plugins';
-const SAMPLE = readFileSync(new URL('./fixtures/store-issue.md', import.meta.url), 'utf8');
+const SAMPLE = readFileSync(new URL('./fixtures/store-issue.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const checkout = { reserved: { ids: [], prefixes: [] }, existing: () => null };
 
 /** The sample plugin's submission issue, number 7, as its author opened it. */

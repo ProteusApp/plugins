@@ -1,0 +1,2 @@
+# Every file stays LF, so the sample issue the tests read matches what the app writes.
+* text=auto eol=lf

@@ -18,7 +18,7 @@ import {
 
 // The Proteus app writes this exact issue for its sample plugin, and its own tests check that
 // it still does. See tests/lua/interface/store_issue.md in the Proteus repository.
-const SAMPLE = readFileSync(new URL('./fixtures/store-issue.md', import.meta.url), 'utf8');
+const SAMPLE = readFileSync(new URL('./fixtures/store-issue.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 const FENCE = '```';
 
