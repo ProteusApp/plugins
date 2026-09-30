@@ -2,6 +2,32 @@
   "format": 1,
   "plugins": [
     {
+      "id": "theme.catppuccin",
+      "name": "Catppuccin themes",
+      "description": "Soothing pastel themes: Mocha, which is dark, and Latte, which is light.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
       "id": "chiptune",
       "name": "Chiptune",
       "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
@@ -471,6 +497,112 @@
       "updated": "2026-09-30T17:32:45Z"
     },
     {
+      "id": "theme.dracula",
+      "name": "Dracula theme",
+      "description": "A dark theme with vivid pink, purple and green, from the Dracula palette.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "theme.gruvbox",
+      "name": "Gruvbox themes",
+      "description": "Retro groove colors, warm and easy on the eyes, in a dark and a light theme.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "icons.badges",
+      "name": "Letter Badges",
+      "description": "A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.icons",
+        "core.files"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "icons"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/pack.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "theme.nord",
+      "name": "Nord theme",
+      "description": "An arctic, north-bluish dark theme, from the Nord palette.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
       "id": "lang.rust",
       "name": "Rust",
       "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
@@ -798,6 +930,32 @@
       "updated": "2026-09-30T16:51:35Z"
     },
     {
+      "id": "theme.solarized",
+      "name": "Solarized themes",
+      "description": "The precise, low-contrast Solarized colors, in a dark and a light theme.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
+    },
+    {
       "id": "lang.toml",
       "name": "TOML",
       "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
@@ -836,6 +994,34 @@
       ],
       "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
       "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "icons.vivid",
+      "name": "Vivid Icons",
+      "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.icons",
+        "core.files"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "icons"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/pack.test.lua"
+      ],
+      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+      "updated": "2026-09-30T20:09:08Z"
     }
   ],
   "profiles": [
