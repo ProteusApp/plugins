@@ -1,0 +1,36 @@
+{
+  "id": "lang.rust",
+  "name": "Rust",
+  "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
+  "version": "1.0.0",
+  "depends": [
+    "core.settings",
+    "core.commands",
+    "core.files",
+    "lib.ui",
+    "ui.views",
+    "editor.core",
+    "tools.registry",
+    "tools.diagnostics"
+  ],
+  "optional": [
+    "code.project",
+    "ui.notify"
+  ],
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": 10,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/cargo.lua",
+    "lib/cargo_style.lua",
+    "lib/crates.lua",
+    "lib/program.lua",
+    "lib/release.lua",
+    "lib/rustfmt.lua",
+    "lib/server.lua"
+  ]
+}
