@@ -1,0 +1,28 @@
+{
+  "id": "theme.bevel",
+  "name": "Bevel theme",
+  "description": "A 1990s desktop: silver panels with raised and sunken bevels, and navy title bars.",
+  "version": "1.0.0",
+  "depends": [
+    "core.themes"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/theme.test.lua"
+  ]
+}

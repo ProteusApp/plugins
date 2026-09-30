@@ -1,0 +1,28 @@
+{
+  "id": "theme.outrun",
+  "name": "Outrun theme",
+  "description": "Synthwave neon on a midnight purple sky, with a glowing grid running to the horizon under the code.",
+  "version": "1.0.0",
+  "depends": [
+    "core.themes"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/theme.test.lua"
+  ]
+}

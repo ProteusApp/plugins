@@ -1,0 +1,28 @@
+{
+  "id": "theme.pocket",
+  "name": "Pocket theme",
+  "description": "The four greens of an early handheld game screen, with square corners, pixel shadows and an LCD dot grid.",
+  "version": "1.0.0",
+  "depends": [
+    "core.themes"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/theme.test.lua"
+  ]
+}
