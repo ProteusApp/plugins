@@ -12,6 +12,14 @@ Check that:
 - it holds no secrets, tokens or personal data
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
 
+Approve a submission by commenting `/approve` on its issue. Text after the command on the same line is fine, such as `/approve thanks!`. The workflow checks three things first:
+
+- the person commenting can write to this repository
+- the pull request is the one the workflow opened for that issue
+- the pull request has not changed since the comment, so an approval covers only code that was there to read
+
+It then merges the pull request, rebuilds the index and closes the issue. A reaction on the comment shows the result: a rocket for merged, and a confused face with a reply when it could not merge. Merging the pull request by hand works too.
+
 Close the pull request to turn a submission down, with a comment that says why. The author can publish a fixed version, which opens a new submission.
 
 To take a plugin down, delete its folder in a pull request. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
@@ -33,7 +41,7 @@ Publishing from Proteus signs in through a GitHub App, so the sign-in grants one
 | GitHub App name | `Proteus Plugins`, or any free name |
 | Homepage URL | The Proteus repository |
 | Callback URL | Leave empty |
-| Expire user authorization tokens | On |
+| Expire user authorization tokens | Off. An expiring token lasts eight hours, and renewing it needs the client secret, which a desktop app cannot keep. |
 | Request user authorization (OAuth) during installation | Off |
 | Enable Device Flow | **On**. Proteus signs in with it. |
 | Webhook | Untick **Active** |
@@ -45,7 +53,7 @@ Then install the app on the ProteusApp organization, with access to **only** the
 
 The app's **Client ID** goes in Proteus, as the `store.client_id` setting's default in the `plugin.store` plugin. A client ID is public, and device flow needs no client secret, so none is generated or stored.
 
-A user's token from this app can open issues and comment on this repository, and do nothing else. It lasts eight hours, and Proteus keeps it in memory only.
+A user's token from this app can open issues and comment on this repository, and do nothing else. Proteus keeps it in the system's credential store, such as Windows Credential Manager or the macOS Keychain, until the user signs out. A user can also revoke it on GitHub under **Settings > Applications**.
 
 ### 3. Keep the label
 

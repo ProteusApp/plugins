@@ -2,177 +2,180 @@
 // submission issue opens or changes, or its author comments on it.
 //
 // It never runs the submitted code. It reads the issue's text, checks the plugin against the
-// registry's rules, writes the files to a branch named submission/<issue>, and opens or
-// updates a pull request from that branch. It explains what it did, or what is wrong, in one
-// comment on the issue that it keeps up to date.
+// registry's rules, and writes the files to a branch named submission/<issue>, with a pull
+// request from that branch. It explains what it did, or what is wrong, in one comment on the
+// issue that it keeps up to date.
+//
+// Publishing again while the pull request is in review edits the same issue. The new version
+// then goes on top of the branch as a new commit, and a comment on the issue shows what
+// changed. Once the pull request is merged or closed, the branch starts again from main, with
+// a new pull request.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { allComments, client, say } from './github.mjs';
 import {
-  BOT_MARKER,
   LABEL,
-  collectParts,
-  decodePayload,
+  branchFor,
+  changesComment,
+  collectSubmission,
+  commandOf,
   isSubmission,
   manifestFor,
   pullRequestBody,
   validate,
 } from './registry.mjs';
 
-const token = process.env.GITHUB_TOKEN;
-const repoName = process.env.GITHUB_REPOSITORY;
-const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-const issue = event.issue;
-const base = `https://api.github.com/repos/${repoName}`;
-
-async function api(method, path, body) {
-  const res = await fetch(path.startsWith('http') ? path : base + path, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'proteus-registry',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 404) return null;
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${text}`);
-  return text ? JSON.parse(text) : null;
-}
-
-async function allComments() {
-  const out = [];
-  for (let page = 1; page < 20; page++) {
-    const batch = await api('GET', `/issues/${issue.number}/comments?per_page=100&page=${page}`);
-    out.push(...(batch ?? []));
-    if (!batch || batch.length < 100) break;
-  }
-  return out;
-}
-
-/** Writes the one bot comment on the issue, or updates it when there is one already. */
-async function say(comments, lines) {
-  const body = [BOT_MARKER, ...lines].join('\n');
-  const mine = comments.find((c) => c.user?.type === 'Bot' && (c.body ?? '').startsWith(BOT_MARKER));
-  if (mine) await api('PATCH', `/issues/comments/${mine.id}`, { body });
-  else await api('POST', `/issues/${issue.number}/comments`, { body });
-}
-
-/** Every file under a folder of the checkout, as paths from that folder. */
-function filesUnder(dir, prefix = '') {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    const rel = prefix ? `${prefix}/${name}` : name;
-    if (statSync(full).isDirectory()) out.push(...filesUnder(full, rel));
-    else out.push(rel);
-  }
-  return out;
-}
-
-async function main() {
-  if (!issue || issue.pull_request || issue.state !== 'open' || !isSubmission(issue)) {
-    console.log('Not an open submission issue.');
-    return;
-  }
-  // A comment counts only from the person who opened the issue.
-  if (event.comment && event.comment.user?.id !== issue.user.id) {
-    console.log('A comment by someone else.');
-    return;
-  }
+/**
+ * Runs one issue event. `api` calls the GitHub API of `repo`. `checkout` reads the main
+ * branch: `reserved` is reserved.json, and `existing(id)` is a listed plugin's proteus.json,
+ * or null. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
+ * refused, unchanged, opened or updated.
+ */
+export async function submit({ api, event, repo, checkout }) {
+  const issue = event.issue;
+  if (!issue || issue.pull_request || issue.state !== 'open' || !isSubmission(issue)) return 'ignored';
+  // A comment counts only from the person who opened the issue, and a command such as
+  // /approve is handled by its own job.
+  if (event.comment && event.comment.user?.id !== issue.user.id) return 'ignored';
+  if (event.comment && commandOf(event.comment.body)) return 'ignored';
   await api('POST', `/issues/${issue.number}/labels`, { labels: [LABEL] });
 
-  const comments = await allComments();
+  const comments = await allComments(api, issue.number);
   const texts = [issue.body ?? '', ...comments.filter((c) => c.user?.id === issue.user.id).map((c) => c.body ?? '')];
-  const parts = collectParts(texts);
-  if (!parts.complete) {
-    console.log(`Waiting for the rest of the submission: ${parts.have} of ${parts.total || '?'} parts.`);
-    return;
+  const found = collectSubmission(texts);
+  if (found.error) {
+    await say(api, issue.number, comments, [`This submission could not be read. ${found.error}`]);
+    return 'unreadable';
   }
+  if (!found.complete) return 'waiting';
+  const sub = found.sub;
 
-  let sub;
-  try {
-    sub = decodePayload(parts.data);
-  } catch (err) {
-    await say(comments, [`This submission could not be read. ${err.message}`]);
-    process.exitCode = 1;
-    return;
-  }
-
-  const reserved = JSON.parse(readFileSync('reserved.json', 'utf8'));
-  const id = typeof sub.id === 'string' ? sub.id : '';
-  const existingPath = join('plugins', id, 'proteus.json');
-  const existing = id && existsSync(existingPath) ? JSON.parse(readFileSync(existingPath, 'utf8')) : null;
-  const problems = validate(sub, { existing, author: issue.user, reserved });
+  const existing = typeof sub.id === 'string' ? checkout.existing(sub.id) : null;
+  const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved });
   if (problems.length > 0) {
-    await say(comments, [
+    await say(api, issue.number, comments, [
       'This submission cannot become a pull request yet:',
       '',
       ...problems.map((p) => `- ${p}`),
       '',
-      'Fix the plugin in Proteus and publish it again. A new submission replaces this one.',
+      'Fix the plugin in Proteus and publish it again. The new version replaces this one.',
     ]);
-    process.exitCode = 1;
-    return;
+    return 'refused';
   }
 
   const manifest = manifestFor(sub, issue.user, issue.number);
   const folder = `plugins/${manifest.id}`;
+  const branch = branchFor(issue.number);
+  const owner = repo.split('/')[0];
+  const open = (await api('GET', `/pulls?head=${owner}:${encodeURIComponent(branch)}&state=open`)) ?? [];
+  let pr = open[0] ?? null;
   const main = await api('GET', '/git/ref/heads/main');
-  const head = await api('GET', `/git/commits/${main.object.sha}`);
+  const current = await api('GET', `/git/ref/heads/${branch}`);
+
+  // While the pull request is in review, the new version goes on top of its branch. A branch
+  // with no open pull request, such as one already merged, starts again from main.
+  const inReview = Boolean(current && pr);
+  const parentSha = inReview ? current.object.sha : main.object.sha;
+  const parent = await api('GET', `/git/commits/${parentSha}`);
+  const listing = await api('GET', `/git/trees/${parent.tree.sha}?recursive=1`);
+  const before = (listing?.tree ?? []).filter((e) => e.type === 'blob' && e.path.startsWith(folder + '/'));
 
   // The plugin's folder ends up holding exactly the submitted files and proteus.json.
-  const entries = [];
   const files = { ...sub.files, 'proteus.json': JSON.stringify(manifest, null, 2) + '\n' };
+  const entries = [];
   for (const [name, content] of Object.entries(files)) {
     const blob = await api('POST', '/git/blobs', { content, encoding: 'utf-8' });
     entries.push({ path: `${folder}/${name}`, mode: '100644', type: 'blob', sha: blob.sha });
   }
-  for (const old of filesUnder(folder)) {
-    if (!(old in files)) entries.push({ path: `${folder}/${old}`, mode: '100644', type: 'blob', sha: null });
+  for (const e of before) {
+    if (!(e.path.slice(folder.length + 1) in files)) {
+      entries.push({ path: e.path, mode: '100644', type: 'blob', sha: null });
+    }
   }
-  const tree = await api('POST', '/git/trees', { base_tree: head.tree.sha, tree: entries });
+  const tree = await api('POST', '/git/trees', { base_tree: parent.tree.sha, tree: entries });
+
+  if (inReview && tree.sha === parent.tree.sha) {
+    await say(api, issue.number, comments, [
+      `Thanks, @${issue.user.login}. This submission is ${pr.html_url}.`,
+      '',
+      'The last publish changed nothing, so the pull request stays as it was.',
+    ]);
+    return 'unchanged';
+  }
+
   const updating = existing !== null;
   const title = `${updating ? 'Update' : 'Add'} ${manifest.name} (${manifest.id}) ${manifest.version}`;
   const commit = await api('POST', '/git/commits', {
     message: `${title}\n\nFrom #${issue.number}.`,
     tree: tree.sha,
-    parents: [main.object.sha],
+    parents: [parentSha],
     author: {
       name: issue.user.login,
       email: `${issue.user.id}+${issue.user.login}@users.noreply.github.com`,
       date: new Date().toISOString(),
     },
   });
-
-  const branch = `submission/${issue.number}`;
-  if (await api('GET', `/git/ref/heads/${branch}`)) {
-    await api('PATCH', `/git/refs/heads/${branch}`, { sha: commit.sha, force: true });
+  if (current) {
+    // On top of the branch in review, this moves it forward. A branch left from a merged pull
+    // request is set back onto main.
+    await api('PATCH', `/git/refs/heads/${branch}`, { sha: commit.sha, force: !inReview });
   } else {
     await api('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: commit.sha });
   }
 
-  const owner = repoName.split('/')[0];
   const body = pullRequestBody(manifest, sub, issue.number, updating);
-  const open = await api('GET', `/pulls?head=${owner}:${encodeURIComponent(branch)}&state=open`);
-  let pr = open && open[0];
   if (pr) pr = await api('PATCH', `/pulls/${pr.number}`, { title, body });
   else pr = await api('POST', '/pulls', { title, head: branch, base: 'main', body, maintainer_can_modify: true });
   await api('POST', `/issues/${pr.number}/labels`, { labels: [LABEL] });
 
-  await say(comments, [
-    `Thanks, @${issue.user.login}. This submission is now ${pr.html_url}.`,
+  if (inReview) {
+    // The version the branch held before, from its proteus.json.
+    let from = null;
+    const oldMeta = before.find((e) => e.path === `${folder}/proteus.json`);
+    if (oldMeta) {
+      const blob = await api('GET', `/git/blobs/${oldMeta.sha}`);
+      try {
+        from = JSON.parse(Buffer.from(blob.content, 'base64').toString('utf8')).version ?? null;
+      } catch {
+        from = null;
+      }
+    }
+    const compare = await api('GET', `/compare/${parentSha}...${commit.sha}`);
+    await api('POST', `/issues/${issue.number}/comments`, {
+      body: changesComment({ id: manifest.id, from, to: manifest.version, files: compare?.files ?? [], pullRequest: pr.html_url }),
+    });
+  }
+
+  await say(api, issue.number, comments, [
+    `Thanks, @${issue.user.login}. Version ${manifest.version} of this submission is in ${pr.html_url}.`,
     '',
-    'A maintainer reviews the code there. Once it is merged, the plugin shows in the Proteus store.',
+    'A maintainer reviews the code there, then approves it by commenting /approve on this issue or by merging the PR. The Proteus store lists the plugin once it is merged. Publishing again before then updates this same submission.',
   ]);
-  console.log(`Pull request ${pr.html_url}`);
+  return inReview ? 'updated' : 'opened';
 }
 
-main().catch(async (err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+// Run as the workflow step, not when a test imports this file.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const checkout = {
+    reserved: JSON.parse(readFileSync('reserved.json', 'utf8')),
+    existing(id) {
+      // Validation checks the id after this, so a malformed one never reaches a path.
+      if (!/^[a-z0-9][a-z0-9._-]*$/.test(id) || id.includes('..')) return null;
+      const path = join('plugins', id, 'proteus.json');
+      return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+    },
+  };
+  submit({ api: client(process.env.GITHUB_TOKEN, repo), event, repo, checkout })
+    .then((result) => {
+      console.log(`submission: ${result}`);
+      if (result === 'unreadable' || result === 'refused') process.exitCode = 1;
+    })
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    });
+}

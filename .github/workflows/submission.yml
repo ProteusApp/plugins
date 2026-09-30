@@ -1,6 +1,9 @@
-# Turns a plugin submission from the Proteus app into a pull request. The app opens an issue
-# holding the plugin, and this runs when that issue opens or changes, or its author comments.
-# The script reads the issue and writes files. It never runs the submitted code.
+# Turns a plugin submission from the Proteus app into a pull request, and merges it when a
+# maintainer comments /approve on the issue.
+#
+# The app opens an issue holding the plugin's files as code blocks. The submit job runs when
+# that issue opens or changes, or its author comments with more of the files. The scripts
+# read the issue and write files. They never run the submitted code.
 name: Plugin submission
 
 on:
@@ -14,14 +17,17 @@ permissions:
   issues: write
   pull-requests: write
 
-# One run at a time per issue, so parts that arrive together make one pull request.
+# One run at a time per issue, so parts that arrive together make one pull request, and an
+# approval never overlaps a new version of the files.
 concurrency:
   group: submission-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   submit:
-    if: ${{ !github.event.issue.pull_request && github.event.issue.state == 'open' }}
+    if: >-
+      ${{ !github.event.issue.pull_request && github.event.issue.state == 'open' &&
+      !(github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,5 +35,26 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/submit.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  approve:
+    if: >-
+      ${{ github.event_name == 'issue_comment' && github.event.action == 'created' &&
+      !github.event.issue.pull_request && github.event.issue.state == 'open' &&
+      startsWith(github.event.comment.body, '/approve') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      # Starts the index workflow, since a merge made with this token starts none.
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/approve.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

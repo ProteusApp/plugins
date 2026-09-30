@@ -1,17 +1,27 @@
 // The rules of the registry, shared by the workflows and the tests. Nothing here talks to
 // GitHub or touches the disk.
 //
-// A submission arrives as an issue. The Proteus app puts the plugin in the issue as base64
-// text, split into numbered parts: the first in the issue itself, the rest in comments by
-// the same person. Each part sits in a fenced block under a marker line:
+// A submission arrives as an issue. The Proteus app writes the plugin into the issue as
+// readable code blocks: a manifest first, then each file. What does not fit in the issue
+// continues in comments by the same person. Each block sits under a marker line:
 //
-//   <!-- proteus-submission part 1 of 2 -->
-//   ```text
-//   eyJmb3JtYXQiOjEs...
+//   <!-- proteus-manifest -->
+//   ```json
+//   {"format":2,"revision":"k2x9","id":"my.plugin","version":"1.0.0","files":["init.lua"]}
 //   ```
 //
-// Joined and decoded, the parts are one JSON object: { format: 1, id, name, description,
-// version, depends, optional, files: { "init.lua": "..." } }.
+//   <!-- proteus-file path="init.lua" part="1" of="1" rev="k2x9" -->
+//   ```lua
+//   return { name = 'My Plugin' }
+//   ```
+//
+// A fence is always longer than any run of backticks in the file, so a file cannot close its
+// own block. The block holds the file's text plus one newline before the closing fence. A
+// file too big for one comment is split at a line break into numbered parts.
+//
+// Publishing again edits the same issue. Every publish has its own revision, on the manifest
+// and on each block, and only blocks of the manifest's revision count. So an issue caught
+// halfway through an edit is read as incomplete rather than as a mix of two versions.
 
 /** The title every submission issue starts with. */
 export const TITLE_PREFIX = 'Plugin submission:';
@@ -22,76 +32,110 @@ export const TITLE_PREFIX = 'Plugin submission:';
  */
 export const LABEL = '[AUTOMATED] Plugin Request';
 
-/** True for an issue that holds a submission, by its label, its title or its first part. */
+/** True for an issue that holds a submission, by its label, its title or its manifest. */
 export function isSubmission(issue) {
   const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
   return (
     labels.includes(LABEL) ||
     String(issue.title ?? '').startsWith(TITLE_PREFIX) ||
-    /<!--\s*proteus-submission part 1 of \d+\s*-->/.test(String(issue.body ?? ''))
+    /<!--\s*proteus-manifest\s*-->/.test(String(issue.body ?? ''))
   );
 }
 
 /** The line a bot comment starts with, so the next run finds and updates it. */
 export const BOT_MARKER = '<!-- proteus-registry-bot -->';
 
+/**
+ * The command a comment gives, such as `approve` for a comment that starts with /approve, or
+ * null for an ordinary comment. Only the first line counts, and text after the command is a
+ * note for people.
+ */
+export function commandOf(body) {
+  const first = String(body ?? '').trim().split(/\r?\n/)[0].trim();
+  const m = first.match(/^\/([a-z]+)(?:\s|$)/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+/** True for a repository permission that lets a person approve a submission. */
+export function canApprove(permission) {
+  return ['admin', 'maintain', 'write'].includes(permission);
+}
+
+/** The branch the workflow writes an issue's submission to. */
+export function branchFor(issue) {
+  return `submission/${issue}`;
+}
+
 export const LIMITS = {
-  /** Base64 text across every part. */
-  payload: 4 * 1024 * 1024,
   files: 200,
   fileBytes: 512 * 1024,
   totalBytes: 2 * 1024 * 1024,
   depth: 4,
-  parts: 60,
+  /** Parts of one file. */
+  parts: 100,
 };
 
 /** Files a plugin may hold. Everything is text, so a reviewer can read all of it. */
 export const EXTENSIONS = ['lua', 'md', 'json', 'css', 'txt', 'toml', 'yml', 'yaml', 'html', 'svg'];
 
-const PART = /<!--\s*proteus-submission part (\d+) of (\d+)\s*-->\s*```[a-z]*[ \t]*\r?\n([A-Za-z0-9+/=\s]*?)```/g;
+// The manifest and the file blocks. A closing fence has exactly as many backticks as its
+// opening fence, and must end its line.
+const MANIFEST = /<!--\s*proteus-manifest\s*-->[ \t]*\n(`{3,})json[ \t]*\n([\s\S]*?)\n\1[ \t]*(?=\n|$)/;
+const FILE =
+  /<!--\s*proteus-file path="([^"\n]+)" part="(\d+)" of="(\d+)"(?: rev="([^"\n]*)")?\s*-->[ \t]*\n(`{3,})[^\n`]*\n([\s\S]*?)\n\5[ \t]*(?=\n|$)/g;
 
 /**
- * Finds the parts of a submission in the texts of an issue and its comments. `complete` is
- * true once every part from 1 to the total is there, and `data` is then the joined base64.
- * A part that appears twice keeps its last copy, so an edited comment replaces the old text.
+ * Reads a submission out of the texts of an issue and its comments. Returns
+ * `{ complete, sub, missing, error }`. `complete` is true once the manifest is there and every
+ * file it lists has all its parts. `sub` is then the submission: the manifest's fields, with
+ * `files` mapping each path to its text. A part that appears twice keeps its last copy, so an
+ * edited comment replaces the old text. Line endings become \n.
  */
-export function collectParts(texts) {
-  const parts = new Map();
-  let total = 0;
-  for (const text of texts) {
-    for (const m of String(text ?? '').matchAll(PART)) {
-      const k = Number(m[1]);
-      const n = Number(m[2]);
-      if (!(k >= 1 && k <= n && n <= LIMITS.parts)) continue;
-      if (k === 1 || total === 0) total = n;
-      parts.set(k, m[3].replace(/\s+/g, ''));
+export function collectSubmission(texts) {
+  const all = texts.map((t) => String(t ?? '').replace(/\r\n/g, '\n'));
+  let manifest = null;
+  for (const text of all) {
+    const m = text.match(MANIFEST);
+    if (!m) continue;
+    try {
+      manifest = JSON.parse(m[2]);
+    } catch {
+      return { complete: false, missing: [], error: 'The manifest could not be read. Publish the plugin again from Proteus.' };
+    }
+    break;
+  }
+  if (!manifest || typeof manifest !== 'object') return { complete: false, missing: [] };
+  if (manifest.format !== 2) {
+    return { complete: false, missing: [], error: 'The submission is in a format this registry does not know.' };
+  }
+  const found = new Map();
+  for (const text of all) {
+    for (const m of text.matchAll(FILE)) {
+      const [, path, k, n, rev] = m;
+      const part = Number(k);
+      const of = Number(n);
+      if (!(part >= 1 && part <= of && of <= LIMITS.parts)) continue;
+      if ((rev ?? '') !== String(manifest.revision ?? '')) continue;
+      const entry = found.get(path) ?? { of, pieces: new Map() };
+      entry.pieces.set(part, m[6]);
+      found.set(path, entry);
     }
   }
-  let complete = total > 0;
-  const pieces = [];
-  for (let k = 1; k <= total; k++) {
-    if (!parts.has(k)) {
-      complete = false;
-      break;
+  const names = Array.isArray(manifest.files) ? manifest.files.filter((f) => typeof f === 'string') : [];
+  const files = {};
+  const missing = [];
+  for (const name of names) {
+    const entry = found.get(name);
+    const pieces = [];
+    for (let part = 1; entry && part <= entry.of; part++) {
+      if (!entry.pieces.has(part)) break;
+      pieces.push(entry.pieces.get(part));
     }
-    pieces.push(parts.get(k));
+    if (!entry || pieces.length !== entry.of) missing.push(name);
+    else files[name] = pieces.join('');
   }
-  return { total, have: parts.size, complete, data: complete ? pieces.join('') : '' };
-}
-
-/** Turns the joined base64 back into the submission. Throws a readable error. */
-export function decodePayload(b64) {
-  if (b64.length > LIMITS.payload) throw new Error('The submission is larger than the registry takes.');
-  let sub;
-  try {
-    sub = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-  } catch {
-    throw new Error('The submission could not be read. Publish it again from Proteus.');
-  }
-  if (!sub || typeof sub !== 'object' || sub.format !== 1) {
-    throw new Error('The submission is in a format this registry does not know.');
-  }
-  return sub;
+  const complete = names.length > 0 && missing.length === 0;
+  return { complete, missing, sub: complete ? { ...manifest, files } : null };
 }
 
 /** Compares two versions such as 1.2.10 and 1.10.0, part by part. */
@@ -249,5 +293,58 @@ export function pullRequestBody(manifest, sub, issue, updating) {
     '',
     `Merging lists the plugin in the Proteus store. Closes #${issue}.`,
   );
+  return lines.join('\n');
+}
+
+/** The line the changes comment starts with, so it is told apart from the status comment. */
+export const CHANGES_MARKER = '<!-- proteus-registry-changes -->';
+
+/** A code fence longer than any run of backticks in the text. */
+export function fenceFor(text) {
+  const longest = Math.max(0, ...(String(text).match(/`+/g) ?? []).map((run) => run.length));
+  return '`'.repeat(Math.max(3, longest + 1));
+}
+
+/**
+ * The comment that shows what changed between two versions of a submission. `files` comes
+ * from GitHub's compare API: `filename`, `status`, `additions`, `deletions` and `patch`.
+ * proteus.json is left out, since the registry writes it. Past about 60,000 characters the
+ * rest are named only, and the pull request shows them.
+ */
+export function changesComment({ id, from, to, files, pullRequest, limit = 60000 }) {
+  const prefix = `plugins/${id}/`;
+  const shown = files.filter((f) => f.filename.startsWith(prefix) && f.filename !== prefix + 'proteus.json');
+  const lines = [
+    CHANGES_MARKER,
+    `### Changes in ${to}`,
+    '',
+    from && from !== to ? `Since ${from}, in ${pullRequest}:` : `Since the last publish, in ${pullRequest}:`,
+  ];
+  if (shown.length === 0) {
+    lines.push('', 'Only the manifest changed.');
+    return lines.join('\n');
+  }
+  let size = lines.join('\n').length;
+  const left = [];
+  for (const f of shown) {
+    const name = f.filename.slice(prefix.length);
+    const counts = `+${f.additions ?? 0} −${f.deletions ?? 0}`;
+    const what = { added: 'new', removed: 'deleted', renamed: 'renamed' }[f.status];
+    const summary = `<code>${name}</code> ${what ? what + ', ' : ''}${counts}`;
+    const patch = f.patch ?? '';
+    const fence = fenceFor(patch);
+    const piece = patch
+      ? `<details><summary>${summary}</summary>\n\n${fence}diff\n${patch}\n${fence}\n\n</details>`
+      : `- ${summary}. The pull request shows this one.`;
+    if (size + piece.length + 2 > limit) {
+      left.push(name);
+      continue;
+    }
+    lines.push('', piece);
+    size += piece.length + 2;
+  }
+  if (left.length > 0) {
+    lines.push('', `Too long to show here: ${left.map((n) => `\`${n}\``).join(', ')}. The pull request shows them.`);
+  }
   return lines.join('\n');
 }

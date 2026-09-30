@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   LABEL,
+  branchFor,
   buildIndex,
-  collectParts,
+  canApprove,
+  collectSubmission,
+  commandOf,
   compareVersions,
-  decodePayload,
   isSubmission,
   manifestFor,
   pathProblem,
@@ -13,17 +16,24 @@ import {
   validate,
 } from '../scripts/registry.mjs';
 
-// The Proteus app's own tests encode the same text and expect this same base64.
-const SHARED_TEXT = '{"format":1,"id":"hello.world","note":"café ✓"}';
-const SHARED_BASE64 = 'eyJmb3JtYXQiOjEsImlkIjoiaGVsbG8ud29ybGQiLCJub3RlIjoiY2Fmw6kg4pyTIn0=';
+// The Proteus app writes this exact issue for its sample plugin, and its own tests check that
+// it still does. See tests/lua/interface/store_issue.md in the Proteus repository.
+const SAMPLE = readFileSync(new URL('./fixtures/store-issue.md', import.meta.url), 'utf8');
 
-/** A part as the app writes it. */
-const part = (k, n, text) => `<!-- proteus-submission part ${k} of ${n} -->\n\`\`\`text\n${text}\n\`\`\``;
+const FENCE = '```';
+
+/** A file block the way the app writes one. */
+const block = (path, k, n, text, fence = FENCE) =>
+  `<!-- proteus-file path="${path}" part="${k}" of="${n}" -->\n${fence}lua\n${text}\n${fence}`;
+
+/** A manifest block the way the app writes one. */
+const manifestBlock = (files) =>
+  `<!-- proteus-manifest -->\n${FENCE}json\n${JSON.stringify({ format: 2, id: 'a.b', name: 'A', description: 'B.', version: '1.0.0', files })}\n${FENCE}`;
 
 /** A submission that meets every rule. */
 function good(extra = {}) {
   return {
-    format: 1,
+    format: 2,
     id: 'hello.world',
     name: 'Hello World',
     description: 'Says hello in the status bar.',
@@ -36,38 +46,87 @@ function good(extra = {}) {
 
 const reserved = { ids: ['core.keys', 'app.git'], prefixes: ['core.', 'ui.'] };
 
-test('the shared text decodes the way the app encodes it', () => {
-  assert.equal(Buffer.from(SHARED_TEXT, 'utf8').toString('base64'), SHARED_BASE64);
-  assert.equal(decodePayload(SHARED_BASE64).note, 'café ✓');
+test('the sample issue from the app reads back to its files', () => {
+  const got = collectSubmission([SAMPLE]);
+  assert.equal(got.complete, true);
+  assert.equal(got.sub.id, 'hello.world');
+  assert.equal(got.sub.version, '1.0.0');
+  assert.deepEqual(got.sub.files, {
+    'init.lua': "return {\n  name = 'Hello',\n  description = 'Says \u201Chello\u201D.',\n}\n",
+    'README.md': "# Hello\n\n```lua\nprint('hi')\n```\n",
+    'lib/util.lua': 'return 1',
+  });
+  assert.deepEqual(validate(got.sub, { reserved }), []);
 });
 
-test('a submission is known by its label, its title or its first part', () => {
+test('the sample issue reads the same after GitHub turns its line endings into CRLF', () => {
+  const got = collectSubmission([SAMPLE.replace(/\n/g, '\r\n')]);
+  assert.equal(got.sub.files['lib/util.lua'], 'return 1');
+  assert.equal(got.sub.files['init.lua'].includes('\r'), false);
+});
+
+test('a submission is known by its label, its title or its manifest', () => {
   assert.ok(isSubmission({ labels: [{ name: LABEL }] }));
   assert.ok(isSubmission({ title: 'Plugin submission: hello.world 1.0.0' }));
-  assert.ok(isSubmission({ title: 'x', body: part(1, 2, 'YWJj') }));
+  assert.ok(isSubmission({ title: 'x', body: SAMPLE }));
   assert.ok(!isSubmission({ title: 'Bug: it crashes', body: 'help' }));
 });
 
-test('collectParts joins the parts in order, from any text', () => {
-  const got = collectParts(['intro\n' + part(1, 3, 'YW'), part(3, 3, 'Jj'), 'noise', part(2, 3, 'Jj\nYW')]);
-  assert.deepEqual(got, { total: 3, have: 3, complete: true, data: 'YWJjYWJj' });
+test('parts of a file join in order across the issue and its comments', () => {
+  const texts = [
+    manifestBlock(['init.lua']) + '\n\n' + block('init.lua', 1, 3, 'one\n'),
+    block('init.lua', 3, 3, 'three'),
+    'a comment in between',
+    block('init.lua', 2, 3, 'two\n'),
+  ];
+  const got = collectSubmission(texts);
+  assert.equal(got.complete, true);
+  assert.equal(got.sub.files['init.lua'], 'one\ntwo\nthree');
 });
 
-test('collectParts waits for a missing part', () => {
-  const got = collectParts([part(1, 2, 'YWJj')]);
+test('a submission waits for a missing file or part', () => {
+  const texts = [manifestBlock(['init.lua', 'b.lua']) + '\n' + block('init.lua', 1, 2, 'x')];
+  const got = collectSubmission(texts);
   assert.equal(got.complete, false);
-  assert.equal(got.have, 1);
-  assert.equal(got.data, '');
+  assert.deepEqual(got.missing, ['init.lua', 'b.lua']);
+  assert.equal(collectSubmission(['no manifest here']).complete, false);
 });
 
-test('collectParts keeps the last copy of a part', () => {
-  const got = collectParts([part(1, 1, 'b2xk'), part(1, 1, 'bmV3')]);
-  assert.equal(got.data, 'bmV3');
+test('a longer fence keeps backticks inside a file', () => {
+  const inner = 'a\n```\nb';
+  const got = collectSubmission([manifestBlock(['init.lua']) + '\n' + block('init.lua', 1, 1, inner, '````')]);
+  assert.equal(got.sub.files['init.lua'], inner);
 });
 
-test('decodePayload refuses text that is not a submission', () => {
-  assert.throws(() => decodePayload('bm90IGpzb24='), /could not be read/);
-  assert.throws(() => decodePayload(Buffer.from('{"format":9}').toString('base64')), /format/);
+test('an edited part replaces the old one', () => {
+  const got = collectSubmission([
+    manifestBlock(['init.lua']) + '\n' + block('init.lua', 1, 1, 'old'),
+    block('init.lua', 1, 1, 'new'),
+  ]);
+  assert.equal(got.sub.files['init.lua'], 'new');
+});
+
+test('an unreadable manifest or an unknown format is reported', () => {
+  assert.match(collectSubmission([`<!-- proteus-manifest -->\n${FENCE}json\n{nope\n${FENCE}`]).error, /manifest/);
+  const old = `<!-- proteus-manifest -->\n${FENCE}json\n{"format":1}\n${FENCE}`;
+  assert.match(collectSubmission([old]).error, /format/);
+});
+
+test('commandOf reads the command on a comment\'s first line', () => {
+  assert.equal(commandOf('/approve'), 'approve');
+  assert.equal(commandOf('  /Approve looks good\nthanks'), 'approve');
+  assert.equal(commandOf('I would /approve this'), null);
+  assert.equal(commandOf('/approved'), 'approved');
+  assert.equal(commandOf(''), null);
+});
+
+test('canApprove takes write access and above', () => {
+  assert.ok(canApprove('admin'));
+  assert.ok(canApprove('maintain'));
+  assert.ok(canApprove('write'));
+  assert.ok(!canApprove('triage'));
+  assert.ok(!canApprove('read'));
+  assert.equal(branchFor(12), 'submission/12');
 });
 
 test('a good submission has no problems', () => {
@@ -139,4 +198,12 @@ test('the pull request names the plugin, its files and the review', () => {
   assert.match(body, /^Adds \*\*Hello World\*\*/);
   assert.match(body, /plugins\/hello\.world\/init\.lua/);
   assert.match(body, /Closes #7\./);
+});
+
+test('only blocks of the manifest revision count, so a half-edited issue waits', () => {
+  const manifest = `<!-- proteus-manifest -->\n${FENCE}json\n${JSON.stringify({ format: 2, revision: 'new', id: 'a.b', name: 'A', description: 'B.', version: '1.0.1', files: ['init.lua'] })}\n${FENCE}`;
+  const withRev = (rev, text) => `<!-- proteus-file path="init.lua" part="1" of="1" rev="${rev}" -->\n${FENCE}lua\n${text}\n${FENCE}`;
+  assert.equal(collectSubmission([manifest, withRev('old', 'stale')]).complete, false);
+  const got = collectSubmission([manifest, withRev('old', 'stale'), withRev('new', 'fresh')]);
+  assert.equal(got.sub.files['init.lua'], 'fresh');
 });

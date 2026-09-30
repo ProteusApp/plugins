@@ -14,14 +14,16 @@ Write the plugin in the Plugin Editor, then choose **Plugins > Publish Plugin**.
 
 Publishing then takes these steps:
 
-1. Proteus opens an issue labeled `[AUTOMATED] Plugin Request`. It holds the plugin's files, packed as text. A large plugin continues in comments on the same issue.
+1. Proteus opens an issue labeled `[AUTOMATED] Plugin Request`. It holds a manifest and every file of the plugin as a code block that folds shut. A large plugin continues in comments on the same issue, and a very large file splits into numbered parts.
 2. The submission workflow checks the plugin against the rules below. When it passes, the workflow opens a pull request with the files in `plugins/<id>/`, and links it on the issue. When it fails, the workflow explains why on the issue.
 3. A maintainer reviews the code in the pull request.
-4. Merging lists the plugin. The index workflow rebuilds `index.json`, and the store shows the plugin.
-
-Publishing a new version works the same way. Only the plugin's first author can update it, and the version must go up.
+4. The maintainer approves it by commenting `/approve` on the issue, or by merging the pull request. The index workflow rebuilds `index.json`, and the store lists the plugin.
 
 A pull request opened by hand is welcome too. It must follow the same layout and pass the same check.
+
+## Update a plugin
+
+Raise `version` in the plugin's `init.lua`, save it, and choose **Plugins > Publish Plugin** again. The new version goes through the same review. Only the plugin's first author can update it, and the version must go up. Once the update is approved, the store offers **Update** to everyone who installed the plugin.
 
 ## The rules
 
