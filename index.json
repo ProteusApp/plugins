@@ -2,6 +2,42 @@
   "format": 1,
   "plugins": [
     {
+      "id": "lang.rust",
+      "name": "Rust",
+      "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
+      "version": "1.0.1",
+      "author": "nanoqoi",
+      "depends": [
+        "core.settings",
+        "core.commands",
+        "core.files",
+        "lib.ui",
+        "ui.views",
+        "editor.core",
+        "tools.registry",
+        "tools.diagnostics"
+      ],
+      "optional": [
+        "code.project",
+        "ui.notify"
+      ],
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/cargo.lua",
+        "lib/cargo_context.lua",
+        "lib/cargo_style.lua",
+        "lib/crates.lua",
+        "lib/program.lua",
+        "lib/registry.lua",
+        "lib/release.lua",
+        "lib/rustfmt.lua",
+        "lib/server.lua"
+      ],
+      "commit": "11e50e3f6eb28c64742c977b0db616356427a1c4",
+      "updated": "2026-09-30T06:31:55Z"
+    },
+    {
       "id": "sample.plugin",
       "name": "Sample Plugin",
       "description": "A sample plugin.",
