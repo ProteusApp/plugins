@@ -1,4 +1,5 @@
--- daw.arrange: the arrangement, in the middle of the window. Each track is a row: its header
+-- daw.arrange: the arrangement, in the Playlist window (F5), or in the middle of the window
+-- without daw.windows. Each track is a row: its header
 -- on the left, and its clips along a timeline of bars. The ruler on top moves the playhead,
 -- and a drag along it sets the loop.
 --
@@ -288,7 +289,7 @@ end
 return {
   name = 'DAW arrangement',
   description = 'Tracks and clips along a timeline, with the ruler and the loop.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -307,6 +308,7 @@ return {
     'ui.notify',
     'ui.tabs',
     'core.keys',
+    'daw.windows',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -319,6 +321,16 @@ return {
     local menus = app.try_use ('menus')
     local picker = app.try_use ('picker')
     local views = app.try_use ('views')
+    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
+
+    ---Opens the piano roll, in its window or its dock.
+    local function show_pianoroll ()
+      if windows then
+        windows.show ('daw.pianoroll')
+      elseif views then
+        views.show ('daw.pianoroll')
+      end
+    end
     local notify = app.try_use ('notify')
     local esc = app.util.escape
     ui.css (CSS)
@@ -793,9 +805,7 @@ return {
       session.apply (s, { kind = 'edit', label = 'New clip' })
       session.select_clips ({ id })
       session.edit_clip (id)
-      if views then
-        views.show ('daw.pianoroll')
-      end
+      show_pianoroll ()
     end
 
     -- The ruler and the loop -------------------------------------------------------------------
@@ -1194,9 +1204,7 @@ return {
       end
       session.select_clips ({ id })
       session.edit_clip (id)
-      if views then
-        views.show ('daw.pianoroll')
-      end
+      show_pianoroll ()
     end
 
     -- Input ------------------------------------------------------------------------------------
@@ -1627,7 +1635,24 @@ return {
     -- Profiles with tabs, such as one with the settings screen, get the arrangement as a tab
     -- that stays open. Without tabs it fills the middle of the window.
     local tabs = app.try_use ('tabs')
-    if tabs then
+    if windows then
+      -- FL Studio's Playlist: the song, as clips on tracks.
+      windows.add ({
+        id = 'daw.arrange',
+        title = 'Playlist',
+        icon = 'audio-lines',
+        key = 'f5',
+        order = 1,
+        open = true,
+        x = 0,
+        y = 0,
+        w = 1,
+        h = 0.68,
+        z = 1,
+        content = root,
+        on_show = render,
+      })
+    elseif tabs then
       tabs.open ({
         id = 'daw.arrange',
         title = 'Arrangement',

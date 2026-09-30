@@ -1,6 +1,6 @@
 # The DAW
 
-The `daw` profile turns Proteus into a music program: instrument and audio tracks with clips on a timeline, a piano roll, a mixer, a rack of devices with a sampler, loops, a metronome, recording from the computer keyboard or a MIDI keyboard, and export to WAV. Every part of it is a plugin in this registry, and none of it needs the app to change. Install the **DAW** profile from the marketplace.
+The `daw` profile turns Proteus into a music program laid out like FL Studio: a desktop of floating windows for the Channel Rack with its step sequencer, the Playlist, the piano roll, the mixer and each channel's settings. It has instrument and audio tracks with clips on a timeline, a piano roll, a mixer, a rack of devices with a sampler, loops, a metronome, recording from the computer keyboard or a MIDI keyboard, and export to WAV. Every part of it is a plugin in this registry, and none of it needs the app to change. Install the **DAW** profile from the marketplace.
 
 ## How it fits the registry
 
@@ -23,10 +23,38 @@ Each of these rests on something the user does, so none of it needs a full-acces
 
 The marketplace lists the files `daw.engine` holds on its page, and **Forget** takes one back. A song that names a file this computer never gave the DAW, such as one from another computer, plays that clip silently and says so in its tooltip until the file is imported again.
 
+## The desktop
+
+`daw.windows` turns the middle of the window into a desktop, as FL Studio does. Every screen is a window on it:
+
+| Window | Key | Plugin |
+|--------|-----|--------|
+| Playlist | F5 | `daw.arrange` |
+| Channel rack | F6 | `daw.channels` |
+| Piano roll | F7 | `daw.pianoroll` |
+| Mixer | F9 | `daw.mixer` |
+| Channel settings | | `daw.rack`, opened by clicking a channel's name |
+
+- A window moves by its title bar and resizes from its edges. It snaps to the desktop's edges and to other windows, and Alt holds the snap off.
+- Double-clicking the title, or its middle button, maximizes it. The left button rolls it up to its title bar.
+- A key or a toolbar button brings a window that is behind others to the front, and closes one that is in front already.
+- The layout, the stacking and what is open come back the next time. **View > Reset the Window Layout** puts every window back.
+- A window's title follows the selection, such as **Piano roll - Bass** or **Drums - Channel settings**.
+
+A screen adds its window with `windows.add ({ id, title, icon, key, content, x, y, w, h })`, where a position from 0 to 1 is a share of the desktop. When the screen's plugin stops, its window goes too. A screen without `daw.windows` falls back to the app's docks, so the other profiles and older layouts still work.
+
+### The Channel rack
+
+Each instrument track is a channel: a light that mutes it, its name, and 16 steps, one bar in sixteenth notes. A kit, such as the Drum Kit, gets a row for each pad. The steps are not a second kind of pattern: `daw_steps.lua` reads and writes the notes of the track's clips. A step turns on by adding a sixteenth note to the clip that covers it, or to a new one-bar clip, so the Playlist and the piano roll show every step.
+
+- A click on a step plays it, and a drag paints the same state along the row. One drag is one undo step.
+- While the song plays, the bar follows the playhead and the current step lights. The arrows pick another bar, and the target button turns following off.
+- A click on a channel's name selects its track and opens its Channel settings. A double-click opens the clip under the bar in the piano roll.
+
 ## The layers
 
 ```
-plugins/daw.core/          pure Lua: songs, notes, devices, time, undo, the demo song
+plugins/daw.core/          pure Lua: songs, notes, steps, devices, time, undo, the demo song
   types/daw.lua            types for the song, devices and every DAW service
   tests/                   run by scripts/lua-test.mjs
 plugins/daw.engine/        the plugin that keeps the page playing the session's song
@@ -37,6 +65,7 @@ plugins/daw.engine/        the plugin that keeps the page playing the session's 
   page/mixer.js            tracks, effect chains, faders, the scheduling of notes
   page/engine.js           the transport, live notes, recording, meters and rendering
   page/main.js             the messages to and from the plugin
+plugins/daw.windows/       the desktop and its floating windows
 plugins/daw.*/             the registry of devices, the builtin devices, and the screens
 profiles/daw/profile.lua   the profile
 ```
@@ -52,10 +81,12 @@ profiles/daw/profile.lua   the profile
 | `daw.session` | `daw.session` | The open song, its file in `songs/`, undo and redo, and what is selected. The only place a song changes. |
 | `daw.engine` | `daw.engine` | Runs the engine page and keeps it playing the session's song. Recording, the audio files the user picks, and Export as WAV. |
 | `daw.transport` | | Play, stop, record, loop, metronome, position, tempo and time signature, on the toolbar. |
-| `daw.arrange` | | Tracks and clips on a timeline, the ruler and the loop. The main view. |
-| `daw.pianoroll` | | The notes of one clip, with velocity, in the bottom dock. |
-| `daw.mixer` | | A strip per track and the master, with meters, in the bottom dock. |
-| `daw.rack` | | The selected track's devices and every parameter, in the right dock. |
+| `daw.windows` | `daw.windows` | The desktop of floating windows that every screen below opens in. |
+| `daw.channels` | | The Channel rack: every instrument channel, with a step sequencer. |
+| `daw.arrange` | | The Playlist: tracks and clips on a timeline, the ruler and the loop. |
+| `daw.pianoroll` | | The notes of one clip, with velocity. Without a clip picked, the selected channel's. |
+| `daw.mixer` | | A strip per track and the master, with meters. |
+| `daw.rack` | | Channel settings: the selected track's devices and every parameter. |
 | `daw.browser` | | Songs, instruments, effects and presets, in the left dock. |
 | `daw.keyboard` | | The computer keyboard as a piano. |
 | `daw.midi` | | MIDI keyboards, with the sustain pedal. Needs the `midi` permission. |
@@ -229,6 +260,7 @@ The cost is that a device can only combine the node types above. A new kind of s
 | Ctrl+R | Record |
 | Ctrl+L | Loop on or off |
 | Ctrl+M | Metronome |
+| F5, F6, F7, F9 | The Playlist, the Channel rack, the piano roll and the mixer |
 | Ctrl+T | Add an instrument track |
 | Ctrl+D | Duplicate the selected clips |
 | Ctrl+E | Split at the playhead |

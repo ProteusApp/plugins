@@ -1,7 +1,8 @@
--- daw.rack: the devices of the selected track, or of the master, in the right dock. Each
--- device is a card with its presets, a bypass switch, and a control for every parameter
--- the device declares. Nothing here knows any device by name: the cards are built from the
--- parameter lists that plugins register with daw.devices.
+-- daw.rack: the devices of the selected track, or of the master, in the Channel settings
+-- window, or in the right dock without daw.windows. Each device is a card with its presets,
+-- a bypass switch, and a control for every parameter the device declares. Nothing here knows
+-- any device by name: the cards are built from the parameter lists that plugins register
+-- with daw.devices.
 --
 -- Moving a control sends a `param` change, which the engine applies at once. The cards are
 -- built again only when the devices themselves change.
@@ -157,7 +158,7 @@ local STEPS = 1000
 return {
   name = 'DAW device rack',
   description = 'The instrument and effects of the selected track, with every parameter.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -168,10 +169,11 @@ return {
     'daw.session',
     'core.commands',
   },
-  optional = { 'ui.palette', 'ui.menus', 'daw.engine' },
+  optional = { 'ui.palette', 'ui.menus', 'daw.engine', 'daw.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
+    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -558,6 +560,12 @@ return {
     local function render ()
       local id, track = owner ()
       local song = session.song ()
+      if windows then
+        windows.set_title (
+          'daw.rack',
+          (track and track.name or 'Master') .. ' - Channel settings'
+        )
+      end
       master_btn:class ('on', id == 'master')
       local chain = track and track.effects or song.master.effects
       local key = id
@@ -665,13 +673,30 @@ return {
       end,
     })
 
-    views.add ('right', {
-      id = 'daw.rack',
-      title = 'Devices',
-      icon = 'sliders-horizontal',
-      order = 1,
-      content = root,
-    })
+    if windows then
+      -- FL Studio calls the window of one channel's instrument and effects its settings.
+      windows.add ({
+        id = 'daw.rack',
+        title = 'Channel settings',
+        icon = 'sliders-horizontal',
+        order = 5,
+        x = 0.6,
+        y = 0.03,
+        w = 380,
+        h = 0.85,
+        min_w = 300,
+        content = root,
+        on_show = render,
+      })
+    else
+      views.add ('right', {
+        id = 'daw.rack',
+        title = 'Devices',
+        icon = 'sliders-horizontal',
+        order = 1,
+        content = root,
+      })
+    end
 
     app.on ('daw:changed', function (_, change)
       local c = change --[[@as Daw.Change]]

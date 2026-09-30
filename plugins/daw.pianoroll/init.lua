@@ -1,5 +1,6 @@
--- daw.pianoroll: the notes of one clip, in the bottom dock. Keys run down the left side,
--- time runs across, and the velocity of each note stands along the bottom.
+-- daw.pianoroll: the notes of one clip, in the Piano roll window (F7), or in the bottom dock
+-- without daw.windows. Keys run down the left side, time runs across, and the velocity of
+-- each note stands along the bottom.
 --
 -- Click an empty spot to add a note, and drag to set its length. Drag a note to move it, or
 -- its right edge to resize it. Shift and drag on empty space to select a box of notes. The
@@ -262,7 +263,7 @@ end
 return {
   name = 'DAW piano roll',
   description = 'Draw, move and shape the notes of a clip.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -274,10 +275,11 @@ return {
     'daw.engine',
     'core.commands',
   },
-  optional = { 'ui.menus', 'ui.palette', 'core.keys' },
+  optional = { 'ui.menus', 'ui.palette', 'core.keys', 'daw.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
+    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -402,6 +404,18 @@ return {
           if c and t and t.kind == 'instrument' then
             return c, t
           end
+        end
+        -- As in FL Studio, the selected channel: its clip under the playhead, or its first.
+        local t =
+          daw.song.track (session.song (), session.selected_track () or '')
+        if t and t.kind == 'instrument' and #t.clips > 0 then
+          local beat = engine.position ()
+          for _, c in ipairs (t.clips) do
+            if beat >= c.start and beat < c.start + c.length then
+              return c, t
+            end
+          end
+          return t.clips[1], t
         end
         return nil, nil
       end
@@ -556,6 +570,12 @@ return {
       local clip, track = target ()
       scroll:show (clip ~= nil)
       empty:show (clip == nil)
+      if windows then
+        windows.set_title (
+          'daw.pianoroll',
+          track and ('Piano roll - ' .. track.name) or 'Piano roll'
+        )
+      end
       if not clip or not track then
         title:text ('Piano Roll')
         drawn_clip = nil
@@ -1183,17 +1203,36 @@ return {
 
     -- Start ------------------------------------------------------------------------------------
 
-    views.add ('bottom', {
-      id = 'daw.pianoroll',
-      title = 'Piano Roll',
-      icon = 'piano',
-      order = 1,
-      content = root,
-      on_show = function ()
-        drawn_key = ''
-        render ()
-      end,
-    })
+    local function on_show ()
+      drawn_key = ''
+      -- A roll drawn while hidden could not scroll to its notes, so it does now.
+      scrolled_for = nil
+      render ()
+    end
+    if windows then
+      windows.add ({
+        id = 'daw.pianoroll',
+        title = 'Piano roll',
+        icon = 'piano',
+        key = 'f7',
+        order = 3,
+        x = 0.06,
+        y = 0.1,
+        w = 0.86,
+        h = 0.62,
+        content = root,
+        on_show = on_show,
+      })
+    else
+      views.add ('bottom', {
+        id = 'daw.pianoroll',
+        title = 'Piano Roll',
+        icon = 'piano',
+        order = 1,
+        content = root,
+        on_show = on_show,
+      })
+    end
 
     app.on ('daw:changed', function (_, change)
       local c = change --[[@as Daw.Change]]

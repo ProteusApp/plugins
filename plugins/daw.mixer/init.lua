@@ -1,4 +1,5 @@
--- daw.mixer: a channel strip for each track and one for the master, in the bottom dock.
+-- daw.mixer: a channel strip for each track and one for the master, in the Mixer window
+-- (F9), or in the bottom dock without daw.windows.
 -- Each strip has a level meter, a fader, a pan and mute and solo. Moving a fader sends a
 -- `mix` change, which the engine applies at once, without the whole song.
 --
@@ -138,7 +139,7 @@ end
 return {
   name = 'DAW mixer',
   description = 'Faders, pans, meters, mute and solo for every track.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -149,9 +150,11 @@ return {
     'daw.session',
     'daw.engine',
   },
+  optional = { 'daw.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
+    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -399,14 +402,30 @@ return {
     end
     app.timer.every (66, meter)
 
-    views.add ('bottom', {
-      id = 'daw.mixer',
-      title = 'Mixer',
-      icon = 'sliders-vertical',
-      order = 2,
-      content = root,
-      on_show = render,
-    })
+    if windows then
+      windows.add ({
+        id = 'daw.mixer',
+        title = 'Mixer',
+        icon = 'sliders-vertical',
+        key = 'f9',
+        order = 4,
+        x = 0,
+        y = 0.5,
+        w = 0.92,
+        h = 0.5,
+        content = root,
+        on_show = render,
+      })
+    else
+      views.add ('bottom', {
+        id = 'daw.mixer',
+        title = 'Mixer',
+        icon = 'sliders-vertical',
+        order = 2,
+        content = root,
+        on_show = render,
+      })
+    end
 
     app.on ('daw:changed', function (_, change)
       local c = change --[[@as Daw.Change]]

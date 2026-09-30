@@ -9,13 +9,14 @@ local history = require ('daw_history') --[[@as Daw.HistoryModule]]
 local notes = require ('daw_notes') --[[@as Daw.NotesModule]]
 local resolve = require ('daw_resolve') --[[@as Daw.ResolveModule]]
 local song = require ('daw_song') --[[@as Daw.SongModule]]
+local steps = require ('daw_steps') --[[@as Daw.StepsModule]]
 local time = require ('daw_time') --[[@as Daw.TimeModule]]
 
 ---@type Proteus.Plugin
 return {
   name = 'DAW core',
-  description = 'The logic behind the DAW: songs, notes, devices, time and undo.',
-  version = '1.0.0',
+  description = 'The logic behind the DAW: songs, notes, steps, devices, time and undo.',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)
@@ -24,6 +25,7 @@ return {
       time = time,
       song = song,
       notes = notes,
+      steps = steps,
       device = device,
       file = file,
       resolve = resolve,
