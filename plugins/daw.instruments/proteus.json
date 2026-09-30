@@ -1,7 +1,7 @@
 {
-  "id": "chiptune",
-  "name": "Chiptune",
-  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "id": "daw.instruments",
+  "name": "DAW instruments",
+  "description": "Synth, FM Keys and Drum Kit for the DAW.",
   "version": "1.0.0",
   "depends": [
     "daw.devices"
@@ -21,7 +21,7 @@
   },
   "issue": null,
   "files": [
-    "README.md",
+    "daw_instruments.lua",
     "init.lua"
   ]
 }

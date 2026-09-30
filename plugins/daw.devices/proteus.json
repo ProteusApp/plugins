@@ -1,10 +1,10 @@
 {
-  "id": "chiptune",
-  "name": "Chiptune",
-  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "id": "daw.devices",
+  "name": "DAW devices",
+  "description": "The registry of instruments and effects that plugins add to the DAW.",
   "version": "1.0.0",
   "depends": [
-    "daw.devices"
+    "daw.core"
   ],
   "optional": [],
   "permissions": [],
@@ -21,7 +21,6 @@
   },
   "issue": null,
   "files": [
-    "README.md",
     "init.lua"
   ]
 }

@@ -11,10 +11,10 @@ Sounds in the style of old game consoles, for the DAW profile.
 
 ## Use it
 
-Install it from **Plugins > Store**, then open the DAW profile. The devices show up in the Browser under **Chiptune**, and in the pickers for instruments and effects.
+Install it from the marketplace and add it to the DAW profile. The devices show up in the Browser under **Chiptune**, and in the pickers for instruments and effects.
 
 The plugin needs `daw.devices`, so it only runs in a profile that has the DAW.
 
 ## How it works
 
-Each device is a patch: a list of Web Audio nodes and the wires between them, registered with `app.use('daw.devices').register(spec)`. The DAW's engine builds the patch for each note, so nothing in this plugin runs while music plays. `docs/daw/DESIGN.md` in the Proteus repository describes the format.
+Each device is a patch: a list of Web Audio nodes and the wires between them, registered with `app.use('daw.devices').register(spec)`. The DAW's engine builds the patch for each note, so nothing in this plugin runs while music plays. `plugins/daw.core/README.md` in this registry describes the format.

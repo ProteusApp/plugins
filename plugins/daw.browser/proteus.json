@@ -1,12 +1,20 @@
 {
-  "id": "chiptune",
-  "name": "Chiptune",
-  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "id": "daw.browser",
+  "name": "DAW browser",
+  "description": "Songs, instruments, effects and presets, one click away.",
   "version": "1.0.0",
   "depends": [
-    "daw.devices"
+    "lib.ui",
+    "ui.views",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "core.commands"
   ],
-  "optional": [],
+  "optional": [
+    "ui.menus",
+    "ui.palette"
+  ],
   "permissions": [],
   "folders": [],
   "requires": {
@@ -21,7 +29,6 @@
   },
   "issue": null,
   "files": [
-    "README.md",
     "init.lua"
   ]
 }

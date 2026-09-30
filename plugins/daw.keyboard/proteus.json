@@ -1,12 +1,18 @@
 {
-  "id": "chiptune",
-  "name": "Chiptune",
-  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "id": "daw.keyboard",
+  "name": "DAW computer keyboard",
+  "description": "Play the selected track from the computer keyboard.",
   "version": "1.0.0",
   "depends": [
-    "daw.devices"
+    "daw.core",
+    "daw.engine",
+    "core.commands"
   ],
-  "optional": [],
+  "optional": [
+    "ui.statusbar",
+    "core.settings",
+    "core.keys"
+  ],
   "permissions": [],
   "folders": [],
   "requires": {
@@ -21,7 +27,6 @@
   },
   "issue": null,
   "files": [
-    "README.md",
     "init.lua"
   ]
 }

@@ -1,10 +1,15 @@
 {
-  "id": "chiptune",
-  "name": "Chiptune",
-  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "id": "daw.mixer",
+  "name": "DAW mixer",
+  "description": "Faders, pans, meters, mute and solo for every track.",
   "version": "1.0.0",
   "depends": [
-    "daw.devices"
+    "lib.ui",
+    "ui.views",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "daw.engine"
   ],
   "optional": [],
   "permissions": [],
@@ -21,7 +26,6 @@
   },
   "issue": null,
   "files": [
-    "README.md",
     "init.lua"
   ]
 }

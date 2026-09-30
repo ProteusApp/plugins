@@ -1,0 +1,36 @@
+{
+  "id": "daw.core",
+  "name": "DAW core",
+  "description": "The logic behind the DAW: songs, notes, devices, time and undo.",
+  "version": "1.0.0",
+  "depends": [],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "daw_demo.lua",
+    "daw_device.lua",
+    "daw_file.lua",
+    "daw_history.lua",
+    "daw_notes.lua",
+    "daw_resolve.lua",
+    "daw_song.lua",
+    "daw_time.lua",
+    "init.lua",
+    "tests/core.test.lua",
+    "tests/devices.test.lua",
+    "types/daw.lua"
+  ]
+}
