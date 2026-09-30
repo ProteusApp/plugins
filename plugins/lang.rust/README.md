@@ -9,6 +9,7 @@ Rust support for the Proteus code editor, built on rust-analyzer, rustfmt and Ca
 - **Formatting.** Format Document (Shift+Alt+F) runs rustfmt with the edition from the nearest `Cargo.toml`, and with the crate's `rustfmt.toml` when it has one. A `-- lang=rust` block inside a Lua string formats the same way.
 - **The Cargo panel.** A panel in the bottom dock runs Check, Build, Run, Test and Clippy in a real terminal, in colour, in the crate of the file in front. The same jobs are in the palette under **Cargo**, and in the **Run** menu.
 - **Rust's TOML files.** `Cargo.toml`, `.cargo/config.toml`, `rustfmt.toml` and `rust-toolchain.toml` get their JSON schemas as file associations. With `lang.toml` running, they get completion, hover help and checks.
+- **Crates from crates.io.** In any dependencies table of `Cargo.toml`, typing a name searches crates.io, and picking one writes `name = "version"`. Typing a version, as in `serde = "` or `version = "` inside `{ }`, lists the crate's releases from crates.io's sparse index, newest first, without yanked ones. This needs `lang.toml` running, since it shows beside Taplo's completion.
 
 The language server starts when the first Rust file opens. A folder with a crate at its top or one level down starts it at once, such as a Tauri app with its crate in `src-tauri`.
 
@@ -31,4 +32,4 @@ A project can set any of them for itself in `.proteus/settings.json`.
 
 ## How it is built
 
-Each file in `lib/` does one job and stays short. `server.lua` puts rust-analyzer behind the editor with the app's shared `lsp.client`. `program.lua` finds a working rust-analyzer, and `release.lua` pins the download for each platform. `crates.lua` reads `Cargo.toml` files, `rustfmt.lua` formats, and `cargo.lua` with `cargo_style.lua` draws the Cargo panel.
+Each file in `lib/` does one job and stays short. `server.lua` puts rust-analyzer behind the editor with the app's shared `lsp.client`. `program.lua` finds a working rust-analyzer, and `release.lua` pins the download for each platform. `crates.lua` reads `Cargo.toml` files, `rustfmt.lua` formats, and `cargo.lua` with `cargo_style.lua` draws the Cargo panel. `registry.lua` asks crates.io, and `cargo_context.lua` works out whether a crate's name or its version is being typed.

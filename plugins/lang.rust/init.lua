@@ -11,10 +11,12 @@
 --   crates    finds a file's crate and edition from Cargo.toml files
 --   rustfmt   the formatter
 --   cargo     the Cargo panel and its commands
+--   registry  crate names and versions in Cargo.toml, from crates.io
 
 local cargo_module = require ('lib.cargo') --[[@as LangRust.CargoModule]]
 local crates_module = require ('lib.crates') --[[@as LangRust.CratesModule]]
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local registry_module = require ('lib.registry') --[[@as LangRust.RegistryModule]]
 local rustfmt_module = require ('lib.rustfmt') --[[@as LangRust.RustfmtModule]]
 local server_module = require ('lib.server') --[[@as LangRust.ServerModule]]
 
@@ -48,7 +50,7 @@ local SCHEMAS = {
 return {
   name = 'Rust',
   description = 'Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.',
-  version = '1.0.0',
+  version = '1.0.1',
   depends = {
     'core.settings',
     'core.commands',
@@ -123,6 +125,11 @@ return {
     for pattern, schema in pairs (SCHEMAS) do
       files.associate ({ kind = 'schema', pattern = pattern, value = schema })
     end
+    files.associate ({
+      kind = 'completion',
+      pattern = 'Cargo.toml',
+      value = registry_module.new (app),
+    })
 
     ctx.commands.register ({
       id = 'rust.restart',
