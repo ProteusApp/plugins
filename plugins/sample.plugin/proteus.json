@@ -2,7 +2,7 @@
   "id": "sample.plugin",
   "name": "Sample Plugin",
   "description": "A sample plugin.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "depends": [
     "lib.ui",
     "core.commands"
@@ -12,6 +12,14 @@
     "ui.toolbar",
     "ui.menubar"
   ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
   "author": {
     "login": "nanoqoi",
     "id": 29748817

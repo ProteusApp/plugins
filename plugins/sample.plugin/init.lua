@@ -4,7 +4,9 @@
 return {
   name = 'Sample Plugin',
   description = 'A sample plugin.',
-  version = '1.0.5',
+  version = '1.0.6',
+  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  permissions = {},
   depends = { 'lib.ui', 'core.commands' },
   optional = { 'ui.notify', 'ui.toolbar', 'ui.menubar' },
 

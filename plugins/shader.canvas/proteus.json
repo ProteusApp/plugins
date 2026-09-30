@@ -1,0 +1,34 @@
+{
+  "id": "shader.canvas",
+  "name": "Shader canvas",
+  "description": "The node editor for shader graphs: nodes, typed wires, panning and zooming.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "shader.core",
+    "shader.docs",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.palette",
+    "ui.menus",
+    "ui.notify",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

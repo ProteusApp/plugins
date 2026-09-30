@@ -50,7 +50,10 @@ local SCHEMAS = {
 return {
   name = 'Rust',
   description = 'Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.',
-  version = '1.0.1',
+  version = '1.0.2',
+  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  -- The language server and Cargo are programs it runs and downloads, on files anywhere on disk.
+  permissions = { 'net', 'files', 'process' },
   depends = {
     'core.settings',
     'core.commands',

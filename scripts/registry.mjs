@@ -22,9 +22,32 @@
 // Publishing again edits the same issue. Every publish has its own revision, on the manifest
 // and on each block, and only blocks of the manifest's revision count. So an issue caught
 // halfway through an edit is read as incomplete rather than as a mix of two versions.
+//
+// The registry holds two kinds of thing. A plugin is a folder of code in plugins/<id>/. A
+// profile is a list of plugins with its settings, one profile.lua in profiles/<id>/. A
+// manifest with `"kind": "profile"` holds a profile, and one without a kind holds a plugin.
 
-/** The title every submission issue starts with. */
+/** The title every plugin submission issue starts with. */
 export const TITLE_PREFIX = 'Plugin submission:';
+
+/** The title every profile submission issue starts with. */
+export const PROFILE_TITLE_PREFIX = 'Profile submission:';
+
+/** The two kinds of thing the registry lists. */
+export const KINDS = ['plugin', 'profile'];
+
+/** The kind a submission or a proteus.json holds: `profile`, or `plugin` when it names none. */
+export function kindOf(manifest) {
+  return manifest?.kind === 'profile' ? 'profile' : 'plugin';
+}
+
+/** The folder that holds one listed plugin or profile, such as plugins/my.plugin. */
+export function folderFor(kind, id) {
+  return `${kind === 'profile' ? 'profiles' : 'plugins'}/${id}`;
+}
+
+/** The file every submission of a kind must hold at its top. */
+export const MAIN_FILE = { plugin: 'init.lua', profile: 'profile.lua' };
 
 /**
  * The label on every submission issue and the pull request made from it. GitHub drops a label
@@ -38,6 +61,7 @@ export function isSubmission(issue) {
   return (
     labels.includes(LABEL) ||
     String(issue.title ?? '').startsWith(TITLE_PREFIX) ||
+    String(issue.title ?? '').startsWith(PROFILE_TITLE_PREFIX) ||
     /<!--\s*proteus-manifest\s*-->/.test(String(issue.body ?? ''))
   );
 }
@@ -75,8 +99,24 @@ export const LIMITS = {
   parts: 100,
 };
 
-/** Files a plugin may hold. Everything is text, so a reviewer can read all of it. */
-export const EXTENSIONS = ['lua', 'md', 'json', 'css', 'txt', 'toml', 'yml', 'yaml', 'html', 'svg'];
+/** A line longer than this hides code from a reviewer, as minified code does. */
+export const MAX_LINE = 1000;
+
+/**
+ * What a plugin may ask to do beyond drawing and keeping its own data. Proteus knows the same
+ * list. `full` marks the ones that amount to full access to the computer.
+ */
+export const PERMISSIONS = {
+  net: { label: 'Network', full: false },
+  clipboard: { label: 'Read the clipboard', full: false },
+  files: { label: 'Files on this computer', full: true },
+  process: { label: 'Run programs', full: true },
+  workspace: { label: 'Change the workspace', full: true },
+  kernel: { label: 'Control plugins', full: true },
+};
+
+/** Workspace folders that belong to Proteus itself, so no plugin may claim one in `folders`. */
+export const RESERVED_FOLDERS = ['data', 'plugins', 'profiles', 'lib', 'types', 'graphs', 'blocks', 'docs'];
 
 // The manifest and the file blocks. A closing fence has exactly as many backticks as its
 // opening fence, and must end its line.
@@ -161,40 +201,131 @@ export function pathProblem(path) {
   for (const part of parts) {
     if (!SEGMENT.test(part) || part === '.' || part === '..') return `${path} is not a plain file path`;
   }
-  const ext = path.includes('.') ? path.slice(path.lastIndexOf('.') + 1).toLowerCase() : '';
-  if (!EXTENSIONS.includes(ext)) return `${path} is not a kind of file a plugin may hold (${EXTENSIONS.join(', ')})`;
   if (path === 'proteus.json') return 'proteus.json is written by the registry, so a plugin cannot hold its own';
   return null;
 }
 
 /**
- * Every problem with a submission, as sentences for the person who sent it. An empty list
- * means it can become a pull request. `existing` is the plugin's proteus.json on the main
- * branch, when the plugin is listed already. `author` is the GitHub user who sent it.
+ * Why a file's text cannot go in the registry, or null. Every file is text a reviewer can
+ * read: UTF-8 without control characters, without the characters that reorder text on screen
+ * so code reads differently than it runs, and without lines so long that code hides in them.
+ * `text` is a string, or the file's bytes.
  */
-export function validate(sub, { existing = null, author = null, reserved = { ids: [], prefixes: [] } } = {}) {
+export function textProblem(path, text) {
+  let s = text;
+  if (typeof text !== 'string') {
+    try {
+      s = new TextDecoder('utf-8', { fatal: true }).decode(text);
+    } catch {
+      return `${path} is not UTF-8 text`;
+    }
+  }
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s)) return `${path} holds control characters`;
+  if (/[\u202a-\u202e\u2066-\u2069]/.test(s)) return `${path} holds characters that reorder text`;
+  const lines = s.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if ([...lines[i]].length > MAX_LINE) return `${path} has a line longer than ${MAX_LINE} characters, at line ${i + 1}`;
+  }
+  return null;
+}
+
+/** Why a `requires.proteus` condition such as `>=0.2.0 <1.0.0` cannot be read, or null. */
+export function versionSpecProblem(spec) {
+  if (typeof spec !== 'string' || !spec.trim()) return 'requires.proteus must be a version such as >=0.2.0';
+  for (const cond of spec.trim().split(/\s+/)) {
+    if (!/^(>=|>|<=|<|==?|)v?\d+(\.\d+){0,2}$/.test(cond)) return `requires.proteus cannot read ${cond}`;
+  }
+  return null;
+}
+
+/**
+ * Every problem with a submission, as sentences for the person who sent it. An empty list
+ * means it can become a pull request. `existing` is the plugin's or profile's proteus.json on
+ * the main branch, when it is listed already. `author` is the GitHub user who sent it.
+ * `reserved` holds the ids of what ships with Proteus: `ids` and `prefixes` for plugins, and
+ * `profiles` for profiles.
+ */
+export function validate(sub, { existing = null, author = null, reserved = { ids: [], prefixes: [] }, known = null } = {}) {
   const problems = [];
+  const kind = kindOf(sub);
+  const noun = kind === 'profile' ? 'profile' : 'plugin';
   const id = sub.id;
+  const taken =
+    kind === 'profile'
+      ? (reserved.profiles ?? []).includes(id)
+      : (reserved.ids ?? []).includes(id) || (reserved.prefixes ?? []).some((p) => id.startsWith(p));
+  if (sub.kind !== undefined && !KINDS.includes(sub.kind)) {
+    problems.push(`The kind must be one of ${KINDS.join(' or ')}.`);
+  }
   if (typeof id !== 'string' || !ID.test(id) || id.length > 64) {
-    problems.push('The plugin id must be lower case letters, digits, dots, dashes and underscores, such as my.plugin.');
-  } else if (reserved.ids.includes(id) || reserved.prefixes.some((p) => id.startsWith(p))) {
-    problems.push(`The id ${id} belongs to a plugin that ships with Proteus. Pick another.`);
+    problems.push(`The ${noun} id must be lower case letters, digits, dots, dashes and underscores, such as my.${noun}.`);
+  } else if (taken) {
+    problems.push(`The id ${id} belongs to a ${noun} that ships with Proteus. Pick another.`);
   }
   if (typeof sub.name !== 'string' || !sub.name.trim() || sub.name.length > 80) {
-    problems.push('The plugin needs a name of up to 80 characters.');
+    problems.push(`The ${noun} needs a name of up to 80 characters.`);
   }
   if (typeof sub.description !== 'string' || !sub.description.trim()) {
-    problems.push('The plugin needs a description, one sentence on what it does.');
+    problems.push(`The ${noun} needs a description, one sentence on what it does.`);
   } else if (sub.description.length > 300) {
     problems.push('The description is longer than 300 characters.');
   }
   if (typeof sub.version !== 'string' || !VERSION.test(sub.version)) {
     problems.push('The version must look like 1.0.0.');
   }
-  for (const key of ['depends', 'optional']) {
+  for (const key of kind === 'profile' ? ['plugins'] : ['depends', 'optional']) {
     const list = sub[key] ?? [];
     if (!Array.isArray(list) || list.some((d) => typeof d !== 'string' || !ID.test(d))) {
       problems.push(`${key} must be a list of plugin ids.`);
+    }
+  }
+  if (kind === 'profile' && (!Array.isArray(sub.plugins) || sub.plugins.length === 0)) {
+    problems.push('A profile needs at least one plugin in its plugins list.');
+  }
+  // Every plugin it needs ships with Proteus, is listed here, or arrives in the same change.
+  if (known) {
+    const needed = kind === 'profile' ? (sub.plugins ?? []) : (sub.depends ?? []);
+    for (const dep of Array.isArray(needed) ? needed : []) {
+      if (typeof dep === 'string' && ID.test(dep) && dep !== id && !known.has(dep)) {
+        problems.push(`${dep} is neither a plugin that ships with Proteus nor one listed in this registry.`);
+      }
+    }
+  }
+  if (kind === 'plugin') {
+    const perms = sub.permissions ?? [];
+    if (!Array.isArray(perms) || perms.some((p) => typeof p !== 'string')) {
+      problems.push('permissions must be a list of names.');
+    } else {
+      for (const p of perms) {
+        if (!Object.hasOwn(PERMISSIONS, p)) {
+          problems.push(`There is no permission called ${p}. Proteus knows ${Object.keys(PERMISSIONS).join(', ')}.`);
+        }
+      }
+    }
+    const folders = sub.folders ?? [];
+    if (!Array.isArray(folders) || folders.some((f) => typeof f !== 'string')) {
+      problems.push('folders must be a list of folder names.');
+    } else {
+      for (const f of folders) {
+        if (!/^[A-Za-z0-9_-]+$/.test(f)) problems.push(`${f} is not a plain folder name.`);
+        else if (RESERVED_FOLDERS.includes(f.toLowerCase())) problems.push(`The folder ${f} belongs to Proteus itself.`);
+      }
+    }
+  }
+  if (sub.requires !== undefined) {
+    const req = sub.requires;
+    if (!req || typeof req !== 'object' || Array.isArray(req)) {
+      problems.push('requires must be a table with proteus and features.');
+    } else {
+      if (req.proteus !== undefined) {
+        const problem = versionSpecProblem(req.proteus);
+        if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
+      }
+      const features = req.features ?? [];
+      if (!Array.isArray(features) || features.some((f) => typeof f !== 'string' || !/^[a-z][a-z-]*$/.test(f))) {
+        problems.push('requires.features must be a list of feature names.');
+      }
     }
   }
   const files = sub.files && typeof sub.files === 'object' && !Array.isArray(sub.files) ? sub.files : null;
@@ -203,25 +334,26 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
     return problems;
   }
   const names = Object.keys(files);
-  if (!names.includes('init.lua')) problems.push('A plugin needs an init.lua at its top.');
-  if (names.length > LIMITS.files) problems.push(`A plugin can hold at most ${LIMITS.files} files.`);
+  const main = MAIN_FILE[kind];
+  if (!names.includes(main)) problems.push(`A ${noun} needs a${main === 'init.lua' ? 'n' : ''} ${main} at its top.`);
+  if (names.length > LIMITS.files) problems.push(`A ${noun} can hold at most ${LIMITS.files} files.`);
   let total = 0;
   for (const name of names) {
-    const problem = pathProblem(name);
+    const problem = pathProblem(name) ?? textProblem(name, files[name]);
     if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
-    if (typeof files[name] !== 'string') {
+    if (typeof files[name] !== 'string' && !(files[name] instanceof Uint8Array)) {
       problems.push(`${name} is not text.`);
       continue;
     }
-    const bytes = Buffer.byteLength(files[name], 'utf8');
+    const bytes = typeof files[name] === 'string' ? Buffer.byteLength(files[name], 'utf8') : files[name].length;
     total += bytes;
     if (bytes > LIMITS.fileBytes) problems.push(`${name} is larger than ${LIMITS.fileBytes / 1024} KB.`);
   }
-  if (total > LIMITS.totalBytes) problems.push(`The plugin is larger than ${LIMITS.totalBytes / 1024 / 1024} MB.`);
+  if (total > LIMITS.totalBytes) problems.push(`The ${noun} is larger than ${LIMITS.totalBytes / 1024 / 1024} MB.`);
   if (existing) {
     const owner = existing.author ?? {};
     if (author && owner.id && owner.id !== author.id) {
-      problems.push(`${id} belongs to @${owner.login}. Only its author can update it, so pick another id for a new plugin.`);
+      problems.push(`${id} belongs to @${owner.login}. Only its author can update it, so pick another id for a new ${noun}.`);
     }
     if (typeof sub.version === 'string' && VERSION.test(sub.version) && compareVersions(sub.version, existing.version) <= 0) {
       problems.push(`${id} is at version ${existing.version} already. Raise the version to publish an update.`);
@@ -230,15 +362,28 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
   return problems;
 }
 
-/** The proteus.json the registry keeps beside a plugin's files. */
+/** The proteus.json the registry keeps beside a plugin's or a profile's files. */
 export function manifestFor(sub, author, issue) {
-  return {
+  const common = {
     id: sub.id,
     name: sub.name.trim(),
     description: sub.description.trim(),
     version: sub.version,
-    depends: sub.depends ?? [],
-    optional: sub.optional ?? [],
+  };
+  const own =
+    kindOf(sub) === 'profile'
+      ? { kind: 'profile', plugins: sub.plugins ?? [] }
+      : {
+          depends: sub.depends ?? [],
+          optional: sub.optional ?? [],
+          permissions: sub.permissions ?? [],
+          folders: sub.folders ?? [],
+        };
+  const requires = sub.requires && typeof sub.requires === 'object' ? sub.requires : null;
+  return {
+    ...common,
+    ...own,
+    ...(requires ? { requires: { proteus: requires.proteus, features: requires.features ?? [] } } : {}),
     author: { login: author.login, id: author.id },
     issue,
     files: Object.keys(sub.files).sort(),
@@ -246,53 +391,93 @@ export function manifestFor(sub, author, issue) {
 }
 
 /**
- * The index the app reads: one entry per plugin, newest first by name order. `commit` is the
- * last commit that changed the plugin's folder, so the app installs exactly what was
- * approved.
+ * The index the app reads: one entry per plugin and one per profile, each list in name order.
+ * `commit` is the last commit that changed the folder, so the app installs exactly what was
+ * approved. The format stays 1, since a version of the app that knows only plugins reads the
+ * `plugins` list and leaves `profiles` alone.
  */
 export function buildIndex(entries) {
+  const byName = (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
+  const base = ({ manifest }) => ({
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    version: manifest.version,
+    author: manifest.author?.login ?? '',
+    ...(manifest.requires && kindOf(manifest) === 'profile' ? { requires: manifest.requires } : {}),
+  });
   const plugins = entries
-    .map(({ manifest, commit, updated }) => ({
-      id: manifest.id,
-      name: manifest.name,
-      description: manifest.description,
-      version: manifest.version,
-      author: manifest.author?.login ?? '',
-      depends: manifest.depends ?? [],
-      optional: manifest.optional ?? [],
-      files: manifest.files ?? [],
-      commit,
-      updated,
+    .filter((e) => kindOf(e.manifest) === 'plugin')
+    .map((e) => ({
+      ...base(e),
+      depends: e.manifest.depends ?? [],
+      optional: e.manifest.optional ?? [],
+      permissions: e.manifest.permissions ?? [],
+      folders: e.manifest.folders ?? [],
+      ...(e.manifest.requires ? { requires: e.manifest.requires } : {}),
+      files: e.manifest.files ?? [],
+      commit: e.commit,
+      updated: e.updated,
     }))
-    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id));
-  return { format: 1, plugins };
+    .sort(byName);
+  const profiles = entries
+    .filter((e) => kindOf(e.manifest) === 'profile')
+    .map((e) => ({
+      ...base(e),
+      plugins: e.manifest.plugins ?? [],
+      files: e.manifest.files ?? [],
+      commit: e.commit,
+      updated: e.updated,
+    }))
+    .sort(byName);
+  return { format: 1, plugins, profiles };
 }
 
-/** The pull request's text: what the plugin is, its files, and what a reviewer checks. */
+/** The pull request's text: what the plugin or profile is, its files, and what a reviewer checks. */
 export function pullRequestBody(manifest, sub, issue, updating) {
+  const kind = kindOf(manifest);
+  const folder = folderFor(kind, manifest.id);
   const lines = [
-    `${updating ? 'Updates' : 'Adds'} **${manifest.name}** (\`${manifest.id}\`) ${manifest.version} by @${manifest.author.login}, from #${issue}.`,
+    `${updating ? 'Updates' : 'Adds'} ${kind === 'profile' ? 'the profile ' : ''}**${manifest.name}** (\`${manifest.id}\`) ${manifest.version} by @${manifest.author.login}, from #${issue}.`,
     '',
     `> ${manifest.description.replace(/\n/g, ' ')}`,
     '',
-    '### Files',
-    '',
   ];
+  if (kind === 'profile') {
+    lines.push('### Plugins', '', (manifest.plugins ?? []).map((id) => `\`${id}\``).join(', ') || 'None.', '');
+  } else {
+    const perms = manifest.permissions ?? [];
+    const shown = perms.map((p) => `**${PERMISSIONS[p]?.label ?? p}**${PERMISSIONS[p]?.full ? ' (full access)' : ''}`);
+    lines.push(
+      '### Permissions',
+      '',
+      shown.length ? shown.join(', ') : 'None. It can draw and keep its own data, and nothing more.',
+      '',
+    );
+    if ((manifest.folders ?? []).length) {
+      lines.push(`Writes in the workspace folders ${manifest.folders.map((f) => `\`${f}/\``).join(', ')}.`, '');
+    }
+  }
+  lines.push('### Files', '');
   for (const name of manifest.files) {
     const kb = (Buffer.byteLength(sub.files[name], 'utf8') / 1024).toFixed(1);
-    lines.push(`- \`plugins/${manifest.id}/${name}\` (${kb} KB)`);
+    lines.push(`- \`${folder}/${name}\` (${kb} KB)`);
   }
-  lines.push(
-    '',
-    '### Review',
-    '',
-    '- [ ] The code does what the description says, and nothing else.',
-    '- [ ] It reads and writes only the files its purpose needs.',
-    '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
-    '- [ ] It holds no secrets, tokens or personal data.',
-    '',
-    `Merging lists the plugin in the Proteus store. Closes #${issue}.`,
-  );
+  const review =
+    kind === 'profile'
+      ? [
+          '- [ ] The profile does what the description says, and nothing else.',
+          '- [ ] Every plugin it names ships with Proteus or is listed in this registry.',
+          '- [ ] Its settings hold no secrets, tokens or personal data.',
+        ]
+      : [
+          '- [ ] The code does what the description says, and nothing else.',
+          '- [ ] It asks only for the permissions its purpose needs. A full-access permission needs a clear reason.',
+          '- [ ] It reads and writes only the files its purpose needs.',
+          '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
+          '- [ ] It holds no secrets, tokens or personal data.',
+        ];
+  lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);
   return lines.join('\n');
 }
 
@@ -311,8 +496,8 @@ export function fenceFor(text) {
  * proteus.json is left out, since the registry writes it. Past about 60,000 characters the
  * rest are named only, and the pull request shows them.
  */
-export function changesComment({ id, from, to, files, pullRequest, limit = 60000 }) {
-  const prefix = `plugins/${id}/`;
+export function changesComment({ id, kind = 'plugin', from, to, files, pullRequest, limit = 60000 }) {
+  const prefix = `${folderFor(kind, id)}/`;
   const shown = files.filter((f) => f.filename.startsWith(prefix) && f.filename !== prefix + 'proteus.json');
   const lines = [
     CHANGES_MARKER,

@@ -9,9 +9,12 @@ import {
   collectSubmission,
   commandOf,
   compareVersions,
+  folderFor,
   isSubmission,
+  kindOf,
   manifestFor,
   pathProblem,
+  textProblem,
   pullRequestBody,
   validate,
 } from '../scripts/registry.mjs';
@@ -155,14 +158,61 @@ test('validate lets only the author update a plugin, and only upward', () => {
   assert.deepEqual(validate(good({ version: '1.0.1' }), { existing, author: { login: 'ann', id: 1 }, reserved }), []);
 });
 
-test('pathProblem allows plain text files only', () => {
+test('pathProblem allows plain file paths only', () => {
   assert.equal(pathProblem('init.lua'), null);
   assert.equal(pathProblem('assets/logo.svg'), null);
+  assert.equal(pathProblem('page/preview.js'), null);
   assert.match(pathProblem('../evil.lua'), /plain file path/);
   assert.match(pathProblem('/abs.lua'), /plain file path/);
-  assert.match(pathProblem('bin/tool.exe'), /kind of file/);
+  assert.match(pathProblem('bin/-tool'), /plain file path/);
   assert.match(pathProblem('a/b/c/d/e.lua'), /too deep/);
   assert.match(pathProblem('proteus.json'), /written by the registry/);
+});
+
+test('textProblem takes readable text only', () => {
+  assert.equal(textProblem('a.lua', 'local x = 1\r\n\tprint(x)\n'), null);
+  assert.equal(textProblem('a.wgsl', 'fn main() {} // é ✓'), null);
+  assert.equal(textProblem('a.md', Buffer.from('\ufeff# Title\n')), null);
+  assert.match(textProblem('a.bin', Buffer.from([0x4d, 0x5a, 0x00, 0x01])), /control characters/);
+  assert.match(textProblem('a.lua', Buffer.from([0xff, 0xfe])), /not UTF-8/);
+  assert.match(textProblem('a.lua', 'x = 1 \u001b[2J'), /control characters/);
+  assert.match(textProblem('a.lua', 'if admin \u202e then'), /reorder/);
+  assert.match(textProblem('a.lua', 'x \u2067 y'), /reorder/);
+  assert.match(textProblem('a.js', 'x'.repeat(1001)), /longer than 1000/);
+  assert.equal(textProblem('a.md', 'é'.repeat(1000)), null);
+});
+
+test('validate checks permissions, folders and requires', () => {
+  const problems = validate(
+    good({ permissions: ['net', 'root'], folders: ['shaders', 'plugins', '../x'], requires: { proteus: '~>1' } }),
+    { reserved },
+  );
+  assert.equal(problems.length, 4, problems.join('\n'));
+  assert.deepEqual(
+    validate(
+      good({ permissions: ['net'], folders: ['shaders'], requires: { proteus: '>=0.2.0 <1', features: ['webview'] } }),
+      { reserved },
+    ),
+    [],
+  );
+});
+
+test('validate wants every dependency to ship with Proteus or be listed', () => {
+  const known = new Set(['core.commands', 'lib.ui']);
+  assert.deepEqual(validate(good({ depends: ['core.commands'] }), { reserved, known }), []);
+  assert.match(validate(good({ depends: ['nowhere.plugin'] }), { reserved, known }).join(), /nowhere\.plugin/);
+});
+
+test('manifestFor and buildIndex carry permissions, folders and requires', () => {
+  const sub = good({ permissions: ['files'], folders: ['shaders'], requires: { proteus: '>=0.2.0', features: ['webview'] } });
+  const m = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.deepEqual(m.permissions, ['files']);
+  assert.deepEqual(m.folders, ['shaders']);
+  assert.deepEqual(m.requires, { proteus: '>=0.2.0', features: ['webview'] });
+  const [entry] = buildIndex([{ manifest: m, commit: 'abc', updated: '' }]).plugins;
+  assert.deepEqual(entry.permissions, ['files']);
+  assert.deepEqual(entry.requires, { proteus: '>=0.2.0', features: ['webview'] });
+  assert.match(pullRequestBody(m, sub, 7, false), /Files on this computer\*\* \(full access\)/);
 });
 
 test('compareVersions compares each part as a number', () => {
@@ -206,4 +256,90 @@ test('only blocks of the manifest revision count, so a half-edited issue waits',
   assert.equal(collectSubmission([manifest, withRev('old', 'stale')]).complete, false);
   const got = collectSubmission([manifest, withRev('old', 'stale'), withRev('new', 'fresh')]);
   assert.equal(got.sub.files['init.lua'], 'fresh');
+});
+
+/** A profile submission that meets every rule. */
+function goodProfile(extra = {}) {
+  return {
+    format: 2,
+    kind: 'profile',
+    id: 'writer',
+    name: 'Writer',
+    description: 'Notes and a to-do list side by side.',
+    version: '1.0.0',
+    plugins: ['app.notes', 'hello.world'],
+    files: { 'profile.lua': "return { name = 'Writer', plugins = { 'app.notes' } }", 'README.md': '# Writer' },
+    ...extra,
+  };
+}
+
+const reservedWithProfiles = { ...reserved, profiles: ['editor', 'code'] };
+
+test('a manifest names its kind, and one without a kind holds a plugin', () => {
+  assert.equal(kindOf({}), 'plugin');
+  assert.equal(kindOf({ kind: 'profile' }), 'profile');
+  assert.equal(folderFor('plugin', 'a.b'), 'plugins/a.b');
+  assert.equal(folderFor('profile', 'a.b'), 'profiles/a.b');
+  assert.ok(isSubmission({ title: 'Profile submission: writer 1.0.0' }));
+});
+
+test('a good profile submission has no problems', () => {
+  assert.deepEqual(validate(goodProfile(), { reserved: reservedWithProfiles }), []);
+});
+
+test('a profile needs profile.lua and a list of plugins', () => {
+  const problems = validate(goodProfile({ plugins: [], files: { 'init.lua': 'return {}' } }), { reserved: reservedWithProfiles });
+  assert.match(problems.join('\n'), /profile\.lua/);
+  assert.match(problems.join('\n'), /at least one plugin/);
+  assert.match(validate(goodProfile({ plugins: ['Bad Id'] }), { reserved }).join(), /plugins must be a list/);
+});
+
+test('builtin profile ids are kept for Proteus, apart from plugin ids', () => {
+  assert.match(validate(goodProfile({ id: 'editor' }), { reserved: reservedWithProfiles }).join(), /ships with Proteus/);
+  // A profile may share an id with a plugin, and core. is a plugin prefix only.
+  assert.deepEqual(validate(goodProfile({ id: 'app.git' }), { reserved: reservedWithProfiles }), []);
+  assert.deepEqual(validate(good({ id: 'editor' }), { reserved: reservedWithProfiles }), []);
+});
+
+test('an unknown kind is refused', () => {
+  assert.match(validate(good({ kind: 'theme' }), { reserved }).join(), /kind must be/);
+});
+
+test('a profile manifest keeps its plugins and its kind', () => {
+  const m = manifestFor(goodProfile(), { login: 'ann', id: 1 }, 9);
+  assert.equal(m.kind, 'profile');
+  assert.deepEqual(m.plugins, ['app.notes', 'hello.world']);
+  assert.equal(m.depends, undefined);
+  assert.deepEqual(m.files, ['README.md', 'profile.lua']);
+});
+
+test('buildIndex lists profiles apart from plugins', () => {
+  const plugin = manifestFor(good(), { login: 'ann', id: 1 }, 1);
+  const profile = manifestFor(goodProfile(), { login: 'bob', id: 2 }, 2);
+  const index = buildIndex([
+    { manifest: plugin, commit: 'aaa', updated: '2026-01-01' },
+    { manifest: profile, commit: 'bbb', updated: '2026-01-02' },
+  ]);
+  assert.deepEqual(index.plugins.map((p) => p.id), ['hello.world']);
+  assert.deepEqual(index.profiles, [
+    {
+      id: 'writer',
+      name: 'Writer',
+      description: 'Notes and a to-do list side by side.',
+      version: '1.0.0',
+      author: 'bob',
+      plugins: ['app.notes', 'hello.world'],
+      files: ['README.md', 'profile.lua'],
+      commit: 'bbb',
+      updated: '2026-01-02',
+    },
+  ]);
+});
+
+test('the pull request of a profile names its folder and its plugins', () => {
+  const sub = goodProfile();
+  const body = pullRequestBody(manifestFor(sub, { login: 'ann', id: 1 }, 7), sub, 7, false);
+  assert.match(body, /^Adds the profile \*\*Writer\*\*/);
+  assert.match(body, /profiles\/writer\/profile\.lua/);
+  assert.match(body, /`app\.notes`, `hello\.world`/);
 });

@@ -5,7 +5,7 @@
       "id": "lang.rust",
       "name": "Rust",
       "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "nanoqoi",
       "depends": [
         "core.settings",
@@ -21,6 +21,18 @@
         "code.project",
         "ui.notify"
       ],
+      "permissions": [
+        "net",
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
       "files": [
         "README.md",
         "init.lua",
@@ -34,14 +46,14 @@
         "lib/rustfmt.lua",
         "lib/server.lua"
       ],
-      "commit": "11e50e3f6eb28c64742c977b0db616356427a1c4",
-      "updated": "2026-09-30T06:31:55Z"
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
     },
     {
       "id": "sample.plugin",
       "name": "Sample Plugin",
       "description": "A sample plugin.",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -52,17 +64,275 @@
         "ui.toolbar",
         "ui.menubar"
       ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
       "files": [
         "init.lua"
       ],
-      "commit": "ff0631f51809dc83c748d4b4d1a3ca07ff513389",
-      "updated": "2026-09-30T05:08:34Z"
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.build",
+      "name": "Shader build",
+      "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "shader.core",
+        "shader.docs",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.notify",
+        "ui.palette"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [
+        "shaders"
+      ],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "folders"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.canvas",
+      "name": "Shader canvas",
+      "description": "The node editor for shader graphs: nodes, typed wires, panning and zooming.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "shader.core",
+        "shader.docs",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.palette",
+        "ui.menus",
+        "ui.notify",
+        "core.keys"
+      ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.code",
+      "name": "Shader code",
+      "description": "Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "shader.docs",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.views",
+        "shader.canvas",
+        "ui.notify",
+        "ui.palette"
+      ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "languages"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.core",
+      "name": "Shader core",
+      "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "shader_build.lua",
+        "shader_compile.lua",
+        "shader_examples.lua",
+        "shader_file.lua",
+        "shader_graph.lua",
+        "shader_helpers.lua",
+        "shader_history.lua",
+        "shader_layout.lua",
+        "shader_nodes.lua",
+        "shader_source.lua",
+        "shader_types.lua",
+        "tests/core.test.lua",
+        "tests/examples.test.lua",
+        "tests/source.test.lua",
+        "types/shader.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.docs",
+      "name": "Shader documents",
+      "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "shader.core",
+        "ui.tabs",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.palette",
+        "ui.notify",
+        "core.settings",
+        "core.keys"
+      ],
+      "permissions": [],
+      "folders": [
+        "shaders"
+      ],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "folders",
+          "plugin-files"
+        ]
+      },
+      "files": [
+        "examples/cells.shader.json",
+        "examples/clouds.shader.json",
+        "examples/plasma.shader.json",
+        "examples/raymarch.frag",
+        "examples/shadertoy.frag",
+        "examples/shapes.shader.json",
+        "examples/tunnel.wgsl",
+        "examples/waves.frag",
+        "init.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.library",
+      "name": "Shader library",
+      "description": "Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "shader.core",
+        "shader.docs",
+        "ui.views",
+        "core.commands"
+      ],
+      "optional": [
+        "shader.canvas",
+        "ui.menus",
+        "ui.palette",
+        "ui.notify"
+      ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "shader.preview",
+      "name": "Shader preview",
+      "description": "Runs the shader in front live, on WebGL 2 or WebGPU, with its problems and a control for every uniform.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "shader.core",
+        "shader.docs",
+        "ui.views",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.tabs",
+        "shader.canvas",
+        "ui.statusbar",
+        "ui.notify"
+      ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "webview"
+        ]
+      },
+      "files": [
+        "init.lua",
+        "page/preview.css",
+        "page/preview.html",
+        "page/preview.js"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
     },
     {
       "id": "lang.toml",
       "name": "TOML",
       "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [
         "core.settings",
@@ -76,6 +346,17 @@
         "code.project",
         "ui.notify"
       ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
       "files": [
         "README.md",
         "init.lua",
@@ -84,8 +365,46 @@
         "lib/schemas.lua",
         "lib/server.lua"
       ],
-      "commit": "7f47083660e3900092d1438916c8241ab7c4d636",
-      "updated": "2026-09-30T06:24:29Z"
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "shader",
+      "name": "Shader Builder",
+      "description": "Build GLSL and WGSL shaders from nodes or code, with a live preview.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "plugins": [
+        "theme.midnight",
+        "theme.daylight",
+        "theme.retro",
+        "core.keys",
+        "ui.menus",
+        "ui.menubar",
+        "ui.toolbar",
+        "ui.statusbar",
+        "ui.views",
+        "ui.tabs",
+        "ui.palette",
+        "ui.notify",
+        "ui.settings",
+        "core.profiles",
+        "shader.core",
+        "shader.docs",
+        "shader.canvas",
+        "shader.code",
+        "shader.preview",
+        "shader.library",
+        "shader.build",
+        "discord.rpc"
+      ],
+      "files": [
+        "profile.lua"
+      ],
+      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
+      "updated": "2026-09-30T16:51:35Z"
     }
   ]
 }

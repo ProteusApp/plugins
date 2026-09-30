@@ -1,0 +1,34 @@
+{
+  "id": "shader.code",
+  "name": "Shader code",
+  "description": "Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "shader.docs",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.views",
+    "shader.canvas",
+    "ui.notify",
+    "ui.palette"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "languages"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}
