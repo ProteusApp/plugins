@@ -1,0 +1,35 @@
+{
+  "id": "daw.session",
+  "name": "DAW session",
+  "description": "The open song: its file, undo and redo, and what is selected.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.core",
+    "core.commands"
+  ],
+  "optional": [
+    "core.settings",
+    "ui.palette",
+    "ui.notify",
+    "ui.statusbar",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [
+    "songs"
+  ],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

@@ -31,7 +31,7 @@ A plugin's `init.lua` returns its table, and these fields say what it needs from
 
 | Field | What it says |
 |-------|--------------|
-| `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last four amount to full access. |
+| `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `midi` (hearing MIDI keyboards), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last four amount to full access. |
 | `folders` | Workspace folders it writes its files in, such as `shaders`. It may always write in `data/<id>/`. Folders Proteus uses, such as `plugins` and `data`, cannot be claimed. |
 | `requires` | `proteus`, the versions it runs on, such as `>=0.2.0`, and `features`, what it needs of the app, such as `webview` or `languages`. The marketplace refuses a plugin this Proteus cannot run. |
 | `depends` | Plugins that must start first. Each ships with Proteus or is listed here, and the marketplace installs the listed ones along with it. |

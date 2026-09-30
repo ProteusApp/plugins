@@ -1,0 +1,35 @@
+{
+  "id": "daw.transport",
+  "name": "DAW transport",
+  "description": "Play, stop, record, loop, the metronome, the position and the tempo.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "daw.core",
+    "daw.session",
+    "daw.engine",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.toolbar",
+    "ui.statusbar",
+    "core.keys",
+    "ui.palette"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

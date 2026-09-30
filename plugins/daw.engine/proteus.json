@@ -1,0 +1,45 @@
+{
+  "id": "daw.engine",
+  "name": "DAW engine",
+  "description": "Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.toolbar",
+    "ui.notify",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "webview",
+      "grants",
+      "autoplay"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua",
+    "page/engine.css",
+    "page/engine.html",
+    "page/engine.js",
+    "page/expr.js",
+    "page/files.js",
+    "page/main.js",
+    "page/mixer.js",
+    "page/patch.js"
+  ]
+}
