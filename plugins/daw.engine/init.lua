@@ -45,7 +45,7 @@ local CSS = [[
 return {
   name = 'DAW engine',
   description = 'Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'webview', 'grants', 'autoplay' },
@@ -79,6 +79,8 @@ return {
     local push_pending = false
     local view = nil ---@type Proteus.El?
     local files = {} ---@type table<string, Daw.EngineFile>
+    -- The name of each file an export is writing, by grant id.
+    local exporting = {} ---@type table<string, string>
 
     ---@param message table
     local function post (message)
@@ -275,7 +277,11 @@ return {
         file_failed (tostring (m.file), tostring (m.error))
       elseif kind == 'rendered' or kind == 'render_failed' then
         local g = app.grants.get (tostring (m.file))
-        local name = g and g.name or 'the file'
+        -- A newer Proteus drops a save grant once the page wrote it, so the export keeps the name.
+        local name = exporting[tostring (m.file)]
+          or (g and g.name)
+          or 'the file'
+        exporting[tostring (m.file)] = nil
         -- The page may write to it only once: a new export asks where again.
         app.grants.forget (tostring (m.file))
         if notify then
@@ -442,6 +448,7 @@ return {
             return
           end
           view:widget ('allow_save', g.id)
+          exporting[g.id] = g.name
           post ({ type = 'render', file = g.id, from = 0, to = 0 })
           if notify then
             notify.info ('Exporting ' .. g.name .. '...')

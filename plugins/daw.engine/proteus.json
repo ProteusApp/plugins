@@ -2,7 +2,7 @@
   "id": "daw.engine",
   "name": "DAW engine",
   "description": "Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "lib.ui",
     "daw.core",
