@@ -2,7 +2,7 @@
   "id": "sample.plugin",
   "name": "Sample Plugin",
   "description": "A sample plugin.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "depends": [
     "lib.ui",
     "core.commands"
@@ -16,8 +16,9 @@
     "login": "nanoqoi",
     "id": 29748817
   },
-  "issue": 6,
+  "issue": 8,
   "files": [
+    "README.md",
     "init.lua"
   ]
 }
