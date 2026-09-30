@@ -1,4 +1,4 @@
-// Turns a submission issue into a pull request. The submission workflow runs it whenever a
+// Turns a submission issue, of a plugin or a profile, into a pull request. The submission workflow runs it whenever a
 // submission issue opens or changes, or its author comments on it.
 //
 // It never runs the submitted code. It reads the issue's text, checks the plugin against the
@@ -21,7 +21,9 @@ import {
   changesComment,
   collectSubmission,
   commandOf,
+  folderFor,
   isSubmission,
+  kindOf,
   manifestFor,
   pullRequestBody,
   validate,
@@ -29,8 +31,8 @@ import {
 
 /**
  * Runs one issue event. `api` calls the GitHub API of `repo`. `checkout` reads the main
- * branch: `reserved` is reserved.json, and `existing(id)` is a listed plugin's proteus.json,
- * or null. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
+ * branch: `reserved` is reserved.json, and `existing(id, kind)` is a listed plugin's or
+ * profile's proteus.json, or null. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
  * refused, unchanged, opened or updated.
  */
 export async function submit({ api, event, repo, checkout }) {
@@ -52,7 +54,8 @@ export async function submit({ api, event, repo, checkout }) {
   if (!found.complete) return 'waiting';
   const sub = found.sub;
 
-  const existing = typeof sub.id === 'string' ? checkout.existing(sub.id) : null;
+  const kind = kindOf(sub);
+  const existing = typeof sub.id === 'string' ? checkout.existing(sub.id, kind) : null;
   const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved });
   if (problems.length > 0) {
     await say(api, issue.number, comments, [
@@ -60,13 +63,13 @@ export async function submit({ api, event, repo, checkout }) {
       '',
       ...problems.map((p) => `- ${p}`),
       '',
-      'Fix the plugin in Proteus and publish it again. The new version replaces this one.',
+      `Fix the ${kind} in Proteus and publish it again. The new version replaces this one.`,
     ]);
     return 'refused';
   }
 
   const manifest = manifestFor(sub, issue.user, issue.number);
-  const folder = `plugins/${manifest.id}`;
+  const folder = folderFor(kind, manifest.id);
   const branch = branchFor(issue.number);
   const owner = repo.split('/')[0];
   const open = (await api('GET', `/pulls?head=${owner}:${encodeURIComponent(branch)}&state=open`)) ?? [];
@@ -82,7 +85,7 @@ export async function submit({ api, event, repo, checkout }) {
   const listing = await api('GET', `/git/trees/${parent.tree.sha}?recursive=1`);
   const before = (listing?.tree ?? []).filter((e) => e.type === 'blob' && e.path.startsWith(folder + '/'));
 
-  // The plugin's folder ends up holding exactly the submitted files and proteus.json.
+  // The folder ends up holding exactly the submitted files and proteus.json.
   const files = { ...sub.files, 'proteus.json': JSON.stringify(manifest, null, 2) + '\n' };
   const entries = [];
   for (const [name, content] of Object.entries(files)) {
@@ -106,7 +109,8 @@ export async function submit({ api, event, repo, checkout }) {
   }
 
   const updating = existing !== null;
-  const title = `${updating ? 'Update' : 'Add'} ${manifest.name} (${manifest.id}) ${manifest.version}`;
+  const noun = kind === 'profile' ? ' profile' : '';
+  const title = `${updating ? 'Update' : 'Add'}${noun} ${manifest.name} (${manifest.id}) ${manifest.version}`;
   const commit = await api('POST', '/git/commits', {
     message: `${title}\n\nFrom #${issue.number}.`,
     tree: tree.sha,
@@ -144,14 +148,14 @@ export async function submit({ api, event, repo, checkout }) {
     }
     const compare = await api('GET', `/compare/${parentSha}...${commit.sha}`);
     await api('POST', `/issues/${issue.number}/comments`, {
-      body: changesComment({ id: manifest.id, from, to: manifest.version, files: compare?.files ?? [], pullRequest: pr.html_url }),
+      body: changesComment({ id: manifest.id, kind, from, to: manifest.version, files: compare?.files ?? [], pullRequest: pr.html_url }),
     });
   }
 
   await say(api, issue.number, comments, [
     `Thanks, @${issue.user.login}. Version ${manifest.version} of this submission is in ${pr.html_url}.`,
     '',
-    'A maintainer reviews the code there, then approves it by commenting /approve on this issue or by merging the PR. The Proteus store lists the plugin once it is merged. Publishing again before then updates this same submission.',
+    `A maintainer reviews it there, then approves it by commenting /approve on this issue or by merging the PR. The Proteus marketplace lists the ${kind} once it is merged. Publishing again before then updates this same submission.`,
   ]);
   return inReview ? 'updated' : 'opened';
 }
@@ -162,10 +166,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   const checkout = {
     reserved: JSON.parse(readFileSync('reserved.json', 'utf8')),
-    existing(id) {
+    existing(id, kind) {
       // Validation checks the id after this, so a malformed one never reaches a path.
       if (!/^[a-z0-9][a-z0-9._-]*$/.test(id) || id.includes('..')) return null;
-      const path = join('plugins', id, 'proteus.json');
+      const path = join(folderFor(kind, id), 'proteus.json');
       return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
     },
   };

@@ -132,3 +132,39 @@ test('comments by others and commands are left alone', async () => {
   assert.equal(await submit({ api: gh.api, event: command, repo: REPO, checkout }), 'ignored');
   assert.equal(gh.calls.length, 0);
 });
+
+test('a profile submission writes to profiles/<id>', async () => {
+  const manifest = {
+    format: 2,
+    kind: 'profile',
+    revision: 'r1',
+    id: 'writer',
+    name: 'Writer',
+    description: 'Notes and a to-do list.',
+    version: '1.0.0',
+    plugins: ['app.notes'],
+    files: ['profile.lua'],
+  };
+  const body = [
+    '<!-- proteus-manifest -->',
+    '```json',
+    JSON.stringify(manifest),
+    '```',
+    '',
+    '<!-- proteus-file path="profile.lua" part="1" of="1" rev="r1" -->',
+    '```lua',
+    "return { name = 'Writer', plugins = { 'app.notes' } }",
+    '```',
+  ].join('\n');
+  const event = opened();
+  event.issue.title = 'Profile submission: writer 1.0.0';
+  event.issue.body = body;
+  const asked = [];
+  const look = { ...checkout, existing: (id, kind) => (asked.push([id, kind]), null) };
+  const gh = fakeGitHub(world());
+  assert.equal(await submit({ api: gh.api, event, repo: REPO, checkout: look }), 'opened');
+  assert.deepEqual(asked, [['writer', 'profile']]);
+  const paths = gh.find('POST', '/git/trees')[0].body.tree.map((e) => e.path).sort();
+  assert.deepEqual(paths, ['profiles/writer/profile.lua', 'profiles/writer/proteus.json']);
+  assert.match(gh.find('POST', '/pulls')[0].body.title, /^Add profile Writer \(writer\) 1\.0\.0$/);
+});

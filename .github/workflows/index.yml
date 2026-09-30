@@ -1,11 +1,11 @@
-# Rebuilds index.json after a plugin is merged, removed or changed on main. The Proteus store
-# reads that file to list the approved plugins.
+# Rebuilds index.json after a plugin or profile is merged, removed or changed on main. The
+# Proteus marketplace reads that file to list what was approved.
 name: Build the index
 
 on:
   push:
     branches: [main]
-    paths: ['plugins/**']
+    paths: ['plugins/**', 'profiles/**']
   workflow_dispatch:
 
 permissions:
