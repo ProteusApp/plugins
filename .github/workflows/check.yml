@@ -36,6 +36,8 @@ jobs:
         run: node --test
       - name: What each plugin declares, and each plugin's tests
         run: node scripts/lua-test.mjs
+      - name: Vendored files match their published sources
+        run: node scripts/vendor.mjs verify
       - name: Install StyLua and selene
         run: |
           mkdir -p "$RUNNER_TEMP/bin"

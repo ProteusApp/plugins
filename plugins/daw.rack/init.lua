@@ -1,5 +1,5 @@
 -- daw.rack: the devices of the selected track, or of the master, in the Channel settings
--- window, or in the right dock without daw.windows. Each device is a card with its presets,
+-- window, or in the right dock without floating windows. Each device is a card with its presets,
 -- a bypass switch, and a control for every parameter the device declares. Nothing here knows
 -- any device by name: the cards are built from the parameter lists that plugins register
 -- with daw.devices.
@@ -158,7 +158,7 @@ local STEPS = 1000
 return {
   name = 'DAW device rack',
   description = 'The instrument and effects of the selected track, with every parameter.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -169,11 +169,11 @@ return {
     'daw.session',
     'core.commands',
   },
-  optional = { 'ui.palette', 'ui.menus', 'daw.engine', 'daw.windows' },
+  optional = { 'ui.palette', 'ui.menus', 'daw.engine', 'ui.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
-    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
+    local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -477,6 +477,12 @@ return {
         end)
         head:append (presets)
       end
+      if spec and spec.wam and engine then
+        -- A Web Audio Module may bring its own editor, which opens in a window.
+        head:append (icon_btn ('app-window', 'Open its editor', function ()
+          engine.open_editor (ref.id)
+        end))
+      end
       if role == 'effect' then
         head:append (
           icon_btn ('power', ref.bypass and 'Turn on' or 'Turn off', function ()
@@ -676,6 +682,7 @@ return {
     if windows then
       -- FL Studio calls the window of one channel's instrument and effects its settings.
       windows.add ({
+        category = 'DAW',
         id = 'daw.rack',
         title = 'Channel settings',
         icon = 'sliders-horizontal',

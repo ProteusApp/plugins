@@ -94,7 +94,7 @@ function compare(declared, meta, kind) {
     const d = typeof declared[key] === 'string' ? declared[key].trim() : declared[key];
     if (d !== meta[key]) problems.push(`${key} is ${JSON.stringify(d)} in the Lua file but ${JSON.stringify(meta[key])} in proteus.json.`);
   }
-  const keys = kind === 'profile' ? ['plugins'] : ['depends', 'optional', 'permissions', 'folders'];
+  const keys = kind === 'profile' ? ['plugins'] : ['depends', 'optional', 'permissions', 'folders', 'exports'];
   for (const key of keys) {
     if (!same(list(declared[key]), list(meta[key]))) {
       problems.push(`${key} is ${JSON.stringify(list(declared[key]))} in the Lua file but ${JSON.stringify(list(meta[key]))} in proteus.json.`);

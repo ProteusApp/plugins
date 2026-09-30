@@ -2,7 +2,7 @@
   "id": "daw.core",
   "name": "DAW core",
   "description": "The logic behind the DAW: songs, notes, steps, devices, time and undo.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "depends": [],
   "optional": [],
   "permissions": [],

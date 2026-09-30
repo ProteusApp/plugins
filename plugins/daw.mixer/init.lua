@@ -1,5 +1,5 @@
 -- daw.mixer: a channel strip for each track and one for the master, in the Mixer window
--- (F9), or in the bottom dock without daw.windows.
+-- (F9), or in the bottom dock without floating windows.
 -- Each strip has a level meter, a fader, a pan and mute and solo. Moving a fader sends a
 -- `mix` change, which the engine applies at once, without the whole song.
 --
@@ -139,7 +139,7 @@ end
 return {
   name = 'DAW mixer',
   description = 'Faders, pans, meters, mute and solo for every track.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -150,11 +150,11 @@ return {
     'daw.session',
     'daw.engine',
   },
-  optional = { 'daw.windows' },
+  optional = { 'ui.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
-    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
+    local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -404,6 +404,7 @@ return {
 
     if windows then
       windows.add ({
+        category = 'DAW',
         id = 'daw.mixer',
         title = 'Mixer',
         icon = 'sliders-vertical',

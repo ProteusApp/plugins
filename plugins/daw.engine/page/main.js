@@ -16,6 +16,9 @@
 //   { type: 'retry', file }                 try a file that failed again
 //   { type: 'render', file, from, to }      play the song into a WAV file the user chose to
 //                                           save. With `to` at or before `from`, to the end.
+//   { type: 'native', on }                  the app's native engine plays, and the page is
+//                                           only the meter
+//   { type: 'meter', master }               the native engine's master level, to draw
 // Messages to the plugin:
 //   { type: 'ready' }                       the page listens
 //   { type: 'sound', on }                   the browser lets the page make sound, or not
@@ -83,10 +86,14 @@ function sendRecording() {
   if (notes.length > 0) post({ type: 'recorded', notes });
 }
 
+// While the native engine plays, the page only draws the level it reports.
+let native = false;
+let external = [0, 0];
+
 let soundOn = null;
 function showSound() {
   const on = engine.ctx.state === 'running';
-  hint.hidden = on;
+  hint.hidden = on || native;
   if (on !== soundOn) {
     soundOn = on;
     post({ type: 'sound', on });
@@ -162,6 +169,15 @@ proteus.on((m) => {
     case 'render':
       void renderTo(String(m.file), num(m.from), num(m.to));
       break;
+    case 'native':
+      native = m.on === true;
+      if (native) engine.stop(false);
+      external = [0, 0];
+      showSound();
+      break;
+    case 'meter':
+      external = Array.isArray(m.master) ? m.master.map((v) => num(v)) : [0, 0];
+      break;
   }
 });
 
@@ -179,7 +195,7 @@ function frame(now) {
     lastTick = now;
     post({ type: 'tick', beat: engine.position() });
   }
-  if (now - lastLevels > 66) {
+  if (!native && now - lastLevels > 66) {
     lastLevels = now;
     const levels = engine.levels();
     const loud = levels.master.some((v) => v > 0.001);
@@ -195,7 +211,7 @@ function draw() {
   if (!g) return;
   const w = (canvas.width = canvas.clientWidth * devicePixelRatio);
   const h = (canvas.height = canvas.clientHeight * devicePixelRatio);
-  const [l, r] = engine.masterPeak();
+  const [l, r] = native ? external : engine.masterPeak();
   shown = [Math.max(l, shown[0] * 0.9), Math.max(r, shown[1] * 0.9)];
   if (l >= 1 || r >= 1) clipped = performance.now();
   g.clearRect(0, 0, w, h);

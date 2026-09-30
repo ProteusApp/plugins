@@ -1,5 +1,5 @@
 -- daw.arrange: the arrangement, in the Playlist window (F5), or in the middle of the window
--- without daw.windows. Each track is a row: its header
+-- without floating windows. Each track is a row: its header
 -- on the left, and its clips along a timeline of bars. The ruler on top moves the playhead,
 -- and a drag along it sets the loop.
 --
@@ -289,7 +289,7 @@ end
 return {
   name = 'DAW arrangement',
   description = 'Tracks and clips along a timeline, with the ruler and the loop.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -308,7 +308,7 @@ return {
     'ui.notify',
     'ui.tabs',
     'core.keys',
-    'daw.windows',
+    'ui.windows',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -321,7 +321,7 @@ return {
     local menus = app.try_use ('menus')
     local picker = app.try_use ('picker')
     local views = app.try_use ('views')
-    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
+    local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
 
     ---Opens the piano roll, in its window or its dock.
     local function show_pianoroll ()
@@ -1638,6 +1638,7 @@ return {
     if windows then
       -- FL Studio's Playlist: the song, as clips on tracks.
       windows.add ({
+        category = 'DAW',
         id = 'daw.arrange',
         title = 'Playlist',
         icon = 'audio-lines',

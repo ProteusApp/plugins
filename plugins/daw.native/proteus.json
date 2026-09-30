@@ -1,0 +1,34 @@
+{
+  "id": "daw.native",
+  "name": "Native plugins",
+  "description": "The CLAP and VST3 plugins installed on this computer, as instruments and effects for the DAW.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.core",
+    "daw.devices",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.notify"
+  ],
+  "permissions": [
+    "native-plugins"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "native-audio"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

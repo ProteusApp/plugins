@@ -306,3 +306,162 @@ test ('the device in the plugin guide passes the check', function ()
   })
   ok (spec, tostring (err))
 end)
+
+test ('a Web Audio Module device names a module instead of a patch', function ()
+  local spec, err = device.check ({
+    id = 'wam.synth',
+    name = 'Synth',
+    role = 'instrument',
+    wam = { path = 'wam/synth/index.js' },
+  })
+  eq (err, nil)
+  eq (spec and spec.wam, { path = 'wam/synth/index.js' })
+  eq (spec and #spec.params, 0, 'its parameters come later')
+  for _, bad in ipairs ({
+    '../up.js',
+    '/abs.js',
+    'wam/synth',
+    'a//b.js',
+    'wam/x.lua',
+  }) do
+    local none, why =
+      device.check ({ id = 'w', role = 'effect', wam = { path = bad } })
+    eq (none, nil, bad)
+    ok (why and why:find ('wam.path'), bad)
+  end
+end)
+
+test ("a module's parameter info becomes parameter specs", function ()
+  local params = device.from_wam ({
+    wave = {
+      type = 'choice',
+      label = 'Wave',
+      choices = { 'saw', 'square' },
+      defaultValue = 1,
+    },
+    cutoff = {
+      type = 'float',
+      label = 'Cutoff',
+      minValue = 60,
+      maxValue = 12000,
+      defaultValue = 2400,
+      exponent = 3,
+      units = 'Hz',
+    },
+    voices = {
+      type = 'int',
+      minValue = 1,
+      maxValue = 16,
+      defaultValue = 8,
+      units = 'voices',
+    },
+    on = { type = 'boolean', label = 'On', defaultValue = 1 },
+    broken = { type = 'float', minValue = 1, maxValue = 1 },
+    ['bad key'] = { type = 'float' },
+  })
+  local by = {} ---@type table<string, Daw.ParamSpec>
+  for _, p in ipairs (params) do
+    by[p.key] = p
+  end
+  eq (#params, 4, 'the broken and badly named ones are left out')
+  eq (by.wave.kind, 'choice')
+  eq (by.wave.options, { 'saw', 'square' })
+  eq (by.wave.default, 'square')
+  eq (by.cutoff.curve, 'log')
+  eq (by.cutoff.unit, 'Hz')
+  eq (by.cutoff.default, 2400)
+  eq (by.voices.step, 1)
+  eq (by.voices.unit, nil, 'a unit the DAW does not read is dropped')
+  eq (by.on.kind, 'toggle')
+  eq (by.on.default, true)
+end)
+
+test ('a module device resolves to its address and choice indices', function ()
+  local spec = assert (device.check ({
+    id = 'wam.synth',
+    role = 'instrument',
+    wam = { path = 'wam/synth/index.js' },
+  }))
+  spec.owner = 'wam.basics'
+  spec.params = device.from_wam ({
+    wave = {
+      type = 'choice',
+      choices = { 'saw', 'square', 'sine' },
+      defaultValue = 0,
+    },
+    level = { type = 'float', minValue = 0, maxValue = 1, defaultValue = 0.5 },
+  })
+  local out = resolve.device ({
+    id = 'd1',
+    device = 'wam.synth',
+    params = { wave = 'sine' },
+    bypass = false,
+  }, spec)
+  eq (out.wam, { url = '_/wam.basics/wam/synth/index.js' })
+  eq (out.kind, 'wam.synth')
+  eq (out.params, { wave = 2, level = 0.5 })
+end)
+
+test (
+  'a native plugin is a device that names its plugin, and resolves to it',
+  function ()
+    local spec = assert (device.check ({
+      id = 'native.synth',
+      name = 'Synth',
+      role = 'instrument',
+      params = device.from_native ({
+        {
+          key = 'p0',
+          label = 'Cutoff',
+          min = 0,
+          max = 1,
+          default = 0.5,
+          stepped = false,
+        },
+        {
+          key = 'p3',
+          label = 'Octave',
+          min = -2,
+          max = 2,
+          default = 0,
+          stepped = true,
+        },
+        {
+          key = 'p4',
+          label = 'Mode',
+          min = 0,
+          max = 1,
+          default = 0,
+          stepped = true,
+          steps = 4,
+        },
+        { key = 'bad key', min = 0, max = 1 },
+      }),
+      native = {
+        plugin = 'clap:com.example.synth',
+        path = '/somewhere/else.so',
+      },
+    }))
+    eq (
+      spec.native,
+      { plugin = 'clap:com.example.synth' },
+      'a device never carries a path'
+    )
+    eq (#spec.params, 3)
+    eq (spec.params[2].step, 1)
+    eq (spec.params[3].step, 0.25)
+    local ref = device.ref (spec)
+    ref.id = 'd1'
+    local resolved = require ('daw_resolve').device (ref, spec)
+    eq (resolved.native, { plugin = 'clap:com.example.synth' })
+    eq (resolved.kind, 'Synth')
+    eq (resolved.params.p0, 0.5)
+    local _, err = device.check ({
+      id = 'x',
+      role = 'effect',
+      params = {},
+      native = { plugin = 42 },
+    })
+    ok (err and err:find ('native.plugin', 1, true))
+  end
+)

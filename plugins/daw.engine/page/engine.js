@@ -237,8 +237,11 @@ class Engine {
     const off = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(seconds * rate), sampleRate: rate });
     const mixer = new Mixer(off, (msg) => this.emit('warning', { message: msg }));
     mixer.load(JSON.parse(JSON.stringify(this.mixer.song)));
+    // Modules load in the background, and the render waits for them.
+    await wamSettled(off);
     mixer.chase(from, 0, end);
     mixer.schedule(from, end, 0, end, false);
+    await wamFlush(off);
     return off.startRendering();
   }
 

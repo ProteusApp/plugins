@@ -2,7 +2,7 @@
   "id": "daw.devices",
   "name": "DAW devices",
   "description": "The registry of instruments and effects that plugins add to the DAW.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "daw.core"
   ],

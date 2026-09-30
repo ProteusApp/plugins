@@ -165,7 +165,9 @@
 ---@field category? string Groups devices in the browser, such as `'Synths'` or `'Delay'`.
 ---@field params Daw.ParamSpec[]
 ---@field presets? Daw.Preset[]
----@field patch Daw.Patch
+---@field patch Daw.Patch Empty for a Web Audio Module.
+---@field wam? { path: string } A Web Audio Module instead of a patch: its module, in a folder the registering plugin lists in `exports`, such as `'wam/synth/index.js'`. Its parameters come from the module once the engine loads it.
+---@field native? { plugin: string } A CLAP or VST3 plugin instead of a patch, by the reference `app.audio.plugins` gives, such as `'clap:com.example.synth'`. Only the native engine plays it.
 ---@field owner? string Set by the service: the plugin that registered it.
 
 ---------------------------------------------------------------------------------------------
@@ -174,6 +176,9 @@
 
 ---@class Daw.EngineDevice
 ---@field id string
+---@field kind? string A Web Audio Module's device id, so the engine can report its parameters.
+---@field wam? { url: string } Where the engine page loads a Web Audio Module, under its mounts.
+---@field native? { plugin: string } A native plugin, which the app's kernel finds before the native engine loads it.
 ---@field patch table The device's patch, with its role.
 ---@field params table<string, Daw.Value> Every parameter, defaults filled in.
 ---@field bypass boolean
@@ -282,6 +287,8 @@
 ---@field to_unit fun(param: Daw.ParamSpec, value: number): number Where the value sits along its knob, from 0 to 1.
 ---@field from_unit fun(param: Daw.ParamSpec, unit: number): number
 ---@field format fun(param: Daw.ParamSpec, value: Daw.Value): string Such as `'2.40 kHz'` or `'-6.0 dB'`.
+---@field from_wam fun(info: table<string, table>): Daw.ParamSpec[] A Web Audio Module's parameters, from its `getParameterInfo`.
+---@field from_native fun(params: table[]): Daw.ParamSpec[] A native plugin's parameters, from `app.audio.plugins`.
 ---@field ref fun(spec: Daw.DeviceSpec, preset?: string): Daw.DeviceRef A new device, with no id yet.
 ---@field preset fun(spec: Daw.DeviceSpec, name?: string): Daw.Preset?
 ---@field values fun(spec: Daw.DeviceSpec, ref: Daw.DeviceRef): table<string, Daw.Value> Defaults, then the preset, then the track's own values.
@@ -355,6 +362,12 @@ function Devices.list (role) end
 ---@param preset? string
 ---@return Daw.DeviceRef?
 function Devices.ref (id, preset) end
+
+---Gives a Web Audio Module device the parameters its module reported, as its
+---`getParameterInfo` gives them. The engine calls it once the module loads.
+---@param id string
+---@param info table<string, table>
+function Devices.describe (id, info) end
 
 ---------------------------------------------------------------------------------------------
 -- daw.session
@@ -510,6 +523,11 @@ function Engine.file (id) end
 ---Asks the user where to save, then plays the whole song into that WAV file.
 function Engine.export_wav () end
 
+---Opens a Web Audio Module device's own editor in a window. Its values follow the song both
+---ways. Does nothing for a device that is no module, or without floating windows.
+---@param device_id string
+function Engine.open_editor (device_id) end
+
 ---An audio file the user gave the engine. `seconds` and `peaks` arrive once the page decoded
 ---it, and `daw:file` fires then.
 ---@class Daw.EngineFile
@@ -517,47 +535,3 @@ function Engine.export_wav () end
 ---@field seconds? number
 ---@field peaks? number[] The loudest sample in each of 1000 even stretches, from 0 to 1.
 ---@field failed? string Why it did not load.
-
----A window on the DAW's desktop.
----@class Daw.WindowSpec
----@field id string The screen's plugin id, such as `'daw.mixer'`.
----@field title string
----@field icon? string A Lucide icon name, for the title bar and the toolbar.
----@field content Proteus.El
----@field key? string A key that shows or hides it, such as `'f9'`.
----@field order? number Its place among the toolbar's window buttons. 50 when nil.
----@field open? boolean Open the first time, before the user moved anything.
----@field x? number Where it first sits on the desktop, in pixels, or as a share of the desktop from 0 to 1.
----@field y? number
----@field w? number
----@field h? number
----@field z? number Its first place in the stack, higher in front.
----@field min_w? number
----@field min_h? number
----@field on_show? fun() Called each time it opens, such as to draw what changed while it was closed.
-
----The desktop of floating windows, in the manner of FL Studio. A window goes away when the
----plugin that added it stops. `daw:window (id, open)` fires when one opens or closes.
----@class Daw.Windows
-local Windows = {}
-
----@param spec Daw.WindowSpec
-function Windows.add (spec) end
-
----Opens a window and brings it to the front.
----@param id string
-function Windows.show (id) end
-
----@param id string
-function Windows.hide (id) end
-
----@param id string
-function Windows.toggle (id) end
-
----@param id string
----@return boolean
-function Windows.is_open (id) end
-
----@param id string
----@param title string
-function Windows.set_title (id, title) end

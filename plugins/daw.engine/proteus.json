@@ -1,8 +1,8 @@
 {
   "id": "daw.engine",
   "name": "DAW engine",
-  "description": "Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.",
-  "version": "1.0.1",
+  "description": "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
+  "version": "1.2.0",
   "depends": [
     "lib.ui",
     "daw.core",
@@ -13,7 +13,10 @@
   "optional": [
     "ui.toolbar",
     "ui.notify",
-    "core.keys"
+    "core.keys",
+    "ui.windows",
+    "core.settings",
+    "daw.native"
   ],
   "permissions": [],
   "folders": [],
@@ -23,7 +26,8 @@
       "permissions",
       "webview",
       "grants",
-      "autoplay"
+      "autoplay",
+      "webview-files"
     ]
   },
   "author": {
@@ -33,6 +37,8 @@
   "issue": null,
   "files": [
     "init.lua",
+    "page/editor.html",
+    "page/editor.js",
     "page/engine.css",
     "page/engine.html",
     "page/engine.js",
@@ -40,6 +46,11 @@
     "page/files.js",
     "page/main.js",
     "page/mixer.js",
-    "page/patch.js"
+    "page/patch.js",
+    "page/wam-host.js",
+    "page/wam.js",
+    "page/wam/LICENSE",
+    "page/wam/index.js",
+    "vendor.json"
   ]
 }

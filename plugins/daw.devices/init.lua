@@ -2,12 +2,15 @@
 -- such as daw.instruments and daw.effects register theirs, and a device goes away with the
 -- plugin that registered it. A song that names a device no plugin provides keeps it, and
 -- the track plays without it until the plugin comes back.
+--
+-- A Web Audio Module device names its module instead of a patch, and learns its parameters
+-- from the engine through `describe` once the module loads.
 
 ---@type Proteus.Plugin
 return {
   name = 'DAW devices',
   description = 'The registry of instruments and effects that plugins add to the DAW.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = { 'daw.core' },
@@ -70,6 +73,22 @@ return {
         ref = function (id, preset)
           local spec = specs[id]
           return spec and daw.device.ref (spec, preset) or nil
+        end,
+        describe = function (id, info)
+          local spec = specs[id]
+          if not spec or not spec.wam then
+            return
+          end
+          local params = daw.device.from_wam (info)
+          -- The same parameters again change nothing, so no screen draws twice.
+          local same = #params == #spec.params
+          for i, p in ipairs (params) do
+            same = same and spec.params[i] and spec.params[i].key == p.key
+          end
+          if not same then
+            spec.params = params
+            changed ()
+          end
         end,
       }
       return service

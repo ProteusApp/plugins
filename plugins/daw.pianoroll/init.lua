@@ -1,5 +1,5 @@
 -- daw.pianoroll: the notes of one clip, in the Piano roll window (F7), or in the bottom dock
--- without daw.windows. Keys run down the left side, time runs across, and the velocity of
+-- without floating windows. Keys run down the left side, time runs across, and the velocity of
 -- each note stands along the bottom.
 --
 -- Click an empty spot to add a note, and drag to set its length. Drag a note to move it, or
@@ -263,7 +263,7 @@ end
 return {
   name = 'DAW piano roll',
   description = 'Draw, move and shape the notes of a clip.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -275,11 +275,11 @@ return {
     'daw.engine',
     'core.commands',
   },
-  optional = { 'ui.menus', 'ui.palette', 'core.keys', 'daw.windows' },
+  optional = { 'ui.menus', 'ui.palette', 'core.keys', 'ui.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
-    local windows = app.try_use ('daw.windows') --[[@as Daw.Windows?]]
+    local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
     local daw = app.use ('daw') --[[@as Daw.Core]]
     local devices = app.use ('daw.devices') --[[@as Daw.Devices]]
     local session = app.use ('daw.session') --[[@as Daw.Session]]
@@ -1211,6 +1211,7 @@ return {
     end
     if windows then
       windows.add ({
+        category = 'DAW',
         id = 'daw.pianoroll',
         title = 'Piano roll',
         icon = 'piano',

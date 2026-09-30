@@ -27,6 +27,8 @@
 // profile is a list of plugins with its settings, one profile.lua in profiles/<id>/. A
 // manifest with `"kind": "profile"` holds a profile, and one without a kind holds a plugin.
 
+import { createHash } from 'node:crypto';
+
 /** The title every plugin submission issue starts with. */
 export const TITLE_PREFIX = 'Plugin submission:';
 
@@ -110,6 +112,7 @@ export const PERMISSIONS = {
   net: { label: 'Network', full: false },
   clipboard: { label: 'Read the clipboard', full: false },
   midi: { label: 'MIDI keyboards', full: false },
+  'native-plugins': { label: 'Native audio plugins', full: true },
   files: { label: 'Files on this computer', full: true },
   process: { label: 'Run programs', full: true },
   workspace: { label: 'Change the workspace', full: true },
@@ -212,7 +215,7 @@ export function pathProblem(path) {
  * so code reads differently than it runs, and without lines so long that code hides in them.
  * `text` is a string, or the file's bytes.
  */
-export function textProblem(path, text) {
+export function textProblem(path, text, { vendored = false } = {}) {
   let s = text;
   if (typeof text !== 'string') {
     try {
@@ -224,11 +227,59 @@ export function textProblem(path, text) {
   if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s)) return `${path} holds control characters`;
   if (/[\u202a-\u202e\u2066-\u2069]/.test(s)) return `${path} holds characters that reorder text`;
+  // A vendored file is built code from elsewhere, checked by its hash against its source
+  // instead of read line by line, so its lines may be as long as the build made them.
+  if (vendored) return null;
   const lines = s.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if ([...lines[i]].length > MAX_LINE) return `${path} has a line longer than ${MAX_LINE} characters, at line ${i + 1}`;
   }
   return null;
+}
+
+/** The SHA-256 of a file's text or bytes, as hex. */
+export function sha256(text) {
+  return createHash('sha256').update(typeof text === 'string' ? Buffer.from(text, 'utf8') : text).digest('hex');
+}
+
+/**
+ * The files a plugin vendors, from its vendor.json, and what is wrong with it. A vendored file
+ * is code the plugin copies from elsewhere, such as a library's build: vendor.json names each
+ * one with its source, its license and its SHA-256, so a reviewer checks it against the
+ * source instead of reading it, and `node scripts/vendor.mjs verify` fetches the source and
+ * compares. `files` maps each path to its text.
+ */
+export function vendorOf(files) {
+  const vendored = new Set();
+  const problems = [];
+  const text = files['vendor.json'];
+  if (text === undefined) return { vendored, problems, entries: {} };
+  let data;
+  try {
+    data = JSON.parse(typeof text === 'string' ? text : Buffer.from(text).toString('utf8'));
+  } catch {
+    return { vendored, problems: ['vendor.json is not valid JSON.'], entries: {} };
+  }
+  const entries = data && typeof data.files === 'object' && !Array.isArray(data.files) ? data.files : null;
+  if (!entries) return { vendored, problems: ['vendor.json needs a files table: each path with its source, license and sha256.'], entries: {} };
+  for (const [path, entry] of Object.entries(entries)) {
+    if (files[path] === undefined) {
+      problems.push(`vendor.json names ${path}, which the plugin does not have.`);
+      continue;
+    }
+    if (!entry || typeof entry.source !== 'string' || !/^(npm:@?[\w./@-]+|https:\/\/\S+)$/.test(entry.source)) {
+      problems.push(`vendor.json must give ${path} a source: npm:<package>@<version>/<path>, or an https address.`);
+    }
+    if (!entry || typeof entry.license !== 'string' || !entry.license.trim()) {
+      problems.push(`vendor.json must give ${path} the license it comes under, such as MIT.`);
+    }
+    if (!entry || entry.sha256 !== sha256(files[path])) {
+      problems.push(`${path} does not match the sha256 in vendor.json.`);
+      continue;
+    }
+    vendored.add(path);
+  }
+  return { vendored, problems, entries };
 }
 
 /** Why a `requires.proteus` condition such as `>=0.2.0 <1.0.0` cannot be read, or null. */
@@ -304,6 +355,14 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
         }
       }
     }
+    const exports = sub.exports ?? [];
+    if (!Array.isArray(exports) || exports.some((f) => typeof f !== 'string' || !/^[A-Za-z0-9_-]+$/.test(f))) {
+      problems.push('exports must be a list of folders right inside the plugin.');
+    } else if (sub.files && typeof sub.files === 'object') {
+      for (const f of exports) {
+        if (!Object.keys(sub.files).some((name) => name.startsWith(f + '/'))) problems.push(`The plugin exports ${f}, which holds no files.`);
+      }
+    }
     const folders = sub.folders ?? [];
     if (!Array.isArray(folders) || folders.some((f) => typeof f !== 'string')) {
       problems.push('folders must be a list of folder names.');
@@ -338,9 +397,11 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
   const main = MAIN_FILE[kind];
   if (!names.includes(main)) problems.push(`A ${noun} needs a${main === 'init.lua' ? 'n' : ''} ${main} at its top.`);
   if (names.length > LIMITS.files) problems.push(`A ${noun} can hold at most ${LIMITS.files} files.`);
+  const vendor = vendorOf(files);
+  problems.push(...vendor.problems);
   let total = 0;
   for (const name of names) {
-    const problem = pathProblem(name) ?? textProblem(name, files[name]);
+    const problem = pathProblem(name) ?? textProblem(name, files[name], { vendored: vendor.vendored.has(name) });
     if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
     if (typeof files[name] !== 'string' && !(files[name] instanceof Uint8Array)) {
       problems.push(`${name} is not text.`);
@@ -379,6 +440,7 @@ export function manifestFor(sub, author, issue) {
           optional: sub.optional ?? [],
           permissions: sub.permissions ?? [],
           folders: sub.folders ?? [],
+          ...(sub.exports?.length ? { exports: sub.exports } : {}),
         };
   const requires = sub.requires && typeof sub.requires === 'object' ? sub.requires : null;
   return {
@@ -458,6 +520,16 @@ export function pullRequestBody(manifest, sub, issue, updating) {
     if ((manifest.folders ?? []).length) {
       lines.push(`Writes in the workspace folders ${manifest.folders.map((f) => `\`${f}/\``).join(', ')}.`, '');
     }
+    if ((manifest.exports ?? []).length) {
+      lines.push(`Offers its folders ${manifest.exports.map((f) => `\`${f}/\``).join(', ')} to every plugin's web views.`, '');
+    }
+    const { entries } = vendorOf(sub.files);
+    const vendored = Object.entries(entries);
+    if (vendored.length) {
+      lines.push('### Vendored files', '', 'Checked by hash against their source instead of line by line:', '');
+      for (const [path, e] of vendored) lines.push(`- \`${folder}/${path}\` from \`${e.source}\` (${e.license})`);
+      lines.push('');
+    }
   }
   lines.push('### Files', '');
   for (const name of manifest.files) {
@@ -477,6 +549,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] It reads and writes only the files its purpose needs.',
           '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
           '- [ ] It holds no secrets, tokens or personal data.',
+          '- [ ] Every vendored file comes from the source vendor.json names, under a license that lets it be shared, and `node scripts/vendor.mjs verify` agrees.',
         ];
   lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);
   return lines.join('\n');

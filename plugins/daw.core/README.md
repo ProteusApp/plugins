@@ -25,7 +25,7 @@ The marketplace lists the files `daw.engine` holds on its page, and **Forget** t
 
 ## The desktop
 
-`daw.windows` turns the middle of the window into a desktop, as FL Studio does. Every screen is a window on it:
+The app's builtin `ui.windows` turns the middle of the window into a desktop, as FL Studio does, and the profile names its tab **Studio**. Every screen is a window on it:
 
 | Window | Key | Plugin |
 |--------|-----|--------|
@@ -41,7 +41,7 @@ The marketplace lists the files `daw.engine` holds on its page, and **Forget** t
 - The layout, the stacking and what is open come back the next time. **View > Reset the Window Layout** puts every window back.
 - A window's title follows the selection, such as **Piano roll - Bass** or **Drums - Channel settings**.
 
-A screen adds its window with `windows.add ({ id, title, icon, key, content, x, y, w, h })`, where a position from 0 to 1 is a share of the desktop. When the screen's plugin stops, its window goes too. A screen without `daw.windows` falls back to the app's docks, so the other profiles and older layouts still work.
+A screen adds its window with the app's `windows` service: `windows.add ({ id, title, icon, key, content, x, y, w, h })`, where a position from 0 to 1 is a share of the desktop. The service is builtin because only a builtin plugin may put another plugin's element on screen. When the screen's plugin stops, its window goes too. Without `ui.windows`, each screen falls back to the app's docks.
 
 ### The Channel rack
 
@@ -65,7 +65,6 @@ plugins/daw.engine/        the plugin that keeps the page playing the session's 
   page/mixer.js            tracks, effect chains, faders, the scheduling of notes
   page/engine.js           the transport, live notes, recording, meters and rendering
   page/main.js             the messages to and from the plugin
-plugins/daw.windows/       the desktop and its floating windows
 plugins/daw.*/             the registry of devices, the builtin devices, and the screens
 profiles/daw/profile.lua   the profile
 ```
@@ -81,7 +80,6 @@ profiles/daw/profile.lua   the profile
 | `daw.session` | `daw.session` | The open song, its file in `songs/`, undo and redo, and what is selected. The only place a song changes. |
 | `daw.engine` | `daw.engine` | Runs the engine page and keeps it playing the session's song. Recording, the audio files the user picks, and Export as WAV. |
 | `daw.transport` | | Play, stop, record, loop, metronome, position, tempo and time signature, on the toolbar. |
-| `daw.windows` | `daw.windows` | The desktop of floating windows that every screen below opens in. |
 | `daw.channels` | | The Channel rack: every instrument channel, with a step sequencer. |
 | `daw.arrange` | | The Playlist: tracks and clips on a timeline, the ruler and the loop. |
 | `daw.pianoroll` | | The notes of one clip, with velocity. Without a clip picked, the selected channel's. |
@@ -241,7 +239,51 @@ A device written as Lua code would run for every note, on the page's thread, and
 - a reviewer reads a device like any other plugin, since it is plain Lua data
 - a pack needs no permissions and no web view of its own
 
+A Web Audio Module, below, is the way out when a patch is not enough. It runs in the same sandboxed page, so a module that stalls only stalls the music, never the app.
+
 The cost is that a device can only combine the node types above. A new kind of sound, such as granular synthesis, needs a new node type in `daw.engine/page/patch.js`.
+
+### Web Audio Modules
+
+A device can also be a [Web Audio Module](https://www.webaudiomodules.com/), a WAM 2 module in JavaScript that runs its own sound in an AudioWorklet. The pack offers the folder that holds its modules in `exports`, and each device names its module there instead of a patch:
+
+```lua
+return {
+  name = 'My modules',
+  version = '1.0.0',
+  depends = { 'daw.devices' },
+  exports = { 'wam' },
+  requires = { features = { 'webview-files' } },
+  activate = function (app)
+    app.use ('daw.devices').register ({
+      id = 'my.synth',
+      name = 'My Synth',
+      role = 'instrument',
+      category = 'Web Audio Modules',
+      params = {},
+      patch = {},
+      wam = { path = 'wam/synth/index.js' },
+    })
+  end,
+}
+```
+
+- `daw.engine` mounts every pack that registers a module, and loads each one from `_/<pack>/<path>` inside its own page. The module runs in that sandboxed page, the same as a patch, so it reaches nothing a patch could not.
+- A device may leave `params` empty. The first time a module loads, the engine asks it for its parameters and `daw.devices` fills them in, so the rack draws a control for each and songs save their values like any other.
+- An instrument hears its notes as MIDI events on the audio clock. An effect passes its sound straight through until its module is ready.
+- A module with an editor gets a button in the rack that opens it in a floating window. The editor runs its own silent copy of the module, and every change it makes goes to the song, so undo and saving work as they do for the rack's controls.
+- A render waits for every module to load before it starts.
+
+`wam.basics` in this registry holds a polyphonic synth with an editor and a stereo echo, and is the smallest example. It copies the WAM SDK, listed in its `vendor.json`.
+
+### Native plugins
+
+The DAW also plays on the app's native engine, a process of its own that plays the same patches and hosts CLAP and VST3 plugins. Set **Sound engine** (`daw.engine`) to `native`. `daw.engine` then sends the page's messages to `app.audio` instead, and the page on the toolbar only draws the master level.
+
+- `daw.native` registers each CLAP and VST3 plugin the app finds as a device with `native = { plugin = ref }` and a control for each parameter (`daw_device.from_native`). It needs the `native-plugins` permission, and the app asks the user the first time a song loads each plugin.
+- `daw.engine` opens the native engine itself, so its file grants and exports work as they do on the web. `daw.native` lends it the right to load native plugins with `app.audio.lend ('daw.engine')`, so the rest of the DAW needs no full-access permission.
+- A native device resolves to `{ id, kind, params, native = { plugin } }`. The app puts the binary's path in before the engine sees the song, and the DAW never learns it.
+- The web engine cannot play native devices. It says so, leaves the instrument silent and passes an effect's sound through. The native engine cannot play Web Audio Modules, and says so too.
 
 ## The engine
 
