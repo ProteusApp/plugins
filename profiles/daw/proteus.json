@@ -1,0 +1,47 @@
+{
+  "id": "daw",
+  "name": "DAW",
+  "description": "Make music: tracks, clips, a piano roll, a mixer, instruments and effects.",
+  "version": "1.0.0",
+  "kind": "profile",
+  "plugins": [
+    "theme.midnight",
+    "theme.daylight",
+    "theme.retro",
+    "core.keys",
+    "ui.menus",
+    "ui.menubar",
+    "ui.toolbar",
+    "ui.statusbar",
+    "ui.views",
+    "ui.tabs",
+    "ui.palette",
+    "ui.notify",
+    "ui.settings",
+    "core.profiles",
+    "marketplace",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "daw.engine",
+    "daw.instruments",
+    "daw.effects",
+    "daw.transport",
+    "daw.arrange",
+    "daw.pianoroll",
+    "daw.mixer",
+    "daw.rack",
+    "daw.browser",
+    "daw.keyboard",
+    "daw.midi",
+    "discord.rpc"
+  ],
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "profile.lua"
+  ]
+}

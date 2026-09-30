@@ -1,0 +1,27 @@
+{
+  "id": "daw.effects",
+  "name": "DAW effects",
+  "description": "EQ, filter, delay, reverb, compressor, drive, chorus and utility for the DAW.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.devices"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "daw_effects.lua",
+    "init.lua"
+  ]
+}

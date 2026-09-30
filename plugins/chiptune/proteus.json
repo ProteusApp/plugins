@@ -1,0 +1,27 @@
+{
+  "id": "chiptune",
+  "name": "Chiptune",
+  "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.devices"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "daw.arrange",
+  "name": "DAW arrangement",
+  "description": "Tracks and clips along a timeline, with the ruler and the loop.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "ui.shell",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "daw.engine",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.menus",
+    "ui.palette",
+    "ui.views",
+    "ui.notify",
+    "ui.tabs",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

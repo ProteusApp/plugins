@@ -109,6 +109,7 @@ export const MAX_LINE = 1000;
 export const PERMISSIONS = {
   net: { label: 'Network', full: false },
   clipboard: { label: 'Read the clipboard', full: false },
+  midi: { label: 'MIDI keyboards', full: false },
   files: { label: 'Files on this computer', full: true },
   process: { label: 'Run programs', full: true },
   workspace: { label: 'Change the workspace', full: true },

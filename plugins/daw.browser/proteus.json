@@ -1,0 +1,34 @@
+{
+  "id": "daw.browser",
+  "name": "DAW browser",
+  "description": "Songs, instruments, effects and presets, one click away.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "ui.views",
+    "daw.core",
+    "daw.devices",
+    "daw.session",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.menus",
+    "ui.palette"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

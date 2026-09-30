@@ -1,0 +1,32 @@
+{
+  "id": "daw.keyboard",
+  "name": "DAW computer keyboard",
+  "description": "Play the selected track from the computer keyboard.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.core",
+    "daw.engine",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.statusbar",
+    "core.settings",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}
