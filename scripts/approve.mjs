@@ -76,7 +76,7 @@ export async function approve({ api, event, repo }) {
   await say(api, issue.number, comments, [
     `Approved by @${login} and merged in ${pr.html_url}.`,
     '',
-    'The Proteus store lists the plugin once the index workflow finishes, in a minute or two.',
+    'The Proteus marketplace lists it once the index workflow finishes, in a minute or two.',
   ]);
   await api('PATCH', `/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
   return 'merged';

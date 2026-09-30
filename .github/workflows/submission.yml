@@ -1,5 +1,5 @@
-# Turns a plugin submission from the Proteus app into a pull request, and merges it when a
-# maintainer comments /approve on the issue.
+# Turns a plugin or profile submission from the Proteus app into a pull request, and merges it
+# when a maintainer comments /approve on the issue.
 #
 # The app opens an issue holding the plugin's files as code blocks. The submit job runs when
 # that issue opens or changes, or its author comments with more of the files. The scripts
