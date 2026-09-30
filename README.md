@@ -58,6 +58,7 @@ A restricted plugin names its services, events, commands and settings after the 
 | `plugins/<id>/` | One plugin's files, plus `proteus.json`, which the registry writes |
 | `profiles/<id>/` | One profile's `profile.lua`, plus `proteus.json` with `"kind": "profile"` |
 | `plugins/<id>/tests/` | The plugin's own tests, `*.test.lua`, which the check runs |
+| `plugins/<id>/handbook/` | Pages the plugin adds to the Handbook, as Markdown. The `handbook` plugin's `handbook/writing-pages.md` explains them. |
 | `index.json` | Every approved plugin in `plugins`, and every profile in `profiles`, with the commit to install it from |
 | `reserved.json` | Ids that belong to the plugins and profiles shipped with Proteus |
 | `scripts/` | The rules and the workflows' code |

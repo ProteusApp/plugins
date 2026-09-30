@@ -667,6 +667,49 @@
       "updated": "2026-09-30T20:09:08Z"
     },
     {
+      "id": "handbook",
+      "name": "Handbook",
+      "description": "The full documentation of Proteus in a side panel, with examples, and every plugin can add pages to it.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "ui.views"
+      ],
+      "optional": [
+        "core.commands",
+        "ui.palette",
+        "ui.tabs",
+        "ui.notify"
+      ],
+      "permissions": [
+        "net"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "handbook/using.md",
+        "handbook/writing-pages.md",
+        "init.lua",
+        "lib/highlight.lua",
+        "lib/library.lua",
+        "lib/page.lua",
+        "lib/reference.lua",
+        "lib/render.lua",
+        "lib/search.lua",
+        "tests/handbook.test.lua",
+        "types/handbook.lua"
+      ],
+      "commit": "d8f9230ab37d04dce6b119cacb9e71f69e68032a",
+      "updated": "2026-09-30T22:00:14Z"
+    },
+    {
       "id": "icons.badges",
       "name": "Letter Badges",
       "description": "A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.",
