@@ -1,0 +1,33 @@
+# Turns a plugin submission from the Proteus app into a pull request. The app opens an issue
+# holding the plugin, and this runs when that issue opens or changes, or its author comments.
+# The script reads the issue and writes files. It never runs the submitted code.
+name: Plugin submission
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+# One run at a time per issue, so parts that arrive together make one pull request.
+concurrency:
+  group: submission-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    if: ${{ !github.event.issue.pull_request && github.event.issue.state == 'open' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/submit.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

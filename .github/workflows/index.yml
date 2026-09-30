@@ -1,0 +1,41 @@
+# Rebuilds index.json after a plugin is merged, removed or changed on main. The Proteus store
+# reads that file to list the approved plugins.
+name: Build the index
+
+on:
+  push:
+    branches: [main]
+    paths: ['plugins/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: index
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, so each plugin's last commit is known.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/check.mjs
+      - run: node scripts/index.mjs
+      - name: Commit the index
+        run: |
+          if git diff --quiet -- index.json; then
+            echo "The index has not changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.json
+          git commit -m "Update the index"
+          git push
