@@ -41,7 +41,7 @@ Publishing from Proteus signs in through a GitHub App, so the sign-in grants one
 | GitHub App name | `Proteus Plugins`, or any free name |
 | Homepage URL | The Proteus repository |
 | Callback URL | Leave empty |
-| Expire user authorization tokens | Off. An expiring token lasts eight hours, and renewing it needs the client secret, which a desktop app cannot keep. |
+| Expire user authorization tokens | Either. An expiring token lasts eight hours, and Proteus renews it with the refresh token, which device flow allows without the client secret. |
 | Request user authorization (OAuth) during installation | Off |
 | Enable Device Flow | **On**. Proteus signs in with it. |
 | Webhook | Untick **Active** |
