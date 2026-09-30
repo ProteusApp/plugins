@@ -2,6 +2,58 @@
   "format": 1,
   "plugins": [
     {
+      "id": "theme.bevel",
+      "name": "Bevel theme",
+      "description": "A 1990s desktop: silver panels with raised and sunken bevels, and navy title bars.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+      "updated": "2026-09-30T20:33:10Z"
+    },
+    {
+      "id": "theme.blueprint",
+      "name": "Blueprint theme",
+      "description": "White lines on Prussian blue drafting paper, with a measured grid behind the code.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+      "updated": "2026-09-30T20:33:10Z"
+    },
+    {
       "id": "theme.catppuccin",
       "name": "Catppuccin themes",
       "description": "Soothing pastel themes: Mocha, which is dark, and Latte, which is light.",
@@ -601,6 +653,84 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "theme.outrun",
+      "name": "Outrun theme",
+      "description": "Synthwave neon on a midnight purple sky, with a glowing grid running to the horizon under the code.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+      "updated": "2026-09-30T20:33:10Z"
+    },
+    {
+      "id": "theme.parchment",
+      "name": "Parchment theme",
+      "description": "Iron-gall ink on warm paper, with book type, rubric red and a ruled margin beside the code.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+      "updated": "2026-09-30T20:33:10Z"
+    },
+    {
+      "id": "theme.pocket",
+      "name": "Pocket theme",
+      "description": "The four greens of an early handheld game screen, with square corners, pixel shadows and an LCD dot grid.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+      "updated": "2026-09-30T20:33:10Z"
     },
     {
       "id": "lang.rust",
