@@ -108,7 +108,7 @@
       "id": "daw.arrange",
       "name": "DAW arrangement",
       "description": "Tracks and clips along a timeline, with the ruler and the loop.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -126,7 +126,7 @@
         "ui.notify",
         "ui.tabs",
         "core.keys",
-        "daw.windows"
+        "ui.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -139,8 +139,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
+      "updated": "2026-09-30T21:17:51Z"
     },
     {
       "id": "daw.browser",
@@ -178,7 +178,7 @@
       "id": "daw.channels",
       "name": "DAW channel rack",
       "description": "The Channel Rack: every instrument as a channel, with a step sequencer that writes into the Playlist.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -186,7 +186,7 @@
         "daw.devices",
         "daw.session",
         "daw.engine",
-        "daw.windows",
+        "ui.windows",
         "core.commands"
       ],
       "optional": [],
@@ -195,14 +195,15 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "windows"
         ]
       },
       "files": [
         "init.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
+      "updated": "2026-09-30T21:17:51Z"
     },
     {
       "id": "daw.keyboard",
@@ -238,7 +239,7 @@
       "id": "daw.core",
       "name": "DAW core",
       "description": "The logic behind the DAW: songs, notes, steps, devices, time and undo.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -267,14 +268,14 @@
         "tests/steps.test.lua",
         "types/daw.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
+      "updated": "2026-09-30T23:15:54Z"
     },
     {
       "id": "daw.rack",
       "name": "DAW device rack",
       "description": "The instrument and effects of the selected track, with every parameter.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -288,7 +289,7 @@
         "ui.palette",
         "ui.menus",
         "daw.engine",
-        "daw.windows"
+        "ui.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -301,14 +302,14 @@
       "files": [
         "init.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
+      "updated": "2026-09-30T21:53:19Z"
     },
     {
       "id": "daw.devices",
       "name": "DAW devices",
       "description": "The registry of instruments and effects that plugins add to the DAW.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "daw.core"
@@ -325,8 +326,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
+      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
+      "updated": "2026-09-30T21:53:19Z"
     },
     {
       "id": "daw.effects",
@@ -356,8 +357,8 @@
     {
       "id": "daw.engine",
       "name": "DAW engine",
-      "description": "Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.",
-      "version": "1.0.1",
+      "description": "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -369,7 +370,10 @@
       "optional": [
         "ui.toolbar",
         "ui.notify",
-        "core.keys"
+        "core.keys",
+        "ui.windows",
+        "core.settings",
+        "daw.native"
       ],
       "permissions": [],
       "folders": [],
@@ -379,11 +383,14 @@
           "permissions",
           "webview",
           "grants",
-          "autoplay"
+          "autoplay",
+          "webview-files"
         ]
       },
       "files": [
         "init.lua",
+        "page/editor.html",
+        "page/editor.js",
         "page/engine.css",
         "page/engine.html",
         "page/engine.js",
@@ -391,10 +398,15 @@
         "page/files.js",
         "page/main.js",
         "page/mixer.js",
-        "page/patch.js"
+        "page/patch.js",
+        "page/wam-host.js",
+        "page/wam.js",
+        "page/wam/LICENSE",
+        "page/wam/index.js",
+        "vendor.json"
       ],
-      "commit": "6a31e506ce4ec43ea6f6598e31e4a68e902243f1",
-      "updated": "2026-09-30T20:34:12Z"
+      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
+      "updated": "2026-09-30T23:15:54Z"
     },
     {
       "id": "daw.instruments",
@@ -457,7 +469,7 @@
       "id": "daw.mixer",
       "name": "DAW mixer",
       "description": "Faders, pans, meters, mute and solo for every track.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -468,7 +480,7 @@
         "daw.engine"
       ],
       "optional": [
-        "daw.windows"
+        "ui.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -481,14 +493,14 @@
       "files": [
         "init.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
+      "updated": "2026-09-30T21:17:51Z"
     },
     {
       "id": "daw.pianoroll",
       "name": "DAW piano roll",
       "description": "Draw, move and shape the notes of a clip.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -503,7 +515,7 @@
         "ui.menus",
         "ui.palette",
         "core.keys",
-        "daw.windows"
+        "ui.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -516,8 +528,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
+      "updated": "2026-09-30T21:17:51Z"
     },
     {
       "id": "daw.session",
@@ -584,35 +596,6 @@
       ],
       "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
       "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.windows",
-      "name": "DAW windows",
-      "description": "The DAW as a desktop of floating windows, in the manner of FL Studio: drag, resize, maximize, and a key for each.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.tabs",
-        "ui.toolbar",
-        "core.keys"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "theme.dracula",
@@ -736,6 +719,38 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "daw.native",
+      "name": "Native plugins",
+      "description": "The CLAP and VST3 plugins installed on this computer, as instruments and effects for the DAW.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "daw.core",
+        "daw.devices",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.notify"
+      ],
+      "permissions": [
+        "native-plugins"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "native-audio"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua"
+      ],
+      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
+      "updated": "2026-09-30T23:15:54Z"
     },
     {
       "id": "theme.nord",
@@ -1261,6 +1276,38 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "wam.basics",
+      "name": "WAM Basics",
+      "description": "Two Web Audio Modules for the DAW: PolySynth, a polyphonic synth, and Echo, a stereo delay.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "daw.devices"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions",
+          "webview-files"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "vendor.json",
+        "wam/echo/index.js",
+        "wam/polysynth/gui.js",
+        "wam/polysynth/index.js",
+        "wam/sdk/LICENSE",
+        "wam/sdk/index.js"
+      ],
+      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
+      "updated": "2026-09-30T21:53:19Z"
     }
   ],
   "profiles": [
@@ -1268,7 +1315,7 @@
       "id": "daw",
       "name": "DAW",
       "description": "Make music in floating windows, like FL Studio: a channel rack with steps, a playlist, a piano roll, a mixer, instruments and effects.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "plugins": [
         "theme.midnight",
@@ -1290,9 +1337,10 @@
         "daw.devices",
         "daw.session",
         "daw.engine",
-        "daw.windows",
+        "ui.windows",
         "daw.instruments",
         "daw.effects",
+        "wam.basics",
         "daw.transport",
         "daw.channels",
         "daw.arrange",
@@ -1307,8 +1355,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
-      "updated": "2026-09-30T20:09:55Z"
+      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
+      "updated": "2026-09-30T21:53:19Z"
     },
     {
       "id": "shader",
