@@ -1,5 +1,9 @@
 # Holds every pull request to the registry's rules, including plugins added by hand, and runs
-# the tests of the registry's own scripts.
+# the tests of the registry's own scripts and of every plugin.
+#
+# A pull request's code runs here: plugins' tests, and their init.lua to read what it declares.
+# So the job gets a read-only token, keeps no credentials in the checkout, and uses no secrets.
+# The lint tools are pinned releases, checked against their SHA-256 before they run.
 name: Check
 
 on:
@@ -13,10 +17,40 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      STYLUA_URL: https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-linux-x86_64.zip
+      STYLUA_SHA256: bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+      SELENE_URL: https://github.com/Kampfkarren/selene/releases/download/0.28.0/selene-0.28.0-linux.zip
+      SELENE_SHA256: 5d8706751968486d46d120316b108154693052f75af60efb3dbf4d4cf9e4d902
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test
-      - run: node scripts/check.mjs
+      - run: npm ci --ignore-scripts
+      - name: The registry's rules
+        run: node scripts/check.mjs
+      - name: The registry's scripts
+        run: node --test
+      - name: What each plugin declares, and each plugin's tests
+        run: node scripts/lua-test.mjs
+      - name: Install StyLua and selene
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o stylua.zip "$STYLUA_URL"
+          echo "$STYLUA_SHA256  stylua.zip" | sha256sum -c -
+          curl -fsSL -o selene.zip "$SELENE_URL"
+          echo "$SELENE_SHA256  selene.zip" | sha256sum -c -
+          unzip -o -q stylua.zip -d bin
+          unzip -o -q selene.zip -d bin
+          chmod +x bin/stylua bin/selene
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Lua style
+        run: stylua --check plugins profiles
+      - name: Lua lint
+        run: |
+          selene plugins profiles
+          selene --config tests.selene.toml plugins/*/tests

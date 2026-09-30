@@ -1,0 +1,46 @@
+{
+  "id": "shader.docs",
+  "name": "Shader documents",
+  "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "shader.core",
+    "ui.tabs",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.palette",
+    "ui.notify",
+    "core.settings",
+    "core.keys"
+  ],
+  "permissions": [],
+  "folders": [
+    "shaders"
+  ],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "folders",
+      "plugin-files"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "examples/cells.shader.json",
+    "examples/clouds.shader.json",
+    "examples/plasma.shader.json",
+    "examples/raymarch.frag",
+    "examples/shadertoy.frag",
+    "examples/shapes.shader.json",
+    "examples/tunnel.wgsl",
+    "examples/waves.frag",
+    "init.lua"
+  ]
+}

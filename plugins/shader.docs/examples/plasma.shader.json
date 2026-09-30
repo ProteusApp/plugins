@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "kind": "proteus-shader",
+  "name": "Plasma",
+  "nodes": [
+    { "id": "n1", "type": "square_uv", "x": 40, "y": 60 },
+    { "id": "n2", "type": "time", "x": 40, "y": 220 },
+    { "id": "n3", "type": "parameter", "x": 40, "y": 380, "settings": { "max": 4, "min": 0, "name": "speed", "value": [1, 0, 0, 1] } },
+    { "id": "n4", "type": "multiply", "x": 320, "y": 260 },
+    { "id": "n5", "type": "expression", "x": 600, "y": 100, "settings": { "expr": "sin(a.x * 10.0 + b) + sin(a.y * 10.0 + b * 1.3) + sin(length(a - 0.5) * 18.0 - b * 2.0)", "type": "float" } },
+    { "id": "n6", "type": "remap", "x": 880, "y": 100, "inputs": { "in_hi": [3], "in_lo": [-3] } },
+    { "id": "n7", "type": "palette", "x": 1160, "y": 100 },
+    { "id": "n8", "type": "output", "x": 1440, "y": 100 }
+  ],
+  "edges": [
+    { "from": "n2", "output": "time", "to": "n4", "input": "a" },
+    { "from": "n3", "output": "out", "to": "n4", "input": "b" },
+    { "from": "n1", "output": "uv", "to": "n5", "input": "a" },
+    { "from": "n4", "output": "out", "to": "n5", "input": "b" },
+    { "from": "n5", "output": "out", "to": "n6", "input": "x" },
+    { "from": "n6", "output": "out", "to": "n7", "input": "t" },
+    { "from": "n7", "output": "rgb", "to": "n8", "input": "color" }
+  ]
+}

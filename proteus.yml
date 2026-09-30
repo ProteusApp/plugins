@@ -1,0 +1,21 @@
+---
+# Proteus runs Lua 5.4, but selene parses only Lua 5.1, so this starts from lua51 and adds
+# the newer library functions plugins use. Keep the code free of 5.2+ syntax such as `//`
+# and `goto`.
+base: lua51
+name: proteus
+globals:
+  load:
+    any: true
+  xpcall:
+    any: true
+  table.pack:
+    any: true
+  table.unpack:
+    any: true
+  math.type:
+    any: true
+  math.tointeger:
+    any: true
+  utf8:
+    any: true

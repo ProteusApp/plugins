@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "kind": "proteus-shader",
+  "name": "Shapes",
+  "nodes": [
+    { "id": "n1", "type": "time", "x": 40, "y": 60 },
+    { "id": "n2", "type": "rotate", "x": 320, "y": 60 },
+    { "id": "n3", "type": "box", "x": 600, "y": 60 },
+    { "id": "n4", "type": "ring", "x": 600, "y": 320, "inputs": { "radius": [0.38] } },
+    { "id": "n5", "type": "color", "x": 880, "y": 40, "settings": { "value": [0.08, 0.08, 0.12] } },
+    { "id": "n6", "type": "color", "x": 880, "y": 160, "settings": { "value": [1, 0.55, 0.2] } },
+    { "id": "n7", "type": "parameter", "x": 880, "y": 300, "settings": { "kind": "color", "name": "ring_color", "value": [0.3, 0.7, 1, 1] } },
+    { "id": "n8", "type": "mix", "x": 1160, "y": 60 },
+    { "id": "n9", "type": "mix", "x": 1440, "y": 160 },
+    { "id": "n10", "type": "output", "x": 1720, "y": 160 }
+  ],
+  "edges": [
+    { "from": "n1", "output": "time", "to": "n2", "input": "angle" },
+    { "from": "n2", "output": "out", "to": "n3", "input": "uv" },
+    { "from": "n5", "output": "rgb", "to": "n8", "input": "a" },
+    { "from": "n6", "output": "rgb", "to": "n8", "input": "b" },
+    { "from": "n3", "output": "mask", "to": "n8", "input": "t" },
+    { "from": "n8", "output": "out", "to": "n9", "input": "a" },
+    { "from": "n7", "output": "out", "to": "n9", "input": "b" },
+    { "from": "n4", "output": "mask", "to": "n9", "input": "t" },
+    { "from": "n9", "output": "out", "to": "n10", "input": "color" }
+  ]
+}

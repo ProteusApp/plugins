@@ -11,7 +11,7 @@
 // changed. Once the pull request is merged or closed, the branch starts again from main, with
 // a new pull request.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { allComments, client, say } from './github.mjs';
@@ -31,8 +31,8 @@ import {
 
 /**
  * Runs one issue event. `api` calls the GitHub API of `repo`. `checkout` reads the main
- * branch: `reserved` is reserved.json, and `existing(id, kind)` is a listed plugin's or
- * profile's proteus.json, or null. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
+ * branch: `reserved` is reserved.json, `existing(id, kind)` is a listed plugin's or
+ * profile's proteus.json, or null, and `listed()`, when there, the ids of the listed plugins. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
  * refused, unchanged, opened or updated.
  */
 export async function submit({ api, event, repo, checkout }) {
@@ -56,7 +56,9 @@ export async function submit({ api, event, repo, checkout }) {
 
   const kind = kindOf(sub);
   const existing = typeof sub.id === 'string' ? checkout.existing(sub.id, kind) : null;
-  const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved });
+  // A plugin it needs must ship with Proteus or be listed here already.
+  const known = checkout.listed ? new Set([...(checkout.reserved.ids ?? []), ...checkout.listed()]) : null;
+  const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved, known });
   if (problems.length > 0) {
     await say(api, issue.number, comments, [
       'This submission cannot become a pull request yet:',
@@ -171,6 +173,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       if (!/^[a-z0-9][a-z0-9._-]*$/.test(id) || id.includes('..')) return null;
       const path = join(folderFor(kind, id), 'proteus.json');
       return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+    },
+    listed() {
+      return existsSync('plugins') ? readdirSync('plugins').filter((id) => existsSync(join('plugins', id, 'proteus.json'))) : [];
     },
   };
   submit({ api: client(process.env.GITHUB_TOKEN, repo), event, repo, checkout })

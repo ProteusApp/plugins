@@ -6,11 +6,15 @@ Each submission becomes a pull request labeled `[AUTOMATED] Plugin Request`, wit
 
 A profile is one `profile.lua` that lists plugins and settings. Check that every plugin it names ships with Proteus or is listed here, and that its settings hold nothing personal.
 
+The check workflow has run first: the rules, the plugin's tests, StyLua and selene, and a comparison of what `init.lua` declares with `proteus.json`. The pull request lists the plugin's permissions. Proteus enforces them, so a plugin without any cannot reach the network, run programs or touch files outside the workspace folders it claims.
+
 Check that:
 
 - the code does what the description says, and nothing else
+- it asks only for the permissions its purpose needs. `files`, `process`, `workspace` and `kernel` amount to full access, so each needs a clear reason, and its code gets the closest reading
 - it reads and writes only the files its purpose needs
 - it sends nothing over the network, and runs no programs, beyond what its purpose needs
+- a web view page loads nothing from elsewhere. Proteus blocks it anyway, but code that tries is a warning sign
 - it holds no secrets, tokens or personal data
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
 

@@ -1,0 +1,13 @@
+{
+  "name": "proteus-plugins",
+  "private": true,
+  "type": "module",
+  "description": "The community plugins and profiles for Proteus, and the scripts that keep them.",
+  "scripts": {
+    "test": "node --test && node scripts/lua-test.mjs",
+    "check": "node scripts/check.mjs"
+  },
+  "devDependencies": {
+    "wasmoon": "1.16.0"
+  }
+}

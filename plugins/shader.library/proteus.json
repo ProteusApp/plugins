@@ -1,0 +1,35 @@
+{
+  "id": "shader.library",
+  "name": "Shader library",
+  "description": "Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.",
+  "version": "1.0.0",
+  "depends": [
+    "lib.ui",
+    "shader.core",
+    "shader.docs",
+    "ui.views",
+    "core.commands"
+  ],
+  "optional": [
+    "shader.canvas",
+    "ui.menus",
+    "ui.palette",
+    "ui.notify"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}

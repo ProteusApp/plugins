@@ -2,7 +2,7 @@
 
 This repository holds the community plugins and profiles for [Proteus](https://github.com/ProteusApp), the desktop app made entirely of Lua plugins. A plugin is a folder of Lua code. A profile is a list of plugins with its settings, which turns Proteus into a different app. Everything here was reviewed by a maintainer before it was merged. The Proteus marketplace lists it and installs it.
 
-**Warning:** a plugin is trusted code. Once it runs, it can read and write any file the user can, the same as an editor extension. Review lowers that risk but does not remove it.
+A plugin from this registry does not get the run of the computer. Proteus runs it restricted: in a Lua environment of its own, able to draw, keep its own data and write in the workspace folders it claims, and nothing more unless its `permissions` ask for it. The marketplace shows what a plugin, and every plugin it brings along, asks for before it installs. `files`, `process`, `workspace` and `kernel` amount to full access, so review matters most for a plugin that asks for one of them.
 
 ## Install a plugin or a profile
 
@@ -25,12 +25,28 @@ A pull request opened by hand is welcome too. It must follow the same layout and
 
 Raise `version` in the plugin's `init.lua`, or in the table a profile returns, save it, and publish again. The new version goes through the same review. Only the first author can update a plugin or profile, and the version must go up. Once the update is approved, the marketplace offers **Update** to everyone who installed it.
 
+## What a plugin declares
+
+A plugin's `init.lua` returns its table, and these fields say what it needs from Proteus:
+
+| Field | What it says |
+|-------|--------------|
+| `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last four amount to full access. |
+| `folders` | Workspace folders it writes its files in, such as `shaders`. It may always write in `data/<id>/`. Folders Proteus uses, such as `plugins` and `data`, cannot be claimed. |
+| `requires` | `proteus`, the versions it runs on, such as `>=0.2.0`, and `features`, what it needs of the app, such as `webview` or `languages`. The marketplace refuses a plugin this Proteus cannot run. |
+| `depends` | Plugins that must start first. Each ships with Proteus or is listed here, and the marketplace installs the listed ones along with it. |
+
+A restricted plugin names its services, events, commands and settings after the first or the last part of its id, such as `rust.restart` for `lang.rust`, never after a part the app's own plugins use.
+
 ## The rules
 
 - The id is lower case letters, digits, dots, dashes and underscores, such as `my.plugin`. It cannot be the id of a plugin or profile that ships with Proteus. `reserved.json` lists those: `ids` and `prefixes` for plugins, and `profiles` for profiles. A plugin and a profile may share an id.
 - A plugin has an `init.lua` at its top, a name, a one-sentence description, and a version such as `1.0.0`.
 - A profile has a `profile.lua` at its top, a name, a one-sentence description, a version, and at least one plugin in its `plugins` list.
-- Every file is text, of a kind a reviewer can read: `.lua`, `.md`, `.json`, `.css`, `.txt`, `.toml`, `.yml`, `.yaml`, `.html` or `.svg`.
+- Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines.
+- What `init.lua` declares matches `proteus.json`: name, description, version, `depends`, `optional`, `permissions`, `folders` and `requires`. The marketplace reads `proteus.json` before an install, and Proteus runs what `init.lua` says, so they must agree.
+- Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
+- The Lua passes StyLua and selene with this repository's `stylua.toml` and `selene.toml`, and the plugin's tests pass.
 - A plugin holds up to 200 files and 2 MB, with no file over 512 KB and no folder more than three deep.
 
 ## Layout
@@ -39,9 +55,15 @@ Raise `version` in the plugin's `init.lua`, or in the table a profile returns, s
 |------|---------------|
 | `plugins/<id>/` | One plugin's files, plus `proteus.json`, which the registry writes |
 | `profiles/<id>/` | One profile's `profile.lua`, plus `proteus.json` with `"kind": "profile"` |
+| `plugins/<id>/tests/` | The plugin's own tests, `*.test.lua`, which the check runs |
 | `index.json` | Every approved plugin in `plugins`, and every profile in `profiles`, with the commit to install it from |
 | `reserved.json` | Ids that belong to the plugins and profiles shipped with Proteus |
 | `scripts/` | The rules and the workflows' code |
 | `test/` | Tests for the scripts, run with `node --test` |
+| `stylua.toml`, `selene.toml` | The Lua style and lint rules, the same as the app's. `tests.selene.toml` lints tests. |
+
+## Test and check locally
+
+`npm ci`, then `npm test` runs the scripts' tests and `scripts/lua-test.mjs`, which loads each `init.lua` as Proteus does, compares what it declares with `proteus.json`, and runs every plugin's `tests/*.test.lua`. `npm run check` holds every folder to the rules. `node scripts/manifest.mjs plugins/<id> --author <login>:<id>` writes the `proteus.json` of a folder added by hand. The check workflow runs all of this on each pull request, with pinned StyLua and selene releases.
 
 `REVIEWING.md` covers the maintainers' side: the review checklist and how the repository is set up.

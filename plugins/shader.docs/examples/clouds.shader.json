@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "kind": "proteus-shader",
+  "name": "Clouds",
+  "nodes": [
+    { "id": "n1", "type": "square_uv", "x": 40, "y": 60 },
+    { "id": "n2", "type": "time", "x": 40, "y": 220 },
+    { "id": "n3", "type": "vec2", "x": 40, "y": 400, "settings": { "value": [0.12, 0.03, 0, 1] } },
+    { "id": "n4", "type": "multiply", "x": 320, "y": 260 },
+    { "id": "n5", "type": "fbm", "x": 600, "y": 60, "inputs": { "scale": [3] }, "settings": { "octaves": 6 } },
+    { "id": "n6", "type": "smoothstep", "x": 880, "y": 60, "inputs": { "e0": [0.35], "e1": [0.85] } },
+    { "id": "n7", "type": "color", "x": 880, "y": 300, "settings": { "value": [0.18, 0.42, 0.85] } },
+    { "id": "n8", "type": "color", "x": 880, "y": 420, "settings": { "value": [1, 1, 1] } },
+    { "id": "n9", "type": "mix", "x": 1160, "y": 200 },
+    { "id": "n10", "type": "output", "x": 1440, "y": 200 }
+  ],
+  "edges": [
+    { "from": "n2", "output": "time", "to": "n4", "input": "a" },
+    { "from": "n3", "output": "out", "to": "n4", "input": "b" },
+    { "from": "n1", "output": "uv", "to": "n5", "input": "uv" },
+    { "from": "n4", "output": "out", "to": "n5", "input": "offset" },
+    { "from": "n5", "output": "out", "to": "n6", "input": "x" },
+    { "from": "n7", "output": "rgb", "to": "n9", "input": "a" },
+    { "from": "n8", "output": "rgb", "to": "n9", "input": "b" },
+    { "from": "n6", "output": "out", "to": "n9", "input": "t" },
+    { "from": "n9", "output": "out", "to": "n10", "input": "color" }
+  ]
+}
