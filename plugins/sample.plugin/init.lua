@@ -1,10 +1,10 @@
 -- sample.plugin: Showcases minimal API and tests the Plugin Manager flow.
 --
----@type Proteus.Plugin
+--- @type Proteus.Plugin
 return {
   name = 'Sample Plugin',
   description = 'A sample plugin.',
-  version = '0.1.0',
+  version = '1.0.3',
   depends = { 'lib.ui', 'core.commands' },
   optional = { 'ui.notify', 'ui.toolbar', 'ui.menubar' },
 
@@ -13,11 +13,11 @@ return {
 
     commands.register ({
       id = 'sample.plugin.hello',
-      title = 'Say Hello',
-      category = 'Sample.plugin',
-      icon = 'smile', -- any Lucide icon name: https://lucide.dev/icons
-      toolbar = true, -- adds a toolbar button
-      menu = 'Plugins', -- adds an entry to the Plugins menu
+      title = 'Says Hello',
+      category = 'samples',
+      icon = 'smile',
+      toolbar = true,
+      menu = 'Sample Plugin',
       run = function ()
         local notify = app.try_use ('notify')
         if notify then
