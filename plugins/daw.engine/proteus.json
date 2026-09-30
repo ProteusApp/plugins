@@ -1,8 +1,8 @@
 {
   "id": "daw.engine",
   "name": "DAW engine",
-  "description": "Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.",
-  "version": "1.1.0",
+  "description": "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
+  "version": "1.2.0",
   "depends": [
     "lib.ui",
     "daw.core",
@@ -14,7 +14,8 @@
     "ui.toolbar",
     "ui.notify",
     "core.keys",
-    "ui.windows"
+    "ui.windows",
+    "core.settings"
   ],
   "permissions": [],
   "folders": [],

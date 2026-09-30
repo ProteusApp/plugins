@@ -167,6 +167,7 @@
 ---@field presets? Daw.Preset[]
 ---@field patch Daw.Patch Empty for a Web Audio Module.
 ---@field wam? { path: string } A Web Audio Module instead of a patch: its module, in a folder the registering plugin lists in `exports`, such as `'wam/synth/index.js'`. Its parameters come from the module once the engine loads it.
+---@field native? { plugin: string } A CLAP or VST3 plugin instead of a patch, by the reference `app.audio.plugins` gives, such as `'clap:com.example.synth'`. Only the native engine plays it.
 ---@field owner? string Set by the service: the plugin that registered it.
 
 ---------------------------------------------------------------------------------------------
@@ -177,6 +178,7 @@
 ---@field id string
 ---@field kind? string A Web Audio Module's device id, so the engine can report its parameters.
 ---@field wam? { url: string } Where the engine page loads a Web Audio Module, under its mounts.
+---@field native? { plugin: string } A native plugin, which the app's kernel finds before the native engine loads it.
 ---@field patch table The device's patch, with its role.
 ---@field params table<string, Daw.Value> Every parameter, defaults filled in.
 ---@field bypass boolean
@@ -286,6 +288,7 @@
 ---@field from_unit fun(param: Daw.ParamSpec, unit: number): number
 ---@field format fun(param: Daw.ParamSpec, value: Daw.Value): string Such as `'2.40 kHz'` or `'-6.0 dB'`.
 ---@field from_wam fun(info: table<string, table>): Daw.ParamSpec[] A Web Audio Module's parameters, from its `getParameterInfo`.
+---@field from_native fun(params: table[]): Daw.ParamSpec[] A native plugin's parameters, from `app.audio.plugins`.
 ---@field ref fun(spec: Daw.DeviceSpec, preset?: string): Daw.DeviceRef A new device, with no id yet.
 ---@field preset fun(spec: Daw.DeviceSpec, name?: string): Daw.Preset?
 ---@field values fun(spec: Daw.DeviceSpec, ref: Daw.DeviceRef): table<string, Daw.Value> Defaults, then the preset, then the track's own values.

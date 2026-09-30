@@ -12,6 +12,10 @@
 -- packs' folders, loads each module in an AudioWorklet, and reports its parameters, which
 -- daw.devices keeps for the rack. A new pack starts the page again with its folder.
 --
+-- The sound can also play on the app's native engine (`app.audio`), a process of its own that
+-- takes the same messages as the page and can host CLAP and VST3 plugins. The setting
+-- daw.engine picks it. The page then only draws the master meter, from the engine's levels.
+--
 -- Audio files come from the user, one pick at a time, through app.grants: the plugin holds
 -- an id and a name, never a path. A song keeps the ids, the page asks for a file when it
 -- needs one, and the app sends the bytes straight into the page. Export as WAV works the
@@ -49,8 +53,8 @@ local CSS = [[
 ---@type Proteus.Plugin
 return {
   name = 'DAW engine',
-  description = 'Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.',
-  version = '1.1.0',
+  description = "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
+  version = '1.2.0',
   requires = {
     proteus = '>=0.2.0',
     features = {
@@ -69,7 +73,13 @@ return {
     'daw.session',
     'core.commands',
   },
-  optional = { 'ui.toolbar', 'ui.notify', 'core.keys', 'ui.windows' },
+  optional = {
+    'ui.toolbar',
+    'ui.notify',
+    'core.keys',
+    'ui.windows',
+    'core.settings',
+  },
   activate = function (app)
     local ui = app.use ('ui')
     local daw = app.use ('daw') --[[@as Daw.Core]]
@@ -79,7 +89,21 @@ return {
     local toolbar = app.try_use ('toolbar')
     local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
     local notify = app.try_use ('notify')
+    local settings = app.try_use ('settings')
     ui.css (CSS)
+
+    if settings then
+      settings.define ('daw.engine', {
+        title = 'Sound engine',
+        type = 'select',
+        options = { 'web', 'native' },
+        default = 'web',
+        description = "web plays in a sandboxed web page, and plays Web Audio Modules. native plays in the app's own engine, a process of its own, and plays CLAP and VST3 plugins.",
+      })
+    end
+
+    -- The native engine while it plays, or nil when the page does.
+    local native = nil ---@type Proteus.AudioEngine?
 
     local playing = false
     local recording = false
@@ -94,10 +118,29 @@ return {
     -- The name of each file an export is writing, by grant id.
     local exporting = {} ---@type table<string, string>
 
+    ---Whether the setting asks for the native engine, and this Proteus has one.
+    ---@return boolean
+    local function wants_native ()
+      return settings ~= nil
+        and settings.get ('daw.engine') == 'native'
+        and app.audio ~= nil
+    end
+
+    ---A message for the page itself, whichever engine plays.
     ---@param message table
-    local function post (message)
+    local function page_post (message)
       if view then
         view:widget ('post', message)
+      end
+    end
+
+    ---A message for the engine that plays.
+    ---@param message table
+    local function post (message)
+      if native then
+        native.send (message)
+      else
+        page_post (message)
       end
     end
 
@@ -228,7 +271,9 @@ return {
         return
       end
       local g = app.grants.get (id)
-      if g and g.mode == 'read' then
+      if g and g.mode == 'read' and native then
+        native.send_file (id)
+      elseif g and g.mode == 'read' then
         view:widget ('send_file', id)
       else
         post ({
@@ -283,6 +328,9 @@ return {
           tracks = type (m.tracks) == 'table' and m.tracks or {},
           master = type (m.master) == 'table' and m.master or { 0, 0 },
         }
+        if native then
+          page_post ({ type = 'meter', master = levels.master })
+        end
       elseif kind == 'transport' then
         playing = m.playing == true
         position = tonumber (m.beat) or 0
@@ -368,7 +416,14 @@ return {
         files = true,
         mounts = list,
         autoplay = true,
-        on_message = on_message,
+        on_message = function (m)
+          -- While the native engine plays, the page is only the meter.
+          if not native then
+            on_message (m)
+          elseif type (m) == 'table' and m.type == 'ready' then
+            page_post ({ type = 'native', on = true })
+          end
+        end,
         on_status = function (status)
           if not status.responsive and notify then
             notify.warn (
@@ -408,6 +463,64 @@ return {
     end
     app.dispose (function ()
       view = nil
+      native = nil
+    end)
+
+    -- The native engine -------------------------------------------------------------------
+
+    local function start_native ()
+      local engine ---@type Proteus.AudioEngine
+      engine = app.audio.open (function (m)
+        if native ~= engine then
+          return
+        end
+        if type (m) == 'table' and m.type == 'exit' then
+          native = nil
+          playing = false
+          app.emit ('daw:transport', false, position)
+          if notify then
+            notify.warn (
+              'The native sound engine stopped'
+                .. (m.error and (': ' .. tostring (m.error)) or '.')
+                .. ' Restart the Sound Engine starts it again.'
+            )
+          end
+          return
+        end
+        on_message (m)
+      end)
+      native = engine
+      page_post ({ type = 'native', on = true })
+    end
+
+    ---Moves the sound to the engine the setting names. What plays stops, and the other engine
+    ---takes the song.
+    local function follow_setting ()
+      local want = wants_native ()
+      if want == (native ~= nil) then
+        return
+      end
+      post ({ type = 'stop' })
+      if want then
+        start_native ()
+      else
+        local was = native
+        native = nil
+        if was then
+          was.close ()
+        end
+        page_post ({ type = 'native', on = false })
+        page_post ({ type = 'metronome', on = metronome })
+        push ()
+      end
+    end
+    if wants_native () then
+      start_native ()
+    end
+    app.on ('settings:changed', function (key)
+      if key == 'daw.engine' then
+        follow_setting ()
+      end
     end)
 
     -- Module editors -----------------------------------------------------------------------
@@ -652,10 +765,14 @@ return {
           name = (song.name ~= '' and song.name or 'Song') .. '.wav',
           filters = { { name = 'WAV audio', extensions = { 'wav' } } },
         }, function (g)
-          if not g or not view then
+          if not g or not (view or native) then
             return
           end
-          view:widget ('allow_save', g.id)
+          -- The web engine's page writes the file itself. The native engine gets the grant,
+          -- which the app turns into the path.
+          if not native and view then
+            view:widget ('allow_save', g.id)
+          end
           exporting[g.id] = g.name
           post ({ type = 'render', file = g.id, from = 0, to = 0 })
           if notify then
@@ -692,7 +809,14 @@ return {
       title = 'Restart the Sound Engine',
       icon = 'rotate-cw',
       run = function ()
-        if view then
+        if wants_native () then
+          local was = native
+          native = nil
+          if was then
+            was.close ()
+          end
+          start_native ()
+        elseif view then
           view:widget ('reload')
         end
       end,

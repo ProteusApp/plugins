@@ -11,6 +11,16 @@ local M = {}
 ---@return Daw.EngineDevice
 function M.device (ref, spec)
   local params = device_mod.values (spec, ref)
+  if spec.native then
+    return {
+      id = ref.id,
+      kind = spec.name,
+      bypass = ref.bypass == true,
+      params = params,
+      patch = { role = spec.role },
+      native = { plugin = spec.native.plugin },
+    }
+  end
   if spec.wam then
     -- A module takes a choice by its index, from 0.
     for _, p in ipairs (spec.params) do

@@ -31,7 +31,7 @@ A plugin's `init.lua` returns its table, and these fields say what it needs from
 
 | Field | What it says |
 |-------|--------------|
-| `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `midi` (hearing MIDI keyboards), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last four amount to full access. |
+| `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `midi` (hearing MIDI keyboards), `native-plugins` (CLAP and VST3 plugins on this computer, in the native audio engine), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last five amount to full access. |
 | `folders` | Workspace folders it writes its files in, such as `shaders`. It may always write in `data/<id>/`. Folders Proteus uses, such as `plugins` and `data`, cannot be claimed. |
 | `exports` | Folders of its own it offers to every web view page, such as `wam`. A page that names the plugin in `mounts` loads them at `_/<id>/<folder>/`. Web Audio Modules travel this way. |
 | `requires` | `proteus`, the versions it runs on, such as `>=0.2.0`, and `features`, what it needs of the app, such as `webview` or `languages`. The marketplace refuses a plugin this Proteus cannot run. |

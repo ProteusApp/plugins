@@ -98,6 +98,23 @@ class Instrument {
   }
 }
 
+/** An effect this engine cannot play, such as a native plugin. Its sound passes straight through. */
+class Through {
+  constructor(ctx) {
+    this.input = ctx.createGain();
+    this.output = this.input;
+    this.scope = {};
+  }
+
+  start() {}
+  refresh() {}
+  stop() {}
+
+  disconnect() {
+    this.input.disconnect();
+  }
+}
+
 /** A chain of effects between an input and an output, rewired as devices come and go. */
 class Chain {
   effects = new Map();
@@ -116,7 +133,7 @@ class Chain {
     const keep = new Set();
     const order = [];
     for (const d of devices) {
-      const key = JSON.stringify(d.patch) + (d.wam ? d.wam.url : '');
+      const key = JSON.stringify(d.patch) + (d.wam ? d.wam.url : '') + (d.native ? d.native.plugin : '');
       let fx = this.effects.get(d.id);
       if (fx && fx.key !== key) {
         fx.built.stop(0);
@@ -126,7 +143,10 @@ class Chain {
         this.wired = null;
       }
       if (!fx) {
-        const built = d.wam
+        if (d.native) this.warn(`${d.kind}: a native plugin, which plays only on the native engine`);
+        const built = d.native
+          ? new Through(this.ctx)
+          : d.wam
           ? new WamEffect(this.ctx, d, this.warn, this.bpm())
           : build(this.ctx, d.patch, noteScope(d.params, 69, 1, this.bpm()), this.warn);
         built.start(this.ctx.currentTime);
@@ -210,11 +230,12 @@ class TrackNode {
   update(spec) {
     this.spec = spec;
     const inst = spec.instrument ?? null;
-    const key = inst ? inst.id + JSON.stringify(inst.patch) + (inst.wam ? inst.wam.url : '') : '';
+    const key = inst ? inst.id + JSON.stringify(inst.patch) + (inst.wam ? inst.wam.url : '') + (inst.native ? inst.native.plugin : '') : '';
     if (key !== this.instKey) {
       this.instrument?.stopAll(this.ctx.currentTime);
       this.instrument?.destroy?.();
-      this.instrument = !inst
+      if (inst?.native) this.warn(`${inst.kind}: a native plugin, which plays only on the native engine`);
+      this.instrument = !inst || inst.native
         ? null
         : inst.wam
           ? new WamInstrument(this.ctx, inst, this.input, this.warn)

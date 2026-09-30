@@ -168,6 +168,18 @@ function M.check (spec)
     keys[param.key] = true
     out.params[#out.params + 1] = param
   end
+  -- A native plugin, CLAP or VST3, brings its own sound too. The device names it by the
+  -- reference `app.audio.plugins` gave, and only the native engine plays it.
+  if spec.native ~= nil then
+    local ref = type (spec.native) == 'table' and spec.native.plugin or nil
+    if type (ref) ~= 'string' or not ref:match ('^[%a%d]+:[^%c]+$') then
+      return nil,
+        spec.id
+          .. ': native.plugin names the plugin, such as "clap:com.example.synth"'
+    end
+    out.native = { plugin = ref }
+    return out, nil
+  end
   -- A Web Audio Module brings its own sound: a module in the registering plugin's exported
   -- folder, instead of a patch. Its parameters arrive once the engine loads it.
   if spec.wam ~= nil then
@@ -386,6 +398,43 @@ end
 
 -- Units a module's parameter may name that values here read in.
 local WAM_UNITS = { Hz = true, dB = true, s = true, st = true, ct = true }
+
+---A native plugin's parameters as the rack shows them, from what `app.audio.plugins` lists.
+---A stepped one rounds to its steps: whole numbers for CLAP, and a VST3 value from 0 to 1
+---in `steps` equal parts.
+---@param params table[]
+---@return Daw.ParamSpec[]
+function M.from_native (params)
+  local out = {} ---@type Daw.ParamSpec[]
+  for _, p in ipairs (params or {}) do
+    local min = tonumber (p.min) or 0
+    local max = tonumber (p.max) or 1
+    if
+      type (p.key) == 'string'
+      and p.key:match ('^[%a_][%w_]*$')
+      and max > min
+    then
+      local steps = tonumber (p.steps)
+      local step = nil ---@type number?
+      if p.stepped == true then
+        step = steps and steps > 0 and (max - min) / steps or 1
+      end
+      local default = tonumber (p.default) or min
+      out[#out + 1] = {
+        key = p.key,
+        label = type (p.label) == 'string' and p.label ~= '' and p.label
+          or p.key,
+        kind = 'number',
+        min = min,
+        max = max,
+        default = math.min (max, math.max (min, default)),
+        step = step,
+        unit = type (p.unit) == 'string' and p.unit ~= '' and p.unit or nil,
+      }
+    end
+  end
+  return out
+end
 
 ---Turns a Web Audio Module's parameter info, as `getParameterInfo` gives it, into parameter
 ---specs, in the order of their ids. A float with an exponent reads along a log curve, as
