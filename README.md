@@ -33,6 +33,7 @@ A plugin's `init.lua` returns its table, and these fields say what it needs from
 |-------|--------------|
 | `permissions` | What it may do beyond drawing and keeping its own data: `net` (HTTP and opening web pages), `clipboard` (reading it), `midi` (hearing MIDI keyboards), `files` (any file on disk), `process` (running programs and terminals), `workspace` (writing anywhere in the workspace) and `kernel` (starting and stopping plugins). The last four amount to full access. |
 | `folders` | Workspace folders it writes its files in, such as `shaders`. It may always write in `data/<id>/`. Folders Proteus uses, such as `plugins` and `data`, cannot be claimed. |
+| `exports` | Folders of its own it offers to every web view page, such as `wam`. A page that names the plugin in `mounts` loads them at `_/<id>/<folder>/`. Web Audio Modules travel this way. |
 | `requires` | `proteus`, the versions it runs on, such as `>=0.2.0`, and `features`, what it needs of the app, such as `webview` or `languages`. The marketplace refuses a plugin this Proteus cannot run. |
 | `depends` | Plugins that must start first. Each ships with Proteus or is listed here, and the marketplace installs the listed ones along with it. |
 
@@ -48,6 +49,7 @@ A restricted plugin names its services, events, commands and settings after the 
 - Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
 - The Lua passes StyLua and selene with this repository's `stylua.toml` and `selene.toml`, and the plugin's tests pass.
 - A plugin holds up to 200 files and 2 MB, with no file over 512 KB and no folder more than three deep.
+- A file copied from a published package, such as a library's built JavaScript, is listed in the plugin's `vendor.json` with its `source` (`npm:<package>@<version>/<path>`), `license` and `sha256`. The check compares each hash with the file, and `node scripts/vendor.mjs verify plugins/<id>` compares it with the published package. Its lines may be as long as the build made them, since the reviewer checks where it came from rather than reading it. It is still text: no control characters and no characters that reorder text.
 
 ## Layout
 

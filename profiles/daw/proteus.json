@@ -27,6 +27,7 @@
     "ui.windows",
     "daw.instruments",
     "daw.effects",
+    "wam.basics",
     "daw.transport",
     "daw.channels",
     "daw.arrange",

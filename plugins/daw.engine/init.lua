@@ -7,6 +7,11 @@
 -- The page is also the master meter, and it sits on the toolbar. It asks for autoplay, and
 -- where the browser still holds its sound, the meter reads "Click for sound".
 --
+-- Web Audio Modules come from packs: plugins that register module devices with daw.devices
+-- and export the folder that holds them. The page is served with its own files and the
+-- packs' folders, loads each module in an AudioWorklet, and reports its parameters, which
+-- daw.devices keeps for the rack. A new pack starts the page again with its folder.
+--
 -- Audio files come from the user, one pick at a time, through app.grants: the plugin holds
 -- an id and a name, never a path. A song keeps the ids, the page asks for a file when it
 -- needs one, and the app sends the bytes straight into the page. Export as WAV works the
@@ -45,10 +50,16 @@ local CSS = [[
 return {
   name = 'DAW engine',
   description = 'Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.',
-  version = '1.0.1',
+  version = '1.1.0',
   requires = {
     proteus = '>=0.2.0',
-    features = { 'permissions', 'webview', 'grants', 'autoplay' },
+    features = {
+      'permissions',
+      'webview',
+      'grants',
+      'autoplay',
+      'webview-files',
+    },
   },
   permissions = {},
   depends = {
@@ -58,7 +69,7 @@ return {
     'daw.session',
     'core.commands',
   },
-  optional = { 'ui.toolbar', 'ui.notify', 'core.keys' },
+  optional = { 'ui.toolbar', 'ui.notify', 'core.keys', 'ui.windows' },
   activate = function (app)
     local ui = app.use ('ui')
     local daw = app.use ('daw') --[[@as Daw.Core]]
@@ -66,6 +77,7 @@ return {
     local session = app.use ('daw.session') --[[@as Daw.Session]]
     local commands = app.use ('commands')
     local toolbar = app.try_use ('toolbar')
+    local windows = app.try_use ('windows') --[[@as Proteus.Windows?]]
     local notify = app.try_use ('notify')
     ui.css (CSS)
 
@@ -90,6 +102,26 @@ return {
     end
 
     -- The song, sent to the page -----------------------------------------------------------------
+
+    ---A value as the device takes it. A Web Audio Module takes a choice by its index, from 0.
+    ---@param device_id string
+    ---@param key string
+    ---@param value any
+    ---@return any
+    local function module_value (device_id, key, value)
+      local ref = daw.song.device (session.song (), device_id)
+      local spec = ref and devices.get (ref.device)
+      local param = spec and spec.wam and daw.device.param (spec, key)
+      if param and param.kind == 'choice' then
+        for i, o in ipairs (param.options or {}) do
+          if o == value then
+            return i - 1
+          end
+        end
+        return 0
+      end
+      return value
+    end
 
     local function push ()
       push_pending = false
@@ -269,6 +301,11 @@ return {
         app.emit ('daw:sound', sound)
       elseif kind == 'warning' then
         app.warn (tostring (m.message))
+      elseif kind == 'wam_params' then
+        devices.describe (
+          tostring (m.device),
+          type (m.info) == 'table' and m.info or {}
+        )
       elseif kind == 'want' then
         send_file (tostring (m.file))
       elseif kind == 'file' then
@@ -302,24 +339,64 @@ return {
       end
     end
 
-    view = ui.webview ({
-      page = 'page/engine.html',
-      autoplay = true,
-      on_message = on_message,
-      on_status = function (status)
-        if not status.responsive and notify then
-          notify.warn (
-            'The sound engine stopped answering'
-              .. (status.error and (': ' .. status.error) or '.')
-          )
+    ---The plugins whose Web Audio Modules the song may use: the owners of every module
+    ---device, in order. The page mounts their exported folders.
+    ---@return string[]
+    local function packs ()
+      local seen = {} ---@type table<string, boolean>
+      local out = {} ---@type string[]
+      for _, spec in ipairs (devices.list ()) do
+        local owner = spec.owner or ''
+        if spec.wam and owner ~= '' and not seen[owner] then
+          seen[owner] = true
+          out[#out + 1] = owner
         end
-      end,
-    })
+      end
+      table.sort (out)
+      return out
+    end
+
+    local mounted = '' -- The packs the page has now, joined.
+
+    ---@return Proteus.El
+    local function make_view ()
+      local list = packs ()
+      mounted = table.concat (list, ',')
+      return ui.webview ({
+        page = 'page/engine.html',
+        -- Served with its files, so it loads modules, worklets and the packs' folders.
+        files = true,
+        mounts = list,
+        autoplay = true,
+        on_message = on_message,
+        on_status = function (status)
+          if not status.responsive and notify then
+            notify.warn (
+              'The sound engine stopped answering'
+                .. (status.error and (': ' .. status.error) or '.')
+            )
+          end
+        end,
+      })
+    end
+
+    view = make_view ()
     local box = ui.div ({
       class = 'daw-meter-box',
       title = 'Master level. Click here once to let the DAW make sound.',
       view,
     })
+
+    -- A pack that arrives or leaves changes what the page may load, so the page starts again
+    -- with the new folders. It asks for the song as it starts.
+    local function remount ()
+      if table.concat (packs (), ',') == mounted or not view then
+        return
+      end
+      view:remove ()
+      view = make_view ()
+      box:append (view)
+    end
     if toolbar then
       toolbar.add (box, { align = 'right', order = 50 })
     else
@@ -333,10 +410,135 @@ return {
       view = nil
     end)
 
+    -- Module editors -----------------------------------------------------------------------
+
+    -- The open editor windows of Web Audio Modules, by device id.
+    local editors = {} ---@type table<string, { view: Proteus.El, ready: boolean }>
+
+    ---Every value of a module device, as its module takes them.
+    ---@param device_id string
+    ---@return table<string, any>
+    local function module_values (device_id)
+      local ref = daw.song.device (session.song (), device_id)
+      local spec = ref and devices.get (ref.device)
+      local out = {} ---@type table<string, any>
+      if not ref or not spec then
+        return out
+      end
+      for _, p in ipairs (spec.params) do
+        out[p.key] =
+          module_value (device_id, p.key, daw.device.value (spec, ref, p.key))
+      end
+      return out
+    end
+
+    ---Takes values an editor changed into the song, one parameter at a time, so the engine
+    ---plays each at once and a drag is one undo step.
+    ---@param device_id string
+    ---@param values table<string, any>
+    local function from_editor (device_id, values)
+      local song = session.song ()
+      local ref = daw.song.device (song, device_id)
+      local spec = ref and devices.get (ref.device)
+      if not ref or not spec then
+        return
+      end
+      for key, v in pairs (values) do
+        local param = daw.device.param (spec, tostring (key))
+        if param then
+          local value = v ---@type Daw.Value
+          if param.kind == 'choice' then
+            value = (param.options or {})[math.floor (tonumber (v) or 0) + 1]
+              or param.default
+          elseif param.kind == 'toggle' then
+            value = (tonumber (v) or 0) ~= 0
+          end
+          session.apply (
+            daw.song.set_param (session.song (), device_id, param.key, value),
+            {
+              kind = 'param',
+              device = device_id,
+              key = param.key,
+              value = value,
+            },
+            'param:' .. device_id .. ':' .. param.key
+          )
+        end
+      end
+    end
+
+    ---Opens a module device's own editor in a window.
+    ---@param device_id string
+    local function open_editor (device_id)
+      local song = session.song ()
+      local ref, track = daw.song.device (song, device_id)
+      local spec = ref and devices.get (ref.device)
+      if not ref or not spec or not spec.wam or not windows then
+        return
+      end
+      local win_id = 'daw.editor.' .. device_id
+      local title = spec.name .. (track and (' - ' .. track.name) or '')
+      if editors[device_id] then
+        windows.set_title (win_id, title)
+        windows.show (win_id)
+        return
+      end
+      local editor = { ready = false } ---@type { view: Proteus.El, ready: boolean }
+      editor.view = ui.webview ({
+        page = 'page/editor.html',
+        files = true,
+        mounts = { spec.owner },
+        autoplay = true,
+        on_message = function (m)
+          if type (m) ~= 'table' then
+            return
+          end
+          if m.type == 'ready' then
+            editor.ready = true
+            local url = '_/' .. tostring (spec.owner) .. '/' .. spec.wam.path
+            editor.view:widget ('post', {
+              type = 'open',
+              url = url,
+              values = module_values (device_id),
+            })
+          elseif m.type == 'values' and type (m.values) == 'table' then
+            from_editor (device_id, m.values)
+          end
+        end,
+      })
+      editors[device_id] = editor
+      windows.add ({
+        id = win_id,
+        title = title,
+        icon = spec.icon or 'sliders-horizontal',
+        category = 'DAW',
+        content = editor.view,
+        open = true,
+        x = 0.25,
+        y = 0.12,
+        w = 520,
+        h = 360,
+        min_w = 280,
+      })
+      windows.show (win_id)
+    end
+
     app.on ('daw:changed', function (_, change)
       local c = change --[[@as Daw.Change]]
+      local editor = c.device and editors[c.device]
+      if editor and editor.ready and c.kind == 'param' and c.key then
+        editor.view:widget ('post', {
+          type = 'set',
+          values = { [c.key] = module_value (c.device, c.key, c.value) },
+        })
+      end
       if c.kind == 'param' and c.device and c.key then
-        post ({ type = 'param', device = c.device, key = c.key, value = c.value })
+        post ({
+          type = 'param',
+          device = c.device,
+          key = c.key,
+          value = module_value (c.device, c.key, c.value),
+        })
       elseif c.kind == 'mix' and c.track and c.key then
         post ({ type = 'mix', track = c.track, key = c.key, value = c.value })
       else
@@ -344,7 +546,12 @@ return {
       end
       post ({ type = 'live', track = live_track () or '' })
     end)
-    app.on ('daw:devices', push_soon)
+    app.on ('daw:devices', function ()
+      -- A pack registers its devices while it starts, and the app mounts only running plugins,
+      -- so the page starts again once the pack is up.
+      app.timer.after (0, remount)
+      push_soon ()
+    end)
     app.on ('daw:selection', function ()
       post ({ type = 'live', track = live_track () or '' })
     end)
@@ -437,6 +644,7 @@ return {
         end)
       end,
       file = file_info,
+      open_editor = open_editor,
       export_wav = function ()
         local song = session.song ()
         app.grants.save ({

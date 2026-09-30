@@ -9,7 +9,8 @@
 // An audio track's clips hold { start, length, file, offset, gain } instead of notes: file is
 // a grant id (see files.js), offset is in seconds and gain in decibels.
 //
-// A device is { id, patch, params, bypass }, where patch is what patch.js builds. Times are
+// A device is { id, patch, params, bypass }, where patch is what patch.js builds, or a Web
+// Audio Module, { id, kind, wam: { url }, params, bypass } (see wam-host.js). Times are
 // in beats, volumes in decibels. Lists may arrive as empty objects, so list() reads both.
 
 'use strict';
@@ -115,7 +116,7 @@ class Chain {
     const keep = new Set();
     const order = [];
     for (const d of devices) {
-      const key = JSON.stringify(d.patch);
+      const key = JSON.stringify(d.patch) + (d.wam ? d.wam.url : '');
       let fx = this.effects.get(d.id);
       if (fx && fx.key !== key) {
         fx.built.stop(0);
@@ -125,7 +126,9 @@ class Chain {
         this.wired = null;
       }
       if (!fx) {
-        const built = build(this.ctx, d.patch, noteScope(d.params, 69, 1, this.bpm()), this.warn);
+        const built = d.wam
+          ? new WamEffect(this.ctx, d, this.warn, this.bpm())
+          : build(this.ctx, d.patch, noteScope(d.params, 69, 1, this.bpm()), this.warn);
         built.start(this.ctx.currentTime);
         fx = { key, device: d, built };
         this.effects.set(d.id, fx);
@@ -207,10 +210,15 @@ class TrackNode {
   update(spec) {
     this.spec = spec;
     const inst = spec.instrument ?? null;
-    const key = inst ? inst.id + JSON.stringify(inst.patch) : '';
+    const key = inst ? inst.id + JSON.stringify(inst.patch) + (inst.wam ? inst.wam.url : '') : '';
     if (key !== this.instKey) {
       this.instrument?.stopAll(this.ctx.currentTime);
-      this.instrument = inst ? new Instrument(this.ctx, inst, this.input, this.warn, this.bpm) : null;
+      this.instrument?.destroy?.();
+      this.instrument = !inst
+        ? null
+        : inst.wam
+          ? new WamInstrument(this.ctx, inst, this.input, this.warn)
+          : new Instrument(this.ctx, inst, this.input, this.warn, this.bpm);
       this.instKey = key;
     } else if (this.instrument && inst) {
       if (JSON.stringify(this.instrument.device.params) !== JSON.stringify(inst.params)) {
@@ -252,6 +260,7 @@ class TrackNode {
 
   stop() {
     this.instrument?.stopAll(this.ctx.currentTime);
+    this.instrument?.destroy?.();
     this.chain.stop();
     this.input.disconnect();
     this.fader.disconnect();

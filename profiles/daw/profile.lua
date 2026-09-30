@@ -31,6 +31,7 @@ return {
     'ui.windows',
     'daw.instruments',
     'daw.effects',
+    'wam.basics',
     -- The screens, each a window on the desktop, as in FL Studio.
     'daw.transport',
     'daw.channels',

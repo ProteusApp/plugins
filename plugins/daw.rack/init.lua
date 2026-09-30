@@ -477,6 +477,12 @@ return {
         end)
         head:append (presets)
       end
+      if spec and spec.wam and engine then
+        -- A Web Audio Module may bring its own editor, which opens in a window.
+        head:append (icon_btn ('app-window', 'Open its editor', function ()
+          engine.open_editor (ref.id)
+        end))
+      end
       if role == 'effect' then
         head:append (
           icon_btn ('power', ref.bypass and 'Turn on' or 'Turn off', function ()

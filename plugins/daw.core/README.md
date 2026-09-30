@@ -239,7 +239,42 @@ A device written as Lua code would run for every note, on the page's thread, and
 - a reviewer reads a device like any other plugin, since it is plain Lua data
 - a pack needs no permissions and no web view of its own
 
+A Web Audio Module, below, is the way out when a patch is not enough. It runs in the same sandboxed page, so a module that stalls only stalls the music, never the app.
+
 The cost is that a device can only combine the node types above. A new kind of sound, such as granular synthesis, needs a new node type in `daw.engine/page/patch.js`.
+
+### Web Audio Modules
+
+A device can also be a [Web Audio Module](https://www.webaudiomodules.com/), a WAM 2 module in JavaScript that runs its own sound in an AudioWorklet. The pack offers the folder that holds its modules in `exports`, and each device names its module there instead of a patch:
+
+```lua
+return {
+  name = 'My modules',
+  version = '1.0.0',
+  depends = { 'daw.devices' },
+  exports = { 'wam' },
+  requires = { features = { 'webview-files' } },
+  activate = function (app)
+    app.use ('daw.devices').register ({
+      id = 'my.synth',
+      name = 'My Synth',
+      role = 'instrument',
+      category = 'Web Audio Modules',
+      params = {},
+      patch = {},
+      wam = { path = 'wam/synth/index.js' },
+    })
+  end,
+}
+```
+
+- `daw.engine` mounts every pack that registers a module, and loads each one from `_/<pack>/<path>` inside its own page. The module runs in that sandboxed page, the same as a patch, so it reaches nothing a patch could not.
+- A device may leave `params` empty. The first time a module loads, the engine asks it for its parameters and `daw.devices` fills them in, so the rack draws a control for each and songs save their values like any other.
+- An instrument hears its notes as MIDI events on the audio clock. An effect passes its sound straight through until its module is ready.
+- A module with an editor gets a button in the rack that opens it in a floating window. The editor runs its own silent copy of the module, and every change it makes goes to the song, so undo and saving work as they do for the rack's controls.
+- A render waits for every module to load before it starts.
+
+`wam.basics` in this registry holds a polyphonic synth with an editor and a stereo echo, and is the smallest example. It copies the WAM SDK, listed in its `vendor.json`.
 
 ## The engine
 

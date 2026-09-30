@@ -1,0 +1,37 @@
+{
+  "id": "wam.basics",
+  "name": "WAM Basics",
+  "description": "Two Web Audio Modules for the DAW: PolySynth, a polyphonic synth, and Echo, a stereo delay.",
+  "version": "1.0.0",
+  "depends": [
+    "daw.devices"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "exports": [
+    "wam"
+  ],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "webview-files"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "vendor.json",
+    "wam/echo/index.js",
+    "wam/polysynth/gui.js",
+    "wam/polysynth/index.js",
+    "wam/sdk/LICENSE",
+    "wam/sdk/index.js"
+  ]
+}

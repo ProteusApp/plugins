@@ -15,6 +15,8 @@ import {
   manifestFor,
   pathProblem,
   textProblem,
+  vendorOf,
+  sha256,
   pullRequestBody,
   validate,
 } from '../scripts/registry.mjs';
@@ -342,4 +344,19 @@ test('the pull request of a profile names its folder and its plugins', () => {
   assert.match(body, /^Adds the profile \*\*Writer\*\*/);
   assert.match(body, /profiles\/writer\/profile\.lua/);
   assert.match(body, /`app\.notes`, `hello\.world`/);
+});
+
+test('a vendored file may have long lines, when vendor.json vouches for it', () => {
+  const built = 'export const x=' + '1+'.repeat(800) + '1;\n';
+  const vendor = (entry) => JSON.stringify({ files: { 'lib/built.js': entry } });
+  const good = { source: 'npm:@webaudiomodules/sdk@0.0.12/dist/index.js', license: 'MIT', sha256: sha256(built) };
+  assert.deepEqual([...vendorOf({ 'lib/built.js': built, 'vendor.json': vendor(good) }).vendored], ['lib/built.js']);
+  assert.equal(textProblem('lib/built.js', built, { vendored: true }), null);
+  assert.match(textProblem('lib/built.js', built), /longer than/);
+  assert.match(vendorOf({ 'lib/built.js': built + ' ', 'vendor.json': vendor(good) }).problems[0], /does not match the sha256/);
+  assert.match(vendorOf({ 'vendor.json': vendor(good) }).problems[0], /does not have/);
+  assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, license: '' }) }).problems[0], /license/);
+  assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'file:///etc/passwd' }) }).problems[0], /source/);
+  assert.match(vendorOf({ 'vendor.json': '{' }).problems[0], /not valid JSON/);
+  assert.equal(textProblem('lib/built.js', built.replace('1;', '\u0000;'), { vendored: true }) !== null, true, 'control characters still count');
 });

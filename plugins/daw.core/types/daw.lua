@@ -165,7 +165,8 @@
 ---@field category? string Groups devices in the browser, such as `'Synths'` or `'Delay'`.
 ---@field params Daw.ParamSpec[]
 ---@field presets? Daw.Preset[]
----@field patch Daw.Patch
+---@field patch Daw.Patch Empty for a Web Audio Module.
+---@field wam? { path: string } A Web Audio Module instead of a patch: its module, in a folder the registering plugin lists in `exports`, such as `'wam/synth/index.js'`. Its parameters come from the module once the engine loads it.
 ---@field owner? string Set by the service: the plugin that registered it.
 
 ---------------------------------------------------------------------------------------------
@@ -174,6 +175,8 @@
 
 ---@class Daw.EngineDevice
 ---@field id string
+---@field kind? string A Web Audio Module's device id, so the engine can report its parameters.
+---@field wam? { url: string } Where the engine page loads a Web Audio Module, under its mounts.
 ---@field patch table The device's patch, with its role.
 ---@field params table<string, Daw.Value> Every parameter, defaults filled in.
 ---@field bypass boolean
@@ -282,6 +285,7 @@
 ---@field to_unit fun(param: Daw.ParamSpec, value: number): number Where the value sits along its knob, from 0 to 1.
 ---@field from_unit fun(param: Daw.ParamSpec, unit: number): number
 ---@field format fun(param: Daw.ParamSpec, value: Daw.Value): string Such as `'2.40 kHz'` or `'-6.0 dB'`.
+---@field from_wam fun(info: table<string, table>): Daw.ParamSpec[] A Web Audio Module's parameters, from its `getParameterInfo`.
 ---@field ref fun(spec: Daw.DeviceSpec, preset?: string): Daw.DeviceRef A new device, with no id yet.
 ---@field preset fun(spec: Daw.DeviceSpec, name?: string): Daw.Preset?
 ---@field values fun(spec: Daw.DeviceSpec, ref: Daw.DeviceRef): table<string, Daw.Value> Defaults, then the preset, then the track's own values.
@@ -355,6 +359,12 @@ function Devices.list (role) end
 ---@param preset? string
 ---@return Daw.DeviceRef?
 function Devices.ref (id, preset) end
+
+---Gives a Web Audio Module device the parameters its module reported, as its
+---`getParameterInfo` gives them. The engine calls it once the module loads.
+---@param id string
+---@param info table<string, table>
+function Devices.describe (id, info) end
 
 ---------------------------------------------------------------------------------------------
 -- daw.session
@@ -509,6 +519,11 @@ function Engine.file (id) end
 
 ---Asks the user where to save, then plays the whole song into that WAV file.
 function Engine.export_wav () end
+
+---Opens a Web Audio Module device's own editor in a window. Its values follow the song both
+---ways. Does nothing for a device that is no module, or without floating windows.
+---@param device_id string
+function Engine.open_editor (device_id) end
 
 ---An audio file the user gave the engine. `seconds` and `peaks` arrive once the page decoded
 ---it, and `daw:file` fires then.

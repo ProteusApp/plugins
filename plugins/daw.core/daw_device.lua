@@ -168,6 +168,23 @@ function M.check (spec)
     keys[param.key] = true
     out.params[#out.params + 1] = param
   end
+  -- A Web Audio Module brings its own sound: a module in the registering plugin's exported
+  -- folder, instead of a patch. Its parameters arrive once the engine loads it.
+  if spec.wam ~= nil then
+    local path = type (spec.wam) == 'table' and spec.wam.path or nil
+    if
+      type (path) ~= 'string'
+      or not path:match ('^[%w_%-][%w_%-./]*%.m?js$')
+      or path:find ('%.%.')
+      or path:find ('//')
+    then
+      return nil,
+        spec.id
+          .. ': wam.path names the module in the plugin, such as "wam/synth/index.js"'
+    end
+    out.wam = { path = path }
+    return out, nil
+  end
   local patch = spec.patch --[[@as table<string, any>]]
   if type (patch) ~= 'table' then
     return nil, spec.id .. ': a device needs a patch'
@@ -365,6 +382,78 @@ local function trim_number (n)
     return string.format ('%d', math.floor (n + 0.5))
   end
   return string.format ('%.2f', n)
+end
+
+-- Units a module's parameter may name that values here read in.
+local WAM_UNITS = { Hz = true, dB = true, s = true, st = true, ct = true }
+
+---Turns a Web Audio Module's parameter info, as `getParameterInfo` gives it, into parameter
+---specs, in the order of their ids. A float with an exponent reads along a log curve, as
+---the module's own control would.
+---@param info table<string, table>
+---@return Daw.ParamSpec[]
+function M.from_wam (info)
+  local ids = {} ---@type string[]
+  for id in pairs (info or {}) do
+    if type (id) == 'string' and id:match ('^[%a_][%w_]*$') then
+      ids[#ids + 1] = id
+    end
+  end
+  table.sort (ids)
+  local out = {} ---@type Daw.ParamSpec[]
+  for _, id in ipairs (ids) do
+    local p = info[id] --[[@as table<string, any>]]
+    local kind = p.type --[[@as string?]]
+    local label = type (p.label) == 'string' and p.label ~= '' and p.label or id
+    local spec ---@type table<string, any>?
+    if kind == 'boolean' then
+      spec = {
+        key = id,
+        label = label,
+        kind = 'toggle',
+        default = (tonumber (p.defaultValue) or 0) ~= 0,
+      }
+    elseif
+      kind == 'choice'
+      and type (p.choices) == 'table'
+      and #p.choices > 0
+    then
+      local options = {} ---@type string[]
+      for _, c in
+        ipairs (p.choices --[[@as any[] ]])
+      do
+        options[#options + 1] = tostring (c)
+      end
+      spec = {
+        key = id,
+        label = label,
+        kind = 'choice',
+        options = options,
+        default = options[math.floor (tonumber (p.defaultValue) or 0) + 1]
+          or options[1],
+      }
+    else
+      local min = tonumber (p.minValue) or 0
+      local max = tonumber (p.maxValue) or 1
+      if max > min then
+        spec = {
+          key = id,
+          label = label,
+          min = min,
+          max = max,
+          default = tonumber (p.defaultValue) or min,
+          step = kind == 'int' and 1 or nil,
+          unit = WAM_UNITS[p.units] and p.units or nil,
+          curve = (tonumber (p.exponent) or 0) > 0 and min > 0 and 'log' or nil,
+        }
+      end
+    end
+    local clean = spec and check_param (spec, #out + 1)
+    if clean then
+      out[#out + 1] = clean
+    end
+  end
+  return out
 end
 
 ---@param param Daw.ParamSpec
