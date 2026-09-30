@@ -108,7 +108,7 @@
       "id": "daw.arrange",
       "name": "DAW arrangement",
       "description": "Tracks and clips along a timeline, with the ruler and the loop.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -125,7 +125,8 @@
         "ui.views",
         "ui.notify",
         "ui.tabs",
-        "core.keys"
+        "core.keys",
+        "daw.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -138,8 +139,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "daw.browser",
@@ -174,6 +175,36 @@
       "updated": "2026-09-30T17:32:45Z"
     },
     {
+      "id": "daw.channels",
+      "name": "DAW channel rack",
+      "description": "The Channel Rack: every instrument as a channel, with a step sequencer that writes into the Playlist.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "daw.core",
+        "daw.devices",
+        "daw.session",
+        "daw.engine",
+        "daw.windows",
+        "core.commands"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
+    },
+    {
       "id": "daw.keyboard",
       "name": "DAW computer keyboard",
       "description": "Play the selected track from the computer keyboard.",
@@ -206,8 +237,8 @@
     {
       "id": "daw.core",
       "name": "DAW core",
-      "description": "The logic behind the DAW: songs, notes, devices, time and undo.",
-      "version": "1.0.0",
+      "description": "The logic behind the DAW: songs, notes, steps, devices, time and undo.",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -228,20 +259,22 @@
         "daw_notes.lua",
         "daw_resolve.lua",
         "daw_song.lua",
+        "daw_steps.lua",
         "daw_time.lua",
         "init.lua",
         "tests/core.test.lua",
         "tests/devices.test.lua",
+        "tests/steps.test.lua",
         "types/daw.lua"
       ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "daw.rack",
       "name": "DAW device rack",
       "description": "The instrument and effects of the selected track, with every parameter.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -254,7 +287,8 @@
       "optional": [
         "ui.palette",
         "ui.menus",
-        "daw.engine"
+        "daw.engine",
+        "daw.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -267,8 +301,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "daw.devices",
@@ -423,7 +457,7 @@
       "id": "daw.mixer",
       "name": "DAW mixer",
       "description": "Faders, pans, meters, mute and solo for every track.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -433,7 +467,9 @@
         "daw.session",
         "daw.engine"
       ],
-      "optional": [],
+      "optional": [
+        "daw.windows"
+      ],
       "permissions": [],
       "folders": [],
       "requires": {
@@ -445,14 +481,14 @@
       "files": [
         "init.lua"
       ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "daw.pianoroll",
       "name": "DAW piano roll",
       "description": "Draw, move and shape the notes of a clip.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -466,7 +502,8 @@
       "optional": [
         "ui.menus",
         "ui.palette",
-        "core.keys"
+        "core.keys",
+        "daw.windows"
       ],
       "permissions": [],
       "folders": [],
@@ -479,8 +516,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "daw.session",
@@ -547,6 +584,35 @@
       ],
       "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
       "updated": "2026-09-30T17:32:45Z"
+    },
+    {
+      "id": "daw.windows",
+      "name": "DAW windows",
+      "description": "The DAW as a desktop of floating windows, in the manner of FL Studio: drag, resize, maximize, and a key for each.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lib.ui",
+        "core.commands"
+      ],
+      "optional": [
+        "ui.tabs",
+        "ui.toolbar",
+        "core.keys"
+      ],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "init.lua"
+      ],
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "theme.dracula",
@@ -1158,8 +1224,8 @@
     {
       "id": "daw",
       "name": "DAW",
-      "description": "Make music: tracks, clips, a piano roll, a mixer, instruments and effects.",
-      "version": "1.0.0",
+      "description": "Make music in floating windows, like FL Studio: a channel rack with steps, a playlist, a piano roll, a mixer, instruments and effects.",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "plugins": [
         "theme.midnight",
@@ -1181,9 +1247,11 @@
         "daw.devices",
         "daw.session",
         "daw.engine",
+        "daw.windows",
         "daw.instruments",
         "daw.effects",
         "daw.transport",
+        "daw.channels",
         "daw.arrange",
         "daw.pianoroll",
         "daw.mixer",
@@ -1196,8 +1264,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
+      "commit": "4ce9d1f396424b4111dd4b7b27b1a99e8d5202bd",
+      "updated": "2026-09-30T20:09:55Z"
     },
     {
       "id": "shader",
