@@ -23,6 +23,19 @@
     "core.profiles",
     "core.settings",
     "core.themes",
+    "daw.arrange",
+    "daw.browser",
+    "daw.core",
+    "daw.devices",
+    "daw.effects",
+    "daw.engine",
+    "daw.instruments",
+    "daw.keyboard",
+    "daw.mixer",
+    "daw.pianoroll",
+    "daw.rack",
+    "daw.session",
+    "daw.transport",
     "dev.console",
     "dev.tools",
     "discord.rpc",
@@ -65,6 +78,7 @@
     "lib.",
     "editor.",
     "ws.",
-    "dev."
+    "dev.",
+    "daw."
   ]
 }
