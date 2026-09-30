@@ -2,7 +2,9 @@
 
 ## Review a submission
 
-Each submission becomes a pull request labeled `[AUTOMATED] Plugin Request`, with a checklist. Read every file before merging. A merge is what makes the plugin installable.
+Each submission becomes a pull request labeled `[AUTOMATED] Plugin Request`, with a checklist. Read every file before merging. A merge is what makes the plugin or profile installable.
+
+A profile is one `profile.lua` that lists plugins and settings. Check that every plugin it names ships with Proteus or is listed here, and that its settings hold nothing personal.
 
 Check that:
 
@@ -22,7 +24,7 @@ It then merges the pull request, rebuilds the index and closes the issue. A reac
 
 Close the pull request to turn a submission down, with a comment that says why. The author can publish a fixed version, which opens a new submission.
 
-To take a plugin down, delete its folder in a pull request. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
+To take a plugin or profile down, delete its folder in a pull request. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
 
 ## Set up the repository
 
