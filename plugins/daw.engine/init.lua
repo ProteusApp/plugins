@@ -4,9 +4,13 @@
 -- posts the result. A knob or a fader takes a shorter path, so dragging one does not send
 -- the whole song each time.
 --
--- The page is also the master meter, and it sits on the toolbar. The browser holds a
--- sandboxed page's sound until someone clicks inside it, so until then the meter reads
--- "Click for sound".
+-- The page is also the master meter, and it sits on the toolbar. It asks for autoplay, and
+-- where the browser still holds its sound, the meter reads "Click for sound".
+--
+-- Audio files come from the user, one pick at a time, through app.grants: the plugin holds
+-- an id and a name, never a path. A song keeps the ids, the page asks for a file when it
+-- needs one, and the app sends the bytes straight into the page. Export as WAV works the
+-- same way: the user picks where to save, and only the page writes there.
 --
 -- Events it sends:
 --   daw:transport (playing, beat)   playing started or stopped
@@ -14,6 +18,14 @@
 --   daw:recording (on)              recording started or stopped
 --   daw:metronome (on)              the metronome was switched on or off
 --   daw:sound (on)                  the page may make sound now, or not
+--   daw:file (id)                   an audio file decoded or failed, see engine.file
+
+local AUDIO = {
+  {
+    name = 'Audio',
+    extensions = { 'wav', 'mp3', 'ogg', 'flac', 'm4a', 'aac', 'aif', 'aiff' },
+  },
+}
 
 -- lang=css
 local CSS = [[
@@ -34,7 +46,10 @@ return {
   name = 'DAW engine',
   description = 'Plays the song through Web Audio in a web view: instruments, effects, the mixer and recording.',
   version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions', 'webview' } },
+  requires = {
+    proteus = '>=0.2.0',
+    features = { 'permissions', 'webview', 'grants', 'autoplay' },
+  },
   permissions = {},
   depends = {
     'lib.ui',
@@ -63,6 +78,7 @@ return {
     local warned = {} ---@type table<string, boolean>
     local push_pending = false
     local view = nil ---@type Proteus.El?
+    local files = {} ---@type table<string, Daw.EngineFile>
 
     ---@param message table
     local function post (message)
@@ -154,6 +170,65 @@ return {
       session.edit_clip (clip)
     end
 
+    -- Audio files ------------------------------------------------------------------------------
+
+    ---What the engine knows of a file, by grant id. Nil for an id this plugin was never given.
+    ---@param id string
+    ---@return Daw.EngineFile?
+    local function file_info (id)
+      local known = files[id]
+      if known then
+        return known
+      end
+      local g = app.grants.get (id)
+      if not g then
+        return nil
+      end
+      files[id] = { name = g.name }
+      return files[id]
+    end
+
+    ---@param id string
+    local function send_file (id)
+      if not view then
+        return
+      end
+      local g = app.grants.get (id)
+      if g and g.mode == 'read' then
+        view:widget ('send_file', id)
+      else
+        post ({
+          type = 'missing',
+          file = id,
+          error = 'the DAW no longer has this file. Pick it again.',
+        })
+      end
+    end
+
+    ---@param id string
+    ---@param m table
+    local function file_loaded (id, m)
+      local info = file_info (id) or { name = id }
+      info.failed = nil
+      info.seconds = tonumber (m.seconds)
+      info.peaks = type (m.peaks) == 'table' and m.peaks or nil
+      files[id] = info
+      app.emit ('daw:file', id)
+    end
+
+    ---@param id string
+    ---@param err string
+    local function file_failed (id, err)
+      local info = file_info (id) or { name = id }
+      local first = not info.failed
+      info.failed = err
+      files[id] = info
+      if first and notify then
+        notify.warn ('The audio file ' .. info.name .. ' did not load: ' .. err)
+      end
+      app.emit ('daw:file', id)
+    end
+
     -- Messages from the page ------------------------------------------------------------------
 
     ---@param m any
@@ -161,7 +236,7 @@ return {
       if type (m) ~= 'table' then
         return
       end
-      local kind = m.type
+      local kind = m.type --[[@as string?]]
       if kind == 'ready' then
         post ({ type = 'metronome', on = metronome })
         post ({ type = 'live', track = live_track () or '' })
@@ -192,11 +267,38 @@ return {
         app.emit ('daw:sound', sound)
       elseif kind == 'warning' then
         app.warn (tostring (m.message))
+      elseif kind == 'want' then
+        send_file (tostring (m.file))
+      elseif kind == 'file' then
+        file_loaded (tostring (m.file), m)
+      elseif kind == 'file_failed' then
+        file_failed (tostring (m.file), tostring (m.error))
+      elseif kind == 'rendered' or kind == 'render_failed' then
+        local g = app.grants.get (tostring (m.file))
+        local name = g and g.name or 'the file'
+        -- The page may write to it only once: a new export asks where again.
+        app.grants.forget (tostring (m.file))
+        if notify then
+          if kind == 'rendered' then
+            notify.success (
+              string.format (
+                'Exported %s, %.1f seconds.',
+                name,
+                tonumber (m.seconds) or 0
+              )
+            )
+          else
+            notify.error (
+              'Could not export ' .. name .. ': ' .. tostring (m.error)
+            )
+          end
+        end
       end
     end
 
     view = ui.webview ({
       page = 'page/engine.html',
+      autoplay = true,
       on_message = on_message,
       on_status = function (status)
         if not status.responsive and notify then
@@ -304,6 +406,48 @@ return {
       levels = function ()
         return levels
       end,
+      pick_audio = function (multiple, cb)
+        app.grants.open ({
+          title = multiple and 'Choose Audio Files' or 'Choose an Audio File',
+          filters = AUDIO,
+          multiple = multiple,
+        }, function (picked)
+          local out = {} ---@type { id: string, name: string }[]
+          for _, g in ipairs (picked or {}) do
+            local info = files[g.id]
+            if info and info.failed then
+              -- Picked again after it failed, so the page tries once more.
+              info.failed = nil
+              post ({ type = 'retry', file = g.id })
+            elseif not (info and info.seconds) then
+              -- Decoded now, since a new clip's length comes from the file.
+              files[g.id] = info or { name = g.name }
+              send_file (g.id)
+            end
+            files[g.id] = info or files[g.id] or { name = g.name }
+            out[#out + 1] = { id = g.id, name = g.name }
+          end
+          cb (out)
+        end)
+      end,
+      file = file_info,
+      export_wav = function ()
+        local song = session.song ()
+        app.grants.save ({
+          title = 'Export as WAV',
+          name = (song.name ~= '' and song.name or 'Song') .. '.wav',
+          filters = { { name = 'WAV audio', extensions = { 'wav' } } },
+        }, function (g)
+          if not g or not view then
+            return
+          end
+          view:widget ('allow_save', g.id)
+          post ({ type = 'render', file = g.id, from = 0, to = 0 })
+          if notify then
+            notify.info ('Exporting ' .. g.name .. '...')
+          end
+        end)
+      end,
     }
     app.provide ('daw.engine', service)
 
@@ -316,6 +460,16 @@ return {
         post ({ type = 'stop' })
         post ({ type = 'all_off' })
       end,
+    })
+    commands.register ({
+      id = 'daw.export_wav',
+      category = 'DAW',
+      title = 'Export as WAV',
+      icon = 'file-down',
+      shared = true,
+      menu = 'File',
+      group = '4',
+      run = service.export_wav,
     })
     commands.register ({
       id = 'daw.reload_engine',

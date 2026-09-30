@@ -7,7 +7,7 @@
 -- The song
 ---------------------------------------------------------------------------------------------
 
----A parameter value: a number, a choice or a file path as text, or a switch.
+---A parameter value: a number, a choice or a file's id as text, or a switch.
 ---@alias Daw.Value number|string|boolean
 
 ---A song, as saved in `songs/<name>.song.json`. Times are in beats, where a beat is a
@@ -36,7 +36,7 @@
 ---@class Daw.Track
 ---@field id string
 ---@field name string
----@field kind Daw.TrackKind The DAW makes instrument tracks. `audio` is kept in the format for later, and plays nothing yet.
+---@field kind Daw.TrackKind An instrument track plays notes, and an audio track plays audio files.
 ---@field color string A CSS colour.
 ---@field volume number Decibels, from -60 (silent) to 6.
 ---@field pan number From -1 (left) to 1 (right).
@@ -62,7 +62,7 @@
 ---@field length number
 ---@field color? string
 ---@field notes? Daw.Note[] A MIDI clip's notes, timed from the clip's start.
----@field file? string An audio clip's file, as a full path on disk.
+---@field file? string An audio clip's file: the id of a file the user gave daw.engine, never a path.
 ---@field offset? number Seconds into the file where an audio clip starts.
 ---@field gain? number An audio clip's gain in decibels.
 
@@ -111,6 +111,7 @@
 ---@alias Daw.NodeType
 ---| 'osc' # An oscillator. `wave`: sine, triangle, sawtooth, square or pulse. `freq`, `detune`, `duty`.
 ---| 'noise' # White noise.
+---| 'sample' # An audio file the user picked. `file` names a file parameter, such as `'$file'`. `loop`, `rate`, `detune`.
 ---| 'gain' # Scales the sound. `gain`.
 ---| 'filter' # A biquad filter. `mode`, `freq`, `q`, `gain`, `detune`.
 ---| 'delay' # `time` in seconds, up to 4.
@@ -480,6 +481,29 @@ function Engine.recording () end
 ---@return { tracks: table<string, number>, master: number[] }
 function Engine.levels () end
 
----True once the page may make sound. Until someone clicks the meter, the browser holds it.
+---True once the page may make sound. Where the browser holds it, a click on the meter starts it.
 ---@return boolean
 function Engine.sound () end
+
+---Asks the user for audio files in the system's open dialog. `cb` gets the files picked, by
+---the id a song keeps and the name to show, or an empty list when the user cancelled.
+---@param multiple boolean
+---@param cb fun(files: { id: string, name: string }[])
+function Engine.pick_audio (multiple, cb) end
+
+---What the engine knows of an audio file, by id. Nil for an id it was never given, such as
+---one in a song from another computer.
+---@param id string
+---@return Daw.EngineFile?
+function Engine.file (id) end
+
+---Asks the user where to save, then plays the whole song into that WAV file.
+function Engine.export_wav () end
+
+---An audio file the user gave the engine. `seconds` and `peaks` arrive once the page decoded
+---it, and `daw:file` fires then.
+---@class Daw.EngineFile
+---@field name string
+---@field seconds? number
+---@field peaks? number[] The loudest sample in each of 1000 even stretches, from 0 to 1.
+---@field failed? string Why it did not load.

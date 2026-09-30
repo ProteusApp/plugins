@@ -8,6 +8,7 @@ local KINDS = { number = true, choice = true, toggle = true, file = true }
 local NODE_TYPES = {
   osc = true,
   noise = true,
+  sample = true,
   gain = true,
   filter = true,
   delay = true,

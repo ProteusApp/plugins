@@ -376,6 +376,24 @@ return {
             commands.run ('daw.add_track')
           end,
         }),
+        ui.button ({
+          'Audio track',
+          icon = 'audio-lines',
+          variant = 'ghost',
+          title = 'Add a track that plays audio files',
+          onclick = function ()
+            commands.run ('daw.add_audio_track')
+          end,
+        }),
+        ui.button ({
+          'Import audio',
+          icon = 'file-audio',
+          variant = 'ghost',
+          title = 'Put audio files on the timeline at the playhead',
+          onclick = function ()
+            commands.run ('daw.import_audio')
+          end,
+        }),
         ui.div ({ class = 'daw-arr-grow' }),
         grid_select,
         ui.button ({
@@ -428,6 +446,53 @@ return {
       end
       parts[#parts + 1] = '</svg>'
       return table.concat (parts)
+    end
+
+    ---A waveform of the stretch of the file an audio clip plays, from the peaks the engine
+    ---sent when the file decoded.
+    ---@param clip Daw.Clip
+    ---@param tempo number
+    ---@return string
+    local function audio_preview (clip, tempo)
+      local info = engine.file (clip.file or '')
+      local p = info and info.peaks
+      if not info or not p or #p == 0 or not info.seconds then
+        return ''
+      end
+      local per = #p / math.max (0.001, info.seconds)
+      local from = (clip.offset or 0) * per
+      local count = clip.length * 60 / tempo * per
+      local pts = {} ---@type string[]
+      local steps = math.min (300, math.max (2, math.floor (count)))
+      for i = 0, steps do
+        local v = p[math.floor (from + count * i / steps) + 1] or 0
+        pts[#pts + 1] = string.format ('%d,%.3f', i, 1 - v)
+        pts[#pts + 1] = string.format ('%d,%.3f', i, 1 + v)
+      end
+      return string.format (
+        '<svg viewBox="0 0 %d 2" preserveAspectRatio="none"><polyline points="%s"/></svg>',
+        steps,
+        table.concat (pts, ' ')
+      )
+    end
+
+    ---What a clip's tooltip says: its name, and for an audio clip whose file is not here,
+    ---why it is silent.
+    ---@param t Daw.Track
+    ---@param c Daw.Clip
+    ---@return string
+    local function clip_title (t, c)
+      if t.kind ~= 'audio' then
+        return c.name
+      end
+      local info = engine.file (c.file or '')
+      if not info then
+        return c.name .. ' (the file is not on this computer: import it again)'
+      end
+      if info.failed then
+        return c.name .. ' (' .. info.failed .. ')'
+      end
+      return c.name .. ' · ' .. info.name
     end
 
     local function render ()
@@ -530,9 +595,10 @@ return {
             px (c.start * ppb),
             px (math.max (3, c.length * ppb - 1)),
             esc (c.color or t.color),
+            esc (clip_title (t, c)),
             esc (c.name),
-            esc (c.name),
-            midi_preview (c),
+            t.kind == 'audio' and audio_preview (c, song.tempo)
+              or midi_preview (c),
             c.id
           )
         end
@@ -546,7 +612,7 @@ return {
       end
       if #song.tracks == 0 then
         out[#out + 1] =
-          '<div class="daw-empty-row">No tracks yet. Add an instrument track to start.</div>'
+          '<div class="daw-empty-row">No tracks yet. Add an instrument or audio track to start.</div>'
       end
       content:html (table.concat (out))
       playhead:style ('left', px (HEAD_W + engine.position () * ppb))
@@ -916,6 +982,78 @@ return {
       end)
     end
 
+    ---Adds an audio track after the selected one and selects it.
+    ---@param name? string
+    ---@return string id
+    local function add_audio_track (name)
+      local song = session.song ()
+      local _, index = daw.song.track (song, session.selected_track () or '')
+      local s, id = daw.song.add_track (
+        song,
+        { kind = 'audio', name = name },
+        index and index + 1 or nil
+      )
+      session.apply (s, { kind = 'edit', label = 'Add track' })
+      session.select_track (id)
+      return id
+    end
+
+    -- Imports waiting for their file to decode, since a clip's length comes from the file's.
+    local waiting = {} ---@type table<string, { track: string, start: number, name: string }>
+
+    ---@param track_id string
+    ---@param start number
+    ---@param file { id: string, name: string }
+    local function place_clip (track_id, start, file)
+      local info = engine.file (file.id)
+      local seconds = info and info.seconds
+      if not seconds then
+        waiting[file.id] = { track = track_id, start = start, name = file.name }
+        return
+      end
+      local song = session.song ()
+      local s, id = daw.song.add_clip (song, track_id, {
+        name = file.name:match ('^(.+)%.%w+$') or file.name,
+        start = start,
+        length = math.max (0.25, seconds * song.tempo / 60),
+        file = file.id,
+        offset = 0,
+        gain = 0,
+      })
+      session.apply (s, { kind = 'edit', label = 'Import audio' })
+      session.select_clips ({ id })
+    end
+
+    ---Asks for audio files and puts them on the timeline at `beat`: on the selected audio
+    ---track when there is one file and one is selected, or else each on a new track.
+    ---@param beat number
+    ---@param track_id? string
+    local function import_audio (beat, track_id)
+      engine.pick_audio (true, function (picked)
+        local target = track_id or session.selected_track ()
+        local t = daw.song.track (session.song (), target or '')
+        for i, file in ipairs (picked) do
+          local into = (i == 1 and t and t.kind == 'audio') and t.id
+            or add_audio_track (file.name:match ('^(.+)%.%w+$') or file.name)
+          place_clip (into, beat, file)
+        end
+      end)
+    end
+
+    app.on ('daw:file', function (id)
+      local file = tostring (id)
+      local wait = waiting[file]
+      if wait then
+        waiting[file] = nil
+        local info = engine.file (file)
+        if info and info.seconds then
+          place_clip (wait.track, wait.start, { id = file, name = wait.name })
+          return
+        end
+      end
+      render ()
+    end)
+
     ---@param id string
     local function delete_track (id)
       local t = daw.song.track (session.song (), id)
@@ -1284,6 +1422,24 @@ return {
           session.select_track (id)
           local t = daw.song.track (session.song (), id)
           local beat = beat_at (ev.x or 0)
+          if t and t.kind == 'audio' then
+            return {
+              {
+                label = 'Import Audio Here',
+                icon = 'file-audio',
+                run = function ()
+                  import_audio (snap (beat), id)
+                end,
+              },
+              {
+                label = 'Move the Playhead Here',
+                icon = 'map-pin',
+                run = function ()
+                  engine.seek (snap (beat))
+                end,
+              },
+            }
+          end
           if t and t.kind == 'instrument' then
             return {
               {
@@ -1309,6 +1465,26 @@ return {
 
     -- Commands ---------------------------------------------------------------------------------
 
+    commands.register ({
+      id = 'daw.add_audio_track',
+      category = 'DAW',
+      title = 'Add Audio Track',
+      icon = 'audio-lines',
+      menu = 'Track',
+      run = function ()
+        add_audio_track ()
+      end,
+    })
+    commands.register ({
+      id = 'daw.import_audio',
+      category = 'DAW',
+      title = 'Import Audio File',
+      icon = 'file-audio',
+      menu = 'Track',
+      run = function ()
+        import_audio (engine.position ())
+      end,
+    })
     commands.register ({
       id = 'daw.add_track',
       category = 'DAW',

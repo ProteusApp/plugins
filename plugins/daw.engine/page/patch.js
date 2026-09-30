@@ -209,6 +209,25 @@ const MAKERS = {
     },
     params: { rate: (n) => n.playbackRate },
   },
+  // An audio file the user picked, named by the file parameter's grant id. It is silent
+  // until the file arrives, and the next note plays it.
+  sample: {
+    make(b, spec, bind) {
+      const src = b.ctx.createBufferSource();
+      bind(src.playbackRate, 'rate', 1);
+      bind(src.detune, 'detune', 0);
+      const id = textField(spec.file, b.scope.params, '');
+      const buf = id ? FILES.buffer(id) : undefined;
+      if (id && !buf) FILES.want(id);
+      if (buf) {
+        src.buffer = buf;
+        src.loop = flagField(spec.loop, b.scope.params);
+      }
+      b.sources.push(src);
+      return src;
+    },
+    params: { rate: (n) => n.playbackRate, detune: (n) => n.detune },
+  },
   gain: {
     make(b, _spec, bind) {
       const g = b.ctx.createGain();

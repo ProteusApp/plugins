@@ -33,6 +33,7 @@
     "daw.rack",
     "daw.browser",
     "daw.keyboard",
+    "daw.midi",
     "discord.rpc"
   ],
   "author": {

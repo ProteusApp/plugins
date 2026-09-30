@@ -2,8 +2,8 @@
 // reports back what the plugin shows: the transport, the playhead, the meters and what was
 // recorded. The page itself is the master meter on the toolbar.
 //
-// The page runs in a sandboxed frame, so the browser holds its sound until someone clicks
-// inside it. Until then the meter reads "Click for sound", and a click starts the sound.
+// The plugin asks for autoplay, so the sound usually starts by itself. Where the browser
+// still holds it, the meter reads "Click for sound", and a click inside the page starts it.
 //
 // Messages from the plugin:
 //   { type: 'load', song }                  song: the resolved song, as JSON text
@@ -12,6 +12,10 @@
 //   { type: 'mix', track, key, value }      volume, pan, mute or solo of a track or 'master'
 //   { type: 'note_on', track, pitch, velocity } { type: 'note_off', track, pitch }
 //   { type: 'all_off' } { type: 'live', track } { type: 'metronome', on } { type: 'record', on }
+//   { type: 'missing', file, error }        the plugin cannot send a file the page wanted
+//   { type: 'retry', file }                 try a file that failed again
+//   { type: 'render', file, from, to }      play the song into a WAV file the user chose to
+//                                           save. With `to` at or before `from`, to the end.
 // Messages to the plugin:
 //   { type: 'ready' }                       the page listens
 //   { type: 'sound', on }                   the browser lets the page make sound, or not
@@ -20,6 +24,9 @@
 //   { type: 'levels', tracks, master }      about 15 times a second while there is sound
 //   { type: 'recorded', notes }             the notes recorded, when recording or playing stops
 //   { type: 'warning', message }            a patch had a mistake
+//   { type: 'rendered', file, seconds }     the WAV file is written
+//   { type: 'render_failed', file, error }
+// and the file messages in files.js.
 
 'use strict';
 
@@ -39,6 +46,37 @@ const engine = new Engine((kind, data) => {
     showSound();
   }
 });
+
+FILES.post = post;
+FILES.decode = (bytes) => engine.ctx.decodeAudioData(bytes);
+proteus.onFile((f) => FILES.receive(f));
+
+/** Waits, up to a limit, for the files the song asked for to arrive. */
+async function filesSettled(limit = 15000) {
+  const start = performance.now();
+  while (FILES.pending.size > 0 && performance.now() - start < limit) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+let rendering = false;
+async function renderTo(file, from, to) {
+  if (rendering) {
+    post({ type: 'render_failed', file, error: 'another export is still running' });
+    return;
+  }
+  rendering = true;
+  try {
+    await filesSettled();
+    const buf = await engine.render(from, to);
+    await proteus.save(file, encodeWav(buf));
+    post({ type: 'rendered', file, seconds: buf.duration });
+  } catch (err) {
+    post({ type: 'render_failed', file, error: String(err?.message ?? err) });
+  } finally {
+    rendering = false;
+  }
+}
 
 function sendRecording() {
   const notes = engine.takeRecording();
@@ -115,6 +153,15 @@ proteus.on((m) => {
       engine.setRecording(m.on === true);
       if (m.on !== true) sendRecording();
       break;
+    case 'missing':
+      FILES.missing(String(m.file), typeof m.error === 'string' ? m.error : undefined);
+      break;
+    case 'retry':
+      FILES.retry(String(m.file));
+      break;
+    case 'render':
+      void renderTo(String(m.file), num(m.from), num(m.to));
+      break;
   }
 });
 
@@ -168,5 +215,6 @@ function draw() {
 }
 
 requestAnimationFrame(frame);
+void engine.ctx.resume().then(showSound, showSound);
 showSound();
 post({ type: 'ready' });

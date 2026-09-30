@@ -6,6 +6,9 @@
 //     tracks: [{ id, volume, pan, mute, solo, instrument: device, effects: [device],
 //                clips: [{ start, length, notes: [{ pitch, start, length, velocity }] }] }] }
 //
+// An audio track's clips hold { start, length, file, offset, gain } instead of notes: file is
+// a grant id (see files.js), offset is in seconds and gain in decibels.
+//
 // A device is { id, patch, params, bypass }, where patch is what patch.js builds. Times are
 // in beats, volumes in decibels. Lists may arrive as empty objects, so list() reads both.
 
@@ -184,6 +187,7 @@ class TrackNode {
   instKey = '';
   spec;
   events = [];
+  audio = [];
 
   constructor(ctx, master, warn, bpm) {
     this.ctx = ctx;
@@ -217,7 +221,13 @@ class TrackNode {
     this.chain.update(list(spec.effects));
     this.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, spec.pan || 0)), this.ctx.currentTime, 0.01);
     const events = [];
+    const audio = [];
     for (const clip of list(spec.clips)) {
+      if (clip.file) {
+        audio.push(clip);
+        FILES.want(clip.file);
+        continue;
+      }
       for (const n of list(clip.notes)) {
         if (n.start < 0 || n.start >= clip.length || n.length <= 0) continue;
         const end = Math.min(n.start + n.length, clip.length);
@@ -231,6 +241,8 @@ class TrackNode {
     }
     events.sort((a, b) => a.beat - b.beat || a.pitch - b.pitch);
     this.events = events;
+    audio.sort((a, b) => a.start - b.start);
+    this.audio = audio;
   }
 
   setGain(audible) {
@@ -272,6 +284,9 @@ class Mixer {
     master: { volume: 0, effects: [] },
     tracks: [],
   };
+  /** Audio clips playing now, so Stop can silence them. */
+  sounding = new Set();
+
   constructor(ctx, warn) {
     this.ctx = ctx;
     this.warn = warn;
@@ -347,8 +362,8 @@ class Mixer {
   }
 
   /**
-   * Plays every note that starts in [from, to), where `from` falls at time
-   * `t0`. Notes are cut at `cut`, the loop's end while it loops.
+   * Plays every note and audio clip that starts in [from, to), where `from` falls at time
+   * `t0`. Notes and clips are cut at `cut`, the loop's end while it loops.
    */
   schedule(from, to, t0, cut, metronome) {
     const spb = this.spb;
@@ -363,11 +378,46 @@ class Mixer {
           inst.noteOff(voice, at(Math.min(e.beat + e.dur, cut)));
         }
       }
+      for (const clip of track.audio) {
+        if (clip.start >= from && clip.start < to) {
+          this.playAudio(track, clip, at(clip.start), 0, Math.min(clip.start + clip.length, cut) - clip.start);
+        }
+      }
     }
     if (metronome) {
       for (let b = Math.ceil(from - 1e-9); b < to; b++)
         this.click(at(b), b % (this.song.beats_per_bar || 4) === 0);
     }
+  }
+
+  /** Starts the audio clips already under way at a beat, from the right place in each. */
+  chase(beat, t, cut) {
+    for (const track of this.tracks.values()) {
+      for (const clip of track.audio) {
+        if (clip.start < beat && beat < clip.start + clip.length) {
+          this.playAudio(track, clip, t, beat - clip.start, Math.min(clip.start + clip.length, cut) - beat);
+        }
+      }
+    }
+  }
+
+  playAudio(track, clip, t, into, beats) {
+    const buf = FILES.buffer(clip.file);
+    if (!buf || beats <= 0) return;
+    const offset = (clip.offset ?? 0) + into * this.spb;
+    if (offset >= buf.duration) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = dbToGain(clip.gain ?? 0);
+    src.connect(g);
+    g.connect(track.input);
+    src.start(t, offset, beats * this.spb);
+    this.sounding.add(src);
+    src.onended = () => {
+      this.sounding.delete(src);
+      g.disconnect();
+    };
   }
 
   click(t, accent) {
@@ -384,9 +434,26 @@ class Mixer {
     osc.onended = () => g.disconnect();
   }
 
-  /** Silences every note, at once. */
+  /** Silences every note and clip, at once. */
   silence() {
     const now = this.ctx.currentTime;
     for (const t of this.tracks.values()) t.instrument?.stopAll(now);
+    for (const src of this.sounding) {
+      try {
+        src.stop(now);
+      } catch {
+        // It stopped already.
+      }
+    }
+    this.sounding.clear();
+  }
+
+  /** Where the song's last clip ends, in beats. */
+  end() {
+    let end = 0;
+    for (const t of this.tracks.values()) {
+      for (const c of list(t.spec.clips)) end = Math.max(end, c.start + c.length);
+    }
+    return end;
   }
 }

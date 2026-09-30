@@ -69,6 +69,8 @@ class Engine {
     this.cursorBeat = start;
     this.cursorTime = this.ctx.currentTime + 0.05;
     this.anchors = [{ time: this.cursorTime, beat: start, spb: this.mixer.spb }];
+    const loop = this.loopRange();
+    this.mixer.chase(start, this.cursorTime, loop && start < loop[1] ? loop[1] : Infinity);
     this.tick();
     this.timer = window.setInterval(() => this.tick(), TICK_MS);
     this.emit('transport', { playing: true, beat: start });
@@ -116,6 +118,7 @@ class Engine {
       if (loop && to >= segEnd) {
         this.cursorBeat = loop[0];
         this.anchors.push({ time: this.cursorTime, beat: loop[0], spb });
+        this.mixer.chase(loop[0], this.cursorTime, loop[1]);
       }
     }
     const now = this.ctx.currentTime;
@@ -218,6 +221,25 @@ class Engine {
 
   masterPeak() {
     return [this.peak(this.splitL), this.peak(this.splitR)];
+  }
+
+  // Rendering --------------------------------------------------------------------------------
+
+  /**
+   * Plays the song from `from` to `to` into an AudioBuffer, faster than real time. With `to`
+   * at or before `from`, it plays to the end of the last clip. A tail lets reverbs ring out.
+   */
+  async render(from, to, tail = 2) {
+    const end = to > from ? to : this.mixer.end();
+    if (!(end > from)) throw new Error('the song is empty');
+    const rate = 44100;
+    const seconds = (end - from) * this.mixer.spb + tail;
+    const off = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(seconds * rate), sampleRate: rate });
+    const mixer = new Mixer(off, (msg) => this.emit('warning', { message: msg }));
+    mixer.load(JSON.parse(JSON.stringify(this.mixer.song)));
+    mixer.chase(from, 0, end);
+    mixer.schedule(from, end, 0, end, false);
+    return off.startRendering();
   }
 
   dispose() {

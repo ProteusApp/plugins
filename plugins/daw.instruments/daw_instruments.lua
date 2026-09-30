@@ -819,4 +819,96 @@ local DRUMS = {
   },
 }
 
-return { SYNTH, FM, DRUMS }
+---@type Daw.DeviceSpec
+local SAMPLER = {
+  id = 'daw.sampler',
+  name = 'Sampler',
+  role = 'instrument',
+  category = 'Samplers',
+  icon = 'file-audio',
+  description = 'Plays an audio file you pick across the keyboard, pitched from its root note.',
+  params = {
+    {
+      key = 'file',
+      label = 'Sample',
+      kind = 'file',
+      default = '',
+      group = 'Sample',
+    },
+    {
+      key = 'root',
+      label = 'Root note',
+      min = 0,
+      max = 127,
+      step = 1,
+      default = 60,
+      group = 'Sample',
+    },
+    {
+      key = 'tune',
+      label = 'Tune',
+      min = -24,
+      max = 24,
+      step = 1,
+      default = 0,
+      unit = 'st',
+      group = 'Sample',
+    },
+    {
+      key = 'loop',
+      label = 'Loop',
+      kind = 'toggle',
+      default = false,
+      group = 'Sample',
+    },
+    {
+      key = 'cutoff',
+      label = 'Cutoff',
+      min = 30,
+      max = 20000,
+      default = 20000,
+      curve = 'log',
+      unit = 'Hz',
+      group = 'Filter',
+    },
+    time ('attack', 'Attack', 0.002, 4, 'Amp'),
+    time ('release', 'Release', 0.3, 6, 'Amp'),
+    {
+      key = 'level',
+      label = 'Level',
+      min = -24,
+      max = 6,
+      default = 0,
+      unit = 'dB',
+      group = 'Amp',
+    },
+  },
+  patch = {
+    poly = 16,
+    voice = {
+      nodes = {
+        {
+          id = 'smp',
+          type = 'sample',
+          file = '$file',
+          loop = '$loop',
+          rate = 'semis(key - $root + $tune)',
+        },
+        { id = 'flt', type = 'filter', mode = 'lowpass', freq = '$cutoff' },
+        { id = 'amp', type = 'gain', gain = 0 },
+        {
+          id = 'aenv',
+          type = 'env',
+          a = '$attack',
+          d = 0.05,
+          s = 1,
+          r = '$release',
+          amount = 'vel * db($level)',
+        },
+      },
+      connect = { 'smp > flt', 'flt > amp', 'aenv > amp.gain', 'amp > out' },
+    },
+  },
+}
+
+return { SYNTH, FM, DRUMS, SAMPLER }

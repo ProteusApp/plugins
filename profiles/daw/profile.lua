@@ -1,4 +1,4 @@
--- The DAW: songs of instrument tracks, a piano roll, a mixer and a rack of devices. Every
+-- The DAW: songs of instrument and audio tracks, a piano roll, a mixer and a rack of devices. Every
 -- instrument and effect is a plugin that registers a patch with daw.devices, and daw.engine
 -- plays those patches through Web Audio in a web view. Songs are JSON files in songs/.
 -- The marketplace can add device packs, such as chiptune.
@@ -37,6 +37,7 @@ return {
     'daw.rack',
     'daw.browser',
     'daw.keyboard',
+    'daw.midi',
     'discord.rpc',
   },
   settings = {

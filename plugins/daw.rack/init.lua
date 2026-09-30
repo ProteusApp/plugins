@@ -168,7 +168,7 @@ return {
     'daw.session',
     'core.commands',
   },
-  optional = { 'ui.palette', 'ui.menus' },
+  optional = { 'ui.palette', 'ui.menus', 'daw.engine' },
   activate = function (app)
     local ui = app.use ('ui')
     local views = app.use ('views')
@@ -177,6 +177,7 @@ return {
     local session = app.use ('daw.session') --[[@as Daw.Session]]
     local commands = app.use ('commands')
     local picker = app.try_use ('picker')
+    local engine = app.try_use ('daw.engine') --[[@as Daw.Engine?]]
     ui.css (CSS)
 
     local show_master = false
@@ -339,12 +340,40 @@ return {
           value_el:text (daw.device.format (param, v))
         end
       elseif kind == 'file' then
-        -- Picking a file on disk needs the 'files' permission, which the rack does not ask
-        -- for, so a file parameter only shows its value.
-        input = ui.div ()
+        -- The user picks the file in the system's dialog, and the engine keeps it. The song
+        -- holds its id, and the card shows its name.
+        input = ui.button ({
+          'Choose...',
+          variant = 'ghost',
+          disabled = engine == nil,
+          title = engine and 'Pick an audio file' or 'Needs daw.engine',
+          onclick = function ()
+            if not engine then
+              return
+            end
+            engine.pick_audio (false, function (picked)
+              if picked[1] then
+                set_param (ref, param.key, picked[1].id)
+                session.seal ()
+                value_el:text (picked[1].name)
+              end
+            end)
+          end,
+        })
         set = function (v)
-          value_el:text (daw.device.format (param, v))
-          value_el:attr ('title', tostring (v))
+          local id = tostring (v or '')
+          local info = engine and id ~= '' and engine.file (id)
+          if info then
+            value_el:text (info.name)
+            value_el:attr ('title', info.failed or info.name)
+          else
+            value_el:text (id == '' and 'No file' or 'Missing file')
+            value_el:attr (
+              'title',
+              id == '' and 'No file yet'
+                or 'Pick the file again on this computer'
+            )
+          end
         end
       else
         input = ui.input ({

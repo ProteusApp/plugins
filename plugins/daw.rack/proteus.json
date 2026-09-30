@@ -13,7 +13,8 @@
   ],
   "optional": [
     "ui.palette",
-    "ui.menus"
+    "ui.menus",
+    "daw.engine"
   ],
   "permissions": [],
   "folders": [],

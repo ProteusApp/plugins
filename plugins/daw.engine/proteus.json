@@ -21,7 +21,9 @@
     "proteus": ">=0.2.0",
     "features": [
       "permissions",
-      "webview"
+      "webview",
+      "grants",
+      "autoplay"
     ]
   },
   "author": {
@@ -35,6 +37,7 @@
     "page/engine.html",
     "page/engine.js",
     "page/expr.js",
+    "page/files.js",
     "page/main.js",
     "page/mixer.js",
     "page/patch.js"

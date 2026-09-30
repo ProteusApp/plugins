@@ -7,7 +7,7 @@ local list = require ('daw_instruments') --[[@as Daw.DeviceSpec[] ]]
 ---@type Proteus.Plugin
 return {
   name = 'DAW instruments',
-  description = 'Synth, FM Keys and Drum Kit for the DAW.',
+  description = 'Synth, FM Keys, Drum Kit and Sampler for the DAW.',
   version = '1.0.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
