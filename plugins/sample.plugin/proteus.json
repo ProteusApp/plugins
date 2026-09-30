@@ -2,7 +2,7 @@
   "id": "sample.plugin",
   "name": "Sample Plugin",
   "description": "A sample plugin.",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "depends": [
     "lib.ui",
     "core.commands"

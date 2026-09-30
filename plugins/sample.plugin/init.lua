@@ -4,7 +4,7 @@
 return {
   name = 'Sample Plugin',
   description = 'A sample plugin.',
-  version = '1.0.3',
+  version = '1.0.5',
   depends = { 'lib.ui', 'core.commands' },
   optional = { 'ui.notify', 'ui.toolbar', 'ui.menubar' },
 
@@ -21,7 +21,7 @@ return {
       run = function ()
         local notify = app.try_use ('notify')
         if notify then
-          notify.success ('Hello from sample.plugin!')
+          notify.success ('Hello from the Sample Plugin!')
         end
       end,
     })
