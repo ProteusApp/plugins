@@ -1,0 +1,23 @@
+{
+  "id": "sample.plugin",
+  "name": "Sample Plugin",
+  "description": "A sample plugin.",
+  "version": "0.1.0",
+  "depends": [
+    "lib.ui",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.notify",
+    "ui.toolbar",
+    "ui.menubar"
+  ],
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": 2,
+  "files": [
+    "init.lua"
+  ]
+}
