@@ -1,0 +1,28 @@
+{
+  "id": "theme.catppuccin",
+  "name": "Catppuccin themes",
+  "description": "Soothing pastel themes: Mocha, which is dark, and Latte, which is light.",
+  "version": "1.0.0",
+  "depends": [
+    "core.themes"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/theme.test.lua"
+  ]
+}

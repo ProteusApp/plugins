@@ -1,0 +1,30 @@
+{
+  "id": "icons.vivid",
+  "name": "Vivid Icons",
+  "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
+  "version": "1.0.0",
+  "depends": [
+    "core.icons",
+    "core.files"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "icons"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/pack.test.lua"
+  ]
+}

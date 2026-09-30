@@ -20,6 +20,7 @@
     "code.welcome",
     "core.commands",
     "core.files",
+    "core.icons",
     "core.keys",
     "core.plugins",
     "core.profiles",
