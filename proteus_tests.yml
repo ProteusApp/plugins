@@ -1,0 +1,28 @@
+---
+# The globals scripts/lua-test.mjs gives a plugin's tests.
+name: proteus_tests
+globals:
+  test:
+    args:
+      - type: string
+      - type: function
+  eq:
+    args:
+      - type: any
+      - type: any
+      - required: false
+        type: string
+  ok:
+    args:
+      - type: any
+      - required: false
+        type: string
+  read:
+    args:
+      - type: string
+  write:
+    args:
+      - type: string
+      - type: string
+  update:
+    property: read-only

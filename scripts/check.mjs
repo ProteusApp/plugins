@@ -7,6 +7,12 @@ import { join } from 'node:path';
 import { kindOf, validate } from './registry.mjs';
 
 const reserved = JSON.parse(readFileSync('reserved.json', 'utf8'));
+// A plugin may need one that ships with Proteus, or any plugin in this checkout: one listed
+// already, or one that arrives in the same change.
+const known = new Set([
+  ...(reserved.ids ?? []),
+  ...(existsSync('plugins') ? readdirSync('plugins').filter((id) => statSync(join('plugins', id)).isDirectory()) : []),
+]);
 
 /** Every file under a folder, as paths from that folder. */
 function filesUnder(dir, prefix = '') {
@@ -38,13 +44,14 @@ for (const [root, kind] of [
       if (kindOf(meta) !== kind) problems.push(`proteus.json holds a ${kindOf(meta)}, but the folder is in ${root}/.`);
       const files = {};
       for (const rel of filesUnder(dir)) {
-        if (rel !== 'proteus.json') files[rel] = readFileSync(join(dir, rel), 'utf8');
+        // The bytes, so a file that is not UTF-8 text is caught rather than read as mojibake.
+        if (rel !== 'proteus.json') files[rel] = readFileSync(join(dir, rel));
       }
       const listed = [...(meta.files ?? [])].sort().join('\n');
       if (listed !== Object.keys(files).sort().join('\n')) {
         problems.push('The files in proteus.json do not match the files in the folder.');
       }
-      problems.push(...validate({ ...meta, format: 1, files }, { reserved }));
+      problems.push(...validate({ ...meta, format: 1, files }, { reserved, known }));
     }
     if (problems.length > 0) {
       failed++;

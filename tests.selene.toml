@@ -1,0 +1,20 @@
+# The same rules the app's own plugins meet. Proteus runs Lua 5.4, and proteus.yml adds the
+# Lua 5.2+ library functions on top of Lua 5.1, since selene's parser is 5.1 only. Tests are
+# linted with tests.selene.toml, which knows the globals the test runner gives them.
+std = "proteus+proteus_tests"
+exclude = ["node_modules/**", "plugins/*/types/**"]
+
+[lints]
+multiple_statements = "deny"
+deprecated = "deny"
+divide_by_zero = "deny"
+duplicate_keys = "deny"
+empty_if = "deny"
+empty_loop = "deny"
+# The ui builder takes an element's properties and its children in one table, the way the
+# element itself holds both: ui.div({ class = 'row', child_a, child_b }).
+mixed_table = "allow"
+
+[config]
+empty_if = { comments_count = true }
+empty_loop = { comments_count = true }

@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "kind": "proteus-shader",
+  "name": "Cells",
+  "nodes": [
+    { "id": "n1", "type": "time", "x": 40, "y": 60 },
+    { "id": "n2", "type": "multiply", "x": 320, "y": 60, "inputs": { "b": [0.4] } },
+    { "id": "n3", "type": "parameter", "x": 40, "y": 240, "settings": { "max": 20, "min": 2, "name": "cells", "value": [6, 0, 0, 1] } },
+    { "id": "n4", "type": "voronoi", "x": 600, "y": 60 },
+    { "id": "n5", "type": "combine", "x": 880, "y": 60, "inputs": { "y": [0.55], "z": [1] } },
+    { "id": "n6", "type": "hsv_to_rgb", "x": 1160, "y": 60 },
+    { "id": "n7", "type": "one_minus", "x": 880, "y": 300 },
+    { "id": "n8", "type": "multiply", "x": 1440, "y": 160 },
+    { "id": "n9", "type": "output", "x": 1720, "y": 160 }
+  ],
+  "edges": [
+    { "from": "n1", "output": "time", "to": "n2", "input": "a" },
+    { "from": "n2", "output": "out", "to": "n4", "input": "offset" },
+    { "from": "n3", "output": "out", "to": "n4", "input": "scale" },
+    { "from": "n4", "output": "cell", "to": "n5", "input": "x" },
+    { "from": "n5", "output": "xyz", "to": "n6", "input": "hsv" },
+    { "from": "n4", "output": "distance", "to": "n7", "input": "x" },
+    { "from": "n6", "output": "rgb", "to": "n8", "input": "a" },
+    { "from": "n7", "output": "out", "to": "n8", "input": "b" },
+    { "from": "n8", "output": "out", "to": "n9", "input": "color" }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   kindOf,
   manifestFor,
   pathProblem,
+  textProblem,
   pullRequestBody,
   validate,
 } from '../scripts/registry.mjs';
@@ -157,14 +158,61 @@ test('validate lets only the author update a plugin, and only upward', () => {
   assert.deepEqual(validate(good({ version: '1.0.1' }), { existing, author: { login: 'ann', id: 1 }, reserved }), []);
 });
 
-test('pathProblem allows plain text files only', () => {
+test('pathProblem allows plain file paths only', () => {
   assert.equal(pathProblem('init.lua'), null);
   assert.equal(pathProblem('assets/logo.svg'), null);
+  assert.equal(pathProblem('page/preview.js'), null);
   assert.match(pathProblem('../evil.lua'), /plain file path/);
   assert.match(pathProblem('/abs.lua'), /plain file path/);
-  assert.match(pathProblem('bin/tool.exe'), /kind of file/);
+  assert.match(pathProblem('bin/-tool'), /plain file path/);
   assert.match(pathProblem('a/b/c/d/e.lua'), /too deep/);
   assert.match(pathProblem('proteus.json'), /written by the registry/);
+});
+
+test('textProblem takes readable text only', () => {
+  assert.equal(textProblem('a.lua', 'local x = 1\r\n\tprint(x)\n'), null);
+  assert.equal(textProblem('a.wgsl', 'fn main() {} // é ✓'), null);
+  assert.equal(textProblem('a.md', Buffer.from('\ufeff# Title\n')), null);
+  assert.match(textProblem('a.bin', Buffer.from([0x4d, 0x5a, 0x00, 0x01])), /control characters/);
+  assert.match(textProblem('a.lua', Buffer.from([0xff, 0xfe])), /not UTF-8/);
+  assert.match(textProblem('a.lua', 'x = 1 \u001b[2J'), /control characters/);
+  assert.match(textProblem('a.lua', 'if admin \u202e then'), /reorder/);
+  assert.match(textProblem('a.lua', 'x \u2067 y'), /reorder/);
+  assert.match(textProblem('a.js', 'x'.repeat(1001)), /longer than 1000/);
+  assert.equal(textProblem('a.md', 'é'.repeat(1000)), null);
+});
+
+test('validate checks permissions, folders and requires', () => {
+  const problems = validate(
+    good({ permissions: ['net', 'root'], folders: ['shaders', 'plugins', '../x'], requires: { proteus: '~>1' } }),
+    { reserved },
+  );
+  assert.equal(problems.length, 4, problems.join('\n'));
+  assert.deepEqual(
+    validate(
+      good({ permissions: ['net'], folders: ['shaders'], requires: { proteus: '>=0.2.0 <1', features: ['webview'] } }),
+      { reserved },
+    ),
+    [],
+  );
+});
+
+test('validate wants every dependency to ship with Proteus or be listed', () => {
+  const known = new Set(['core.commands', 'lib.ui']);
+  assert.deepEqual(validate(good({ depends: ['core.commands'] }), { reserved, known }), []);
+  assert.match(validate(good({ depends: ['nowhere.plugin'] }), { reserved, known }).join(), /nowhere\.plugin/);
+});
+
+test('manifestFor and buildIndex carry permissions, folders and requires', () => {
+  const sub = good({ permissions: ['files'], folders: ['shaders'], requires: { proteus: '>=0.2.0', features: ['webview'] } });
+  const m = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.deepEqual(m.permissions, ['files']);
+  assert.deepEqual(m.folders, ['shaders']);
+  assert.deepEqual(m.requires, { proteus: '>=0.2.0', features: ['webview'] });
+  const [entry] = buildIndex([{ manifest: m, commit: 'abc', updated: '' }]).plugins;
+  assert.deepEqual(entry.permissions, ['files']);
+  assert.deepEqual(entry.requires, { proteus: '>=0.2.0', features: ['webview'] });
+  assert.match(pullRequestBody(m, sub, 7, false), /Files on this computer\*\* \(full access\)/);
 });
 
 test('compareVersions compares each part as a number', () => {

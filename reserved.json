@@ -19,6 +19,7 @@
     "code.terminal",
     "code.welcome",
     "core.commands",
+    "core.files",
     "core.keys",
     "core.plugins",
     "core.profiles",

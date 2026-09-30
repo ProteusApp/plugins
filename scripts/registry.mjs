@@ -99,8 +99,24 @@ export const LIMITS = {
   parts: 100,
 };
 
-/** Files a plugin may hold. Everything is text, so a reviewer can read all of it. */
-export const EXTENSIONS = ['lua', 'md', 'json', 'css', 'txt', 'toml', 'yml', 'yaml', 'html', 'svg'];
+/** A line longer than this hides code from a reviewer, as minified code does. */
+export const MAX_LINE = 1000;
+
+/**
+ * What a plugin may ask to do beyond drawing and keeping its own data. Proteus knows the same
+ * list. `full` marks the ones that amount to full access to the computer.
+ */
+export const PERMISSIONS = {
+  net: { label: 'Network', full: false },
+  clipboard: { label: 'Read the clipboard', full: false },
+  files: { label: 'Files on this computer', full: true },
+  process: { label: 'Run programs', full: true },
+  workspace: { label: 'Change the workspace', full: true },
+  kernel: { label: 'Control plugins', full: true },
+};
+
+/** Workspace folders that belong to Proteus itself, so no plugin may claim one in `folders`. */
+export const RESERVED_FOLDERS = ['data', 'plugins', 'profiles', 'lib', 'types', 'graphs', 'blocks', 'docs'];
 
 // The manifest and the file blocks. A closing fence has exactly as many backticks as its
 // opening fence, and must end its line.
@@ -185,9 +201,41 @@ export function pathProblem(path) {
   for (const part of parts) {
     if (!SEGMENT.test(part) || part === '.' || part === '..') return `${path} is not a plain file path`;
   }
-  const ext = path.includes('.') ? path.slice(path.lastIndexOf('.') + 1).toLowerCase() : '';
-  if (!EXTENSIONS.includes(ext)) return `${path} is not a kind of file a plugin may hold (${EXTENSIONS.join(', ')})`;
   if (path === 'proteus.json') return 'proteus.json is written by the registry, so a plugin cannot hold its own';
+  return null;
+}
+
+/**
+ * Why a file's text cannot go in the registry, or null. Every file is text a reviewer can
+ * read: UTF-8 without control characters, without the characters that reorder text on screen
+ * so code reads differently than it runs, and without lines so long that code hides in them.
+ * `text` is a string, or the file's bytes.
+ */
+export function textProblem(path, text) {
+  let s = text;
+  if (typeof text !== 'string') {
+    try {
+      s = new TextDecoder('utf-8', { fatal: true }).decode(text);
+    } catch {
+      return `${path} is not UTF-8 text`;
+    }
+  }
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s)) return `${path} holds control characters`;
+  if (/[\u202a-\u202e\u2066-\u2069]/.test(s)) return `${path} holds characters that reorder text`;
+  const lines = s.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if ([...lines[i]].length > MAX_LINE) return `${path} has a line longer than ${MAX_LINE} characters, at line ${i + 1}`;
+  }
+  return null;
+}
+
+/** Why a `requires.proteus` condition such as `>=0.2.0 <1.0.0` cannot be read, or null. */
+export function versionSpecProblem(spec) {
+  if (typeof spec !== 'string' || !spec.trim()) return 'requires.proteus must be a version such as >=0.2.0';
+  for (const cond of spec.trim().split(/\s+/)) {
+    if (!/^(>=|>|<=|<|==?|)v?\d+(\.\d+){0,2}$/.test(cond)) return `requires.proteus cannot read ${cond}`;
+  }
   return null;
 }
 
@@ -198,7 +246,7 @@ export function pathProblem(path) {
  * `reserved` holds the ids of what ships with Proteus: `ids` and `prefixes` for plugins, and
  * `profiles` for profiles.
  */
-export function validate(sub, { existing = null, author = null, reserved = { ids: [], prefixes: [] } } = {}) {
+export function validate(sub, { existing = null, author = null, reserved = { ids: [], prefixes: [] }, known = null } = {}) {
   const problems = [];
   const kind = kindOf(sub);
   const noun = kind === 'profile' ? 'profile' : 'plugin';
@@ -235,6 +283,51 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
   if (kind === 'profile' && (!Array.isArray(sub.plugins) || sub.plugins.length === 0)) {
     problems.push('A profile needs at least one plugin in its plugins list.');
   }
+  // Every plugin it needs ships with Proteus, is listed here, or arrives in the same change.
+  if (known) {
+    const needed = kind === 'profile' ? (sub.plugins ?? []) : (sub.depends ?? []);
+    for (const dep of Array.isArray(needed) ? needed : []) {
+      if (typeof dep === 'string' && ID.test(dep) && dep !== id && !known.has(dep)) {
+        problems.push(`${dep} is neither a plugin that ships with Proteus nor one listed in this registry.`);
+      }
+    }
+  }
+  if (kind === 'plugin') {
+    const perms = sub.permissions ?? [];
+    if (!Array.isArray(perms) || perms.some((p) => typeof p !== 'string')) {
+      problems.push('permissions must be a list of names.');
+    } else {
+      for (const p of perms) {
+        if (!Object.hasOwn(PERMISSIONS, p)) {
+          problems.push(`There is no permission called ${p}. Proteus knows ${Object.keys(PERMISSIONS).join(', ')}.`);
+        }
+      }
+    }
+    const folders = sub.folders ?? [];
+    if (!Array.isArray(folders) || folders.some((f) => typeof f !== 'string')) {
+      problems.push('folders must be a list of folder names.');
+    } else {
+      for (const f of folders) {
+        if (!/^[A-Za-z0-9_-]+$/.test(f)) problems.push(`${f} is not a plain folder name.`);
+        else if (RESERVED_FOLDERS.includes(f.toLowerCase())) problems.push(`The folder ${f} belongs to Proteus itself.`);
+      }
+    }
+  }
+  if (sub.requires !== undefined) {
+    const req = sub.requires;
+    if (!req || typeof req !== 'object' || Array.isArray(req)) {
+      problems.push('requires must be a table with proteus and features.');
+    } else {
+      if (req.proteus !== undefined) {
+        const problem = versionSpecProblem(req.proteus);
+        if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
+      }
+      const features = req.features ?? [];
+      if (!Array.isArray(features) || features.some((f) => typeof f !== 'string' || !/^[a-z][a-z-]*$/.test(f))) {
+        problems.push('requires.features must be a list of feature names.');
+      }
+    }
+  }
   const files = sub.files && typeof sub.files === 'object' && !Array.isArray(sub.files) ? sub.files : null;
   if (!files) {
     problems.push('The submission holds no files.');
@@ -246,13 +339,13 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
   if (names.length > LIMITS.files) problems.push(`A ${noun} can hold at most ${LIMITS.files} files.`);
   let total = 0;
   for (const name of names) {
-    const problem = pathProblem(name);
+    const problem = pathProblem(name) ?? textProblem(name, files[name]);
     if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
-    if (typeof files[name] !== 'string') {
+    if (typeof files[name] !== 'string' && !(files[name] instanceof Uint8Array)) {
       problems.push(`${name} is not text.`);
       continue;
     }
-    const bytes = Buffer.byteLength(files[name], 'utf8');
+    const bytes = typeof files[name] === 'string' ? Buffer.byteLength(files[name], 'utf8') : files[name].length;
     total += bytes;
     if (bytes > LIMITS.fileBytes) problems.push(`${name} is larger than ${LIMITS.fileBytes / 1024} KB.`);
   }
@@ -280,10 +373,17 @@ export function manifestFor(sub, author, issue) {
   const own =
     kindOf(sub) === 'profile'
       ? { kind: 'profile', plugins: sub.plugins ?? [] }
-      : { depends: sub.depends ?? [], optional: sub.optional ?? [] };
+      : {
+          depends: sub.depends ?? [],
+          optional: sub.optional ?? [],
+          permissions: sub.permissions ?? [],
+          folders: sub.folders ?? [],
+        };
+  const requires = sub.requires && typeof sub.requires === 'object' ? sub.requires : null;
   return {
     ...common,
     ...own,
+    ...(requires ? { requires: { proteus: requires.proteus, features: requires.features ?? [] } } : {}),
     author: { login: author.login, id: author.id },
     issue,
     files: Object.keys(sub.files).sort(),
@@ -304,6 +404,7 @@ export function buildIndex(entries) {
     description: manifest.description,
     version: manifest.version,
     author: manifest.author?.login ?? '',
+    ...(manifest.requires && kindOf(manifest) === 'profile' ? { requires: manifest.requires } : {}),
   });
   const plugins = entries
     .filter((e) => kindOf(e.manifest) === 'plugin')
@@ -311,6 +412,9 @@ export function buildIndex(entries) {
       ...base(e),
       depends: e.manifest.depends ?? [],
       optional: e.manifest.optional ?? [],
+      permissions: e.manifest.permissions ?? [],
+      folders: e.manifest.folders ?? [],
+      ...(e.manifest.requires ? { requires: e.manifest.requires } : {}),
       files: e.manifest.files ?? [],
       commit: e.commit,
       updated: e.updated,
@@ -341,6 +445,18 @@ export function pullRequestBody(manifest, sub, issue, updating) {
   ];
   if (kind === 'profile') {
     lines.push('### Plugins', '', (manifest.plugins ?? []).map((id) => `\`${id}\``).join(', ') || 'None.', '');
+  } else {
+    const perms = manifest.permissions ?? [];
+    const shown = perms.map((p) => `**${PERMISSIONS[p]?.label ?? p}**${PERMISSIONS[p]?.full ? ' (full access)' : ''}`);
+    lines.push(
+      '### Permissions',
+      '',
+      shown.length ? shown.join(', ') : 'None. It can draw and keep its own data, and nothing more.',
+      '',
+    );
+    if ((manifest.folders ?? []).length) {
+      lines.push(`Writes in the workspace folders ${manifest.folders.map((f) => `\`${f}/\``).join(', ')}.`, '');
+    }
   }
   lines.push('### Files', '');
   for (const name of manifest.files) {
@@ -356,6 +472,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
         ]
       : [
           '- [ ] The code does what the description says, and nothing else.',
+          '- [ ] It asks only for the permissions its purpose needs. A full-access permission needs a clear reason.',
           '- [ ] It reads and writes only the files its purpose needs.',
           '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
           '- [ ] It holds no secrets, tokens or personal data.',

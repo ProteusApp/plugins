@@ -1,0 +1,36 @@
+{
+  "id": "shader.build",
+  "name": "Shader build",
+  "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
+  "version": "1.0.0",
+  "depends": [
+    "shader.core",
+    "shader.docs",
+    "core.commands"
+  ],
+  "optional": [
+    "ui.notify",
+    "ui.palette"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [
+    "shaders"
+  ],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions",
+      "folders"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "init.lua"
+  ]
+}
