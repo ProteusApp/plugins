@@ -2,8 +2,10 @@
 -- app for the plugins it found, and registers each as an instrument or an effect that names
 -- its plugin by reference. The DAW's rack, browser and songs then use it like any device.
 --
--- Only the native sound engine plays them: set daw.engine to native. The app never tells this
--- plugin where a binary is, and asks the user the first time a song loads each one.
+-- Only the native sound engine plays them: set daw.engine to native. daw.engine opens that
+-- engine with the rights this plugin lends it (`app.audio.lend`), so the permission and the
+-- user's answers belong to this plugin, and the rest of the DAW needs neither. The app never tells this plugin where a
+-- binary is, and asks the user the first time a song loads each one.
 
 ---A device id for a plugin reference: letters, digits, dots and dashes.
 ---@param ref string
@@ -58,6 +60,15 @@ return {
     end
 
     app.audio.plugins (register)
+
+    -- daw.engine opens the native engine, and keeps its own files. This plugin lends it the
+    -- right to load native plugins, which works for daw.engine alone.
+    local token = app.audio.lend ('daw.engine')
+    app.provide ('daw.native', {
+      lend = function ()
+        return token
+      end,
+    })
 
     commands.register ({
       id = 'native.rescan',

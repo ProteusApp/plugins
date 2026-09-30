@@ -276,6 +276,15 @@ return {
 
 `wam.basics` in this registry holds a polyphonic synth with an editor and a stereo echo, and is the smallest example. It copies the WAM SDK, listed in its `vendor.json`.
 
+### Native plugins
+
+The DAW also plays on the app's native engine, a process of its own that plays the same patches and hosts CLAP and VST3 plugins. Set **Sound engine** (`daw.engine`) to `native`. `daw.engine` then sends the page's messages to `app.audio` instead, and the page on the toolbar only draws the master level.
+
+- `daw.native` registers each CLAP and VST3 plugin the app finds as a device with `native = { plugin = ref }` and a control for each parameter (`daw_device.from_native`). It needs the `native-plugins` permission, and the app asks the user the first time a song loads each plugin.
+- `daw.engine` opens the native engine itself, so its file grants and exports work as they do on the web. `daw.native` lends it the right to load native plugins with `app.audio.lend ('daw.engine')`, so the rest of the DAW needs no full-access permission.
+- A native device resolves to `{ id, kind, params, native = { plugin } }`. The app puts the binary's path in before the engine sees the song, and the DAW never learns it.
+- The web engine cannot play native devices. It says so, leaves the instrument silent and passes an effect's sound through. The native engine cannot play Web Audio Modules, and says so too.
+
 ## The engine
 
 - **Scheduling.** Every 25 ms the transport looks 150 ms ahead and starts each note that falls in that stretch, on the Web Audio clock. At the loop's end it wraps and carries on. Notes that run past the loop end are cut there.

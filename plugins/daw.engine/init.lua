@@ -79,6 +79,7 @@ return {
     'core.keys',
     'ui.windows',
     'core.settings',
+    'daw.native',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -469,6 +470,8 @@ return {
     -- The native engine -------------------------------------------------------------------
 
     local function start_native ()
+      -- daw.native, when it runs, lends the engine its right to load native plugins.
+      local lender = app.try_use ('daw.native')
       local engine ---@type Proteus.AudioEngine
       engine = app.audio.open (function (m)
         if native ~= engine then
@@ -488,7 +491,7 @@ return {
           return
         end
         on_message (m)
-      end)
+      end, { plugins = lender and lender.lend () or nil })
       native = engine
       page_post ({ type = 'native', on = true })
     end

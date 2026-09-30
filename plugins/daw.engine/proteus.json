@@ -15,7 +15,8 @@
     "ui.notify",
     "core.keys",
     "ui.windows",
-    "core.settings"
+    "core.settings",
+    "daw.native"
   ],
   "permissions": [],
   "folders": [],
