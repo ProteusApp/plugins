@@ -2,7 +2,7 @@
   "id": "daw.pianoroll",
   "name": "DAW piano roll",
   "description": "Draw, move and shape the notes of a clip.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "lib.ui",
     "ui.views",
@@ -15,7 +15,8 @@
   "optional": [
     "ui.menus",
     "ui.palette",
-    "core.keys"
+    "core.keys",
+    "daw.windows"
   ],
   "permissions": [],
   "folders": [],

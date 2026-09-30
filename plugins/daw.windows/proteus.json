@@ -1,18 +1,16 @@
 {
-  "id": "daw.mixer",
-  "name": "DAW mixer",
-  "description": "Faders, pans, meters, mute and solo for every track.",
-  "version": "1.1.0",
+  "id": "daw.windows",
+  "name": "DAW windows",
+  "description": "The DAW as a desktop of floating windows, in the manner of FL Studio: drag, resize, maximize, and a key for each.",
+  "version": "1.0.0",
   "depends": [
     "lib.ui",
-    "ui.views",
-    "daw.core",
-    "daw.devices",
-    "daw.session",
-    "daw.engine"
+    "core.commands"
   ],
   "optional": [
-    "daw.windows"
+    "ui.tabs",
+    "ui.toolbar",
+    "core.keys"
   ],
   "permissions": [],
   "folders": [],

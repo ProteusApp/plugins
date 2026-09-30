@@ -2,7 +2,7 @@
   "id": "daw.rack",
   "name": "DAW device rack",
   "description": "The instrument and effects of the selected track, with every parameter.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "lib.ui",
     "ui.views",
@@ -14,7 +14,8 @@
   "optional": [
     "ui.palette",
     "ui.menus",
-    "daw.engine"
+    "daw.engine",
+    "daw.windows"
   ],
   "permissions": [],
   "folders": [],
