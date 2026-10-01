@@ -283,6 +283,7 @@ The DAW also plays on the app's native engine, a process of its own that plays t
 - `daw.native` registers each CLAP and VST3 plugin the app finds as a device with `native = { plugin = ref }` and a control for each parameter (`daw_device.from_native`). It needs the `native-plugins` permission, and the app asks the user the first time a song loads each plugin.
 - `daw.engine` opens the native engine itself, so its file grants and exports work as they do on the web. `daw.native` lends it the right to load native plugins with `app.audio.lend ('daw.engine')`, so the rest of the DAW needs no full-access permission.
 - A native device resolves to `{ id, kind, params, native = { plugin } }`. The app puts the binary's path in before the engine sees the song, and the DAW never learns it.
+- A native plugin that crashes takes the native engine with it, never the app. The app starts the engine again on its own, `daw.engine` tells the user once why and sends it the song when it is ready, and the user's answers about native plugins still hold. After a few crashes in a row the engine stays stopped, and **Restart the Sound Engine** starts it again.
 - The web engine cannot play native devices. It says so, leaves the instrument silent and passes an effect's sound through. The native engine cannot play Web Audio Modules, and says so too.
 
 ## The engine

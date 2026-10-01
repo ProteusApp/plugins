@@ -469,6 +469,18 @@ return {
 
     -- The native engine -------------------------------------------------------------------
 
+    ---The engine ended: nothing plays or records, and the meter falls.
+    local function stopped ()
+      if recording then
+        recording = false
+        app.emit ('daw:recording', false)
+      end
+      playing = false
+      app.emit ('daw:transport', false, position)
+      levels = { tracks = {}, master = { 0, 0 } }
+      page_post ({ type = 'meter', master = levels.master })
+    end
+
     local function start_native ()
       -- daw.native, when it runs, lends the engine its right to load native plugins.
       local lender = app.try_use ('daw.native')
@@ -477,15 +489,29 @@ return {
         if native ~= engine then
           return
         end
-        if type (m) == 'table' and m.type == 'exit' then
-          native = nil
-          playing = false
-          app.emit ('daw:transport', false, position)
-          if notify then
+        if
+          type (m) == 'table' and (m.type == 'exit' or m.type == 'crashed')
+        then
+          -- What played stopped with it. A crashed engine starts again on its own and says
+          -- ready, and the song goes to it as it does to a new one.
+          stopped ()
+          if m.type == 'exit' then
+            native = nil
+            if notify then
+              local why = m.error and (': ' .. tostring (m.error)) or ''
+              notify.warn (
+                'The native sound engine stopped'
+                  .. why
+                  .. (why:find ('[.!?]$') and ' ' or '. ')
+                  .. 'Restart the Sound Engine starts it again.'
+              )
+            end
+          elseif notify and (tonumber (m.attempt) or 1) <= 1 then
+            -- Once for crashes in a row: the app gives up after a few, and says so.
             notify.warn (
               'The native sound engine stopped'
-                .. (m.error and (': ' .. tostring (m.error)) or '.')
-                .. ' Restart the Sound Engine starts it again.'
+                .. (m.reason and (': ' .. tostring (m.reason)) or '')
+                .. '. It starts again and loads the song.'
             )
           end
           return
