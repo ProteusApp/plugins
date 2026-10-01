@@ -54,6 +54,7 @@
 ---| 'windows' # Floating windows on a desktop, from `proteus.ui.windows` and the `windows` service.
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
+---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
