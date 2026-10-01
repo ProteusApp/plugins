@@ -35,6 +35,12 @@
 ---@field line fun(spec: Minimap.Spec, text: string, state: string): string, string
 ---@field painter fun(): Minimap.Painter
 ---@field line_at fun(y: number, line_height: number, lines: integer): integer
+---@field marks fun(selections: Minimap.Range[], problems: Proteus.Diagnostic[], lines: integer, line_height: number): string
+
+---Lines from `first` to `last`, both counted from 1.
+---@class Minimap.Range
+---@field first integer
+---@field last integer
 
 local M = {}
 
@@ -505,6 +511,65 @@ end
 function M.line_at (y, line_height, lines)
   local n = math.floor (y / line_height) + 1
   return math.max (1, math.min (n, math.max (1, lines)))
+end
+
+-- A problem's mark, by severity. A line with several problems shows the worst.
+local SEVERITY = { error = 1, warning = 2, info = 3, hint = 3 }
+local SEVERITY_CLASS = { 'e', 'w', 'i' }
+
+---One full-width band, from line `first` to line `last`.
+---@param kind string
+---@param first integer
+---@param last integer
+---@param line_height number
+---@return string
+local function band (kind, first, last, line_height)
+  return ('<i class="%s" style="top:%gpx;height:%gpx"></i>'):format (
+    kind,
+    (first - 1) * line_height,
+    (last - first + 1) * line_height
+  )
+end
+
+---The HTML of the bands over the picture: one for each run of selected lines, then one for
+---each run of lines whose worst problem is the same. A problem marks the line it starts on.
+---@param selections Minimap.Range[]
+---@param problems Proteus.Diagnostic[]
+---@param lines integer
+---@param line_height number
+---@return string
+function M.marks (selections, problems, lines, line_height)
+  local out = {}
+  for _, r in ipairs (selections) do
+    local first, last = math.max (1, r.first), math.min (r.last, lines)
+    if last >= first then
+      out[#out + 1] = band ('sel', first, last, line_height)
+    end
+  end
+  local worst = {} ---@type table<integer, integer>
+  for _, d in ipairs (problems) do
+    local n = math.floor (tonumber (d.line) or -1) + 1
+    local rank = SEVERITY[d.severity] or 3
+    if n >= 1 and n <= lines and (not worst[n] or rank < worst[n]) then
+      worst[n] = rank
+    end
+  end
+  local marked = {}
+  for n in pairs (worst) do
+    marked[#marked + 1] = n
+  end
+  table.sort (marked)
+  local i = 1
+  while i <= #marked do
+    local first, rank = marked[i], worst[marked[i]]
+    local j = i
+    while marked[j + 1] == marked[j] + 1 and worst[marked[j + 1]] == rank do
+      j = j + 1
+    end
+    out[#out + 1] = band (SEVERITY_CLASS[rank], first, marked[j], line_height)
+    i = j + 1
+  end
+  return table.concat (out)
 end
 
 return M
