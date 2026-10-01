@@ -1,0 +1,52 @@
+{
+  "id": "lang.luau-lsp",
+  "name": "Luau",
+  "description": "Luau with luau-lsp: completion, hover help, go to definition and type problems, with Roblox types, Rojo sourcemaps and StyLua formatting.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "net",
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "languages"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/definitions.lua",
+    "lib/format.lua",
+    "lib/language.lua",
+    "lib/launch.lua",
+    "lib/project.lua",
+    "lib/release.lua",
+    "lib/server.lua",
+    "lib/sourcemap.lua",
+    "tests/definitions.test.lua",
+    "tests/language.test.lua",
+    "tests/launch.test.lua",
+    "tests/project.test.lua"
+  ]
+}
