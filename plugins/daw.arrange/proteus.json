@@ -2,7 +2,7 @@
   "id": "daw.arrange",
   "name": "DAW arrangement",
   "description": "Tracks and clips along a timeline, with the ruler and the loop.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "depends": [
     "lib.ui",
     "ui.shell",
