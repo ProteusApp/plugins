@@ -1,9 +1,0 @@
-{
-  "files": {
-    "page/wam/index.js": {
-      "source": "npm:@webaudiomodules/sdk@0.0.12/dist/index.js",
-      "license": "MIT",
-      "sha256": "527634fd27db423c50dddb27bc2e901725a9e099f6538cb1551006352364d711"
-    }
-  }
-}
