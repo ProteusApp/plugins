@@ -263,7 +263,7 @@ end
 return {
   name = 'DAW piano roll',
   description = 'Draw, move and shape the notes of a clip.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -1223,6 +1223,8 @@ return {
         h = 0.62,
         content = root,
         on_show = on_show,
+        -- The Playlist and the Channel rack open it.
+        shared = true,
       })
     else
       views.add ('bottom', {
@@ -1232,6 +1234,8 @@ return {
         order = 1,
         content = root,
         on_show = on_show,
+        -- The arrangement opens it.
+        shared = true,
       })
     end
 

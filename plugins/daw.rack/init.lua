@@ -158,7 +158,7 @@ local STEPS = 1000
 return {
   name = 'DAW device rack',
   description = 'The instrument and effects of the selected track, with every parameter.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -694,6 +694,8 @@ return {
         min_w = 300,
         content = root,
         on_show = render,
+        -- The Channel rack opens it.
+        shared = true,
       })
     else
       views.add ('right', {
