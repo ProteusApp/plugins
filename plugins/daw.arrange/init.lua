@@ -289,7 +289,7 @@ end
 return {
   name = 'DAW arrangement',
   description = 'Tracks and clips along a timeline, with the ruler and the loop.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -1497,6 +1497,8 @@ return {
       id = 'daw.add_track',
       category = 'DAW',
       title = 'Add Instrument Track',
+      -- The channel rack's Channel button runs it too.
+      shared = true,
       key = 'ctrl+t',
       icon = 'plus',
       menu = 'Track',

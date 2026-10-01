@@ -13,7 +13,7 @@ local EXTENSIONS = { '.shader.json', '.frag', '.vert', '.glsl', '.wgsl' }
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },
@@ -604,6 +604,8 @@ return {
       id = 'shader.new_graph',
       category = 'Shader',
       title = 'New Node Graph',
+      -- The library's New buttons run it too.
+      shared = true,
       menu = 'File',
       group = '1-new',
       order = 1,
@@ -628,6 +630,8 @@ return {
       id = 'shader.new_glsl',
       category = 'Shader',
       title = 'New GLSL Shader',
+      -- The library's New buttons run it too.
+      shared = true,
       menu = 'File',
       group = '1-new',
       order = 2,
@@ -640,6 +644,8 @@ return {
       id = 'shader.new_wgsl',
       category = 'Shader',
       title = 'New WGSL Shader',
+      -- The library's New buttons run it too.
+      shared = true,
       menu = 'File',
       group = '1-new',
       order = 3,

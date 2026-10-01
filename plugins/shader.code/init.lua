@@ -120,7 +120,7 @@ local CSS = [[
 return {
   name = 'Shader code',
   description = 'Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'languages' } },
   permissions = {},
   depends = { 'lib.ui', 'shader.docs', 'core.commands' },
@@ -449,6 +449,8 @@ return {
       id = 'shader.show_code',
       category = 'Shader',
       title = 'Show the Generated Code',
+      -- The canvas's Show Its Code menu entry runs it too.
+      shared = true,
       menu = 'View',
       icon = 'code',
       key = 'ctrl+shift+c',

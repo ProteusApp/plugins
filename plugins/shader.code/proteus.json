@@ -2,7 +2,7 @@
   "id": "shader.code",
   "name": "Shader code",
   "description": "Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "lib.ui",
     "shader.docs",
