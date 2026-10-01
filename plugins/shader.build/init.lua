@@ -9,7 +9,7 @@ local BUILD_FOLDER = 'shaders/build'
 return {
   name = 'Shader build',
   description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
   -- Export to Folder writes the build anywhere on disk the user picks.
   permissions = { 'files' },
@@ -103,6 +103,8 @@ return {
       id = 'shader.build',
       category = 'Shader',
       title = 'Build Shader',
+      -- The code view's Build button runs it too.
+      shared = true,
       menu = 'Build',
       icon = 'package',
       key = 'ctrl+shift+b',
