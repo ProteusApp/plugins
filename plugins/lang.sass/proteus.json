@@ -1,0 +1,46 @@
+{
+  "id": "lang.sass",
+  "name": "Sass",
+  "description": "Sass and SCSS with Some Sass: completion across @use and @import, hover help, go to definition and problems.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify",
+    "lang.css"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/attach.lua",
+    "lib/client.lua",
+    "lib/documents.lua",
+    "lib/languages.lua",
+    "lib/server.lua",
+    "tests/attach.test.lua",
+    "tests/languages.test.lua"
+  ]
+}

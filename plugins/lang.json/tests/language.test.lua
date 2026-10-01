@@ -1,0 +1,26 @@
+local language = require ('lib.language') --[[@as LangJson.LanguageModule]]
+
+test ('language_id names plain JSON files json', function ()
+  eq (language.language_id ('C:/code/app/package.json'), 'json')
+  eq (language.language_id ('/home/me/graphs/todo.ndg'), 'json')
+  eq (language.language_id ('data/settings.json'), 'json')
+end)
+
+test ('language_id names files that allow comments jsonc', function ()
+  eq (language.language_id ('C:/code/app/notes.jsonc'), 'jsonc')
+  eq (language.language_id ('/home/me/app/config.json5'), 'jsonc')
+  eq (language.language_id ([[C:\code\app\tsconfig.json]]), 'jsonc')
+  eq (language.language_id ('/app/tsconfig.build.json'), 'jsonc')
+  eq (language.language_id ('/app/jsconfig.json'), 'jsonc')
+  eq (language.language_id ('/app/.vscode/settings.json'), 'jsonc')
+  eq (language.language_id ('/app/.devcontainer/devcontainer.json'), 'jsonc')
+  eq (language.language_id ('/app/.eslintrc.json'), 'jsonc')
+  eq (language.language_id ('/app/TSConfig.json'), 'jsonc')
+end)
+
+test ('checked hides the problems of JSON5 files only', function ()
+  eq (language.checked ('/app/config.json5'), false)
+  eq (language.checked ('/app/config.JSON5'), false)
+  eq (language.checked ('/app/config.json'), true)
+  eq (language.checked ('/app/notes.jsonc'), true)
+end)

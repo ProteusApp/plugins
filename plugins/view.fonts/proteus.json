@@ -1,0 +1,47 @@
+{
+  "id": "view.fonts",
+  "name": "Font viewer",
+  "description": "Opens TTF, OTF, TTC, WOFF and WOFF2 fonts in a tab with their names, a sample to type in, a range of sizes and every character they have.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.tabs",
+    "proteus.editor.core"
+  ],
+  "optional": [
+    "proteus.core.commands",
+    "proteus.core.settings",
+    "proteus.core.themes",
+    "proteus.core.icons",
+    "proteus.core.files"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "webview",
+      "webview-disk"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "formats.lua",
+    "init.lua",
+    "page/font-parse.js",
+    "page/fonts.js",
+    "page/index.html",
+    "page/theme.js",
+    "page/viewer.css",
+    "tests/viewer.test.lua",
+    "viewer.lua"
+  ]
+}

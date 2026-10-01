@@ -1,0 +1,48 @@
+{
+  "id": "view.images",
+  "name": "Image viewer",
+  "description": "Opens PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG files in a tab with zoom, panning and a checkerboard behind clear parts.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.tabs",
+    "proteus.editor.core"
+  ],
+  "optional": [
+    "proteus.core.commands",
+    "proteus.core.settings",
+    "proteus.core.themes",
+    "proteus.core.icons",
+    "proteus.core.files"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "webview",
+      "webview-disk"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "formats.lua",
+    "init.lua",
+    "page/images.js",
+    "page/index.html",
+    "page/svg-size.js",
+    "page/theme.js",
+    "page/viewer.css",
+    "page/zoom.js",
+    "tests/viewer.test.lua",
+    "viewer.lua"
+  ]
+}

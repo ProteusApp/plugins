@@ -1,0 +1,50 @@
+{
+  "id": "lang.css",
+  "name": "CSS",
+  "description": "CSS and Less with vscode-css-language-server: completion, hover help with browser support, problems and go to definition.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.core.files",
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/completion.lua",
+    "lib/documents.lua",
+    "lib/languages.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/provider.lua",
+    "lib/router.lua",
+    "lib/server.lua",
+    "tests/completion.test.lua",
+    "tests/languages.test.lua",
+    "tests/launch.test.lua",
+    "tests/router.test.lua"
+  ]
+}
