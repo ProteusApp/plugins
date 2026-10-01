@@ -275,7 +275,7 @@
       "id": "proteus.kanban",
       "name": "Kanban",
       "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -306,8 +306,8 @@
         "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
+      "updated": "2026-10-01T15:26:18-06:00"
     },
     {
       "id": "icons.badges",
@@ -469,7 +469,7 @@
       "id": "proteus.notes",
       "name": "Notes",
       "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -500,8 +500,8 @@
         "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
+      "updated": "2026-10-01T15:26:18-06:00"
     },
     {
       "id": "theme.outrun",
@@ -1154,7 +1154,7 @@
       "id": "proteus.nodal.terminal",
       "name": "Terminal",
       "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1186,8 +1186,8 @@
         "terminal.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
+      "updated": "2026-10-01T15:26:18-06:00"
     },
     {
       "id": "proteus.terminal",
