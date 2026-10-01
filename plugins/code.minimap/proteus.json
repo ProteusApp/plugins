@@ -1,8 +1,8 @@
 {
   "id": "code.minimap",
   "name": "Minimap",
-  "description": "Shows the file in front in miniature beside the code, shades the part on screen, and scrolls there on a click.",
-  "version": "1.0.0",
+  "description": "Shows the file in front in miniature at the side of the code, with the part on screen, the selection and problems marked.",
+  "version": "1.1.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",
@@ -10,7 +10,9 @@
     "proteus.editor.core"
   ],
   "optional": [
-    "proteus.core.settings"
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.tools.diagnostics"
   ],
   "permissions": [
     "files"

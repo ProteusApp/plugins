@@ -137,3 +137,45 @@ test (
     eq (render.line_at (10, 3, 0), 1)
   end
 )
+
+test (
+  'marks draws one band for each run of selected lines, kept inside the file',
+  function ()
+    local html = render.marks (
+      { { first = 2, last = 4 }, { first = 9, last = 30 } },
+      {},
+      12,
+      3
+    )
+    eq (
+      html,
+      '<i class="sel" style="top:3px;height:9px"></i>'
+        .. '<i class="sel" style="top:24px;height:12px"></i>'
+    )
+  end
+)
+
+test (
+  'marks shows the worst problem on each line, and joins runs of the same kind',
+  function ()
+    local html = render.marks ({}, {
+      { line = 0, character = 0, severity = 'warning', message = 'a' },
+      { line = 0, character = 4, severity = 'error', message = 'b' },
+      { line = 1, character = 0, severity = 'error', message = 'c' },
+      { line = 3, character = 0, severity = 'hint', message = 'd' },
+      { line = 4, character = 0, severity = 'warning', message = 'e' },
+      {
+        line = 99,
+        character = 0,
+        severity = 'error',
+        message = 'past the end',
+      },
+    }, 10, 2)
+    eq (
+      html,
+      '<i class="e" style="top:0px;height:4px"></i>'
+        .. '<i class="i" style="top:6px;height:2px"></i>'
+        .. '<i class="w" style="top:8px;height:2px"></i>'
+    )
+  end
+)

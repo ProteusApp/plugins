@@ -773,6 +773,20 @@ function Status.add (spec) end
 ---@field replace fun(text: string) Replaces the whole text as one edit that can be undone.
 ---@field viewport fun(): { first: integer, last: integer }? The first and last lines on screen, from 1. Nil while the editor is out of sight.
 ---@field scroll_to fun(line: integer) Scrolls so the line, from 1, sits at the top. The cursor and the focus stay put.
+---@field selections fun(): { first: integer, last: integer }[] The lines each selection covers, from 1. A bare cursor selects none.
+
+---Where a side sits.
+---@class Proteus.EditorSidePlace
+---@field side? 'left'|'right' The edge it sits at. `'right'` when nil.
+---@field width? number Its width in pixels. 120 when nil.
+---@field over? boolean Lies over the text, clear of the line numbers and the scroll bar, instead of taking room beside it.
+
+---@class Proteus.EditorSideSpec: Proteus.EditorSidePlace
+---@field content Proteus.El
+
+---@class Proteus.EditorSide
+---@field set fun(place: Proteus.EditorSidePlace) Moves it, or changes its width. Fields left out stay as they were.
+---@field remove fun() Takes it away now instead of when the plugin stops.
 
 ---A document open in an editor tab, as language plugins see it.
 ---@class Proteus.DocInfo
@@ -853,6 +867,13 @@ function Editor.set_provider (language, factory) end
 ---@param fn fun(path: string, opts: Proteus.OpenOptions?): boolean
 ---@return fun() remove
 function Editor.add_opener (fn) end
+
+---Puts an element at the side of the editor in front, beside the text or over it. The editor
+---moves it into whichever document comes to the front, and takes it off screen while no
+---document is in front. It goes away when the plugin stops.
+---@param spec Proteus.EditorSideSpec
+---@return Proteus.EditorSide
+function Editor.add_side (spec) end
 
 ---Adds a formatter for a language. Format Document runs every formatter for the file's
 ---language in turn, and so does each save while the `editor.format_on_save` setting is on.
