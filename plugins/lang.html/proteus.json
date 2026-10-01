@@ -1,0 +1,47 @@
+{
+  "id": "lang.html",
+  "name": "HTML",
+  "description": "HTML with VS Code's language server: completion, hover help and problems, also inside style and script, and a live preview.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.ui.tabs",
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "webview"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/completion.lua",
+    "lib/markup.lua",
+    "lib/preview.lua",
+    "lib/server.lua",
+    "tests/markup.test.lua"
+  ]
+}
