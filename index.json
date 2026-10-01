@@ -274,8 +274,8 @@
     {
       "id": "proteus.kanban",
       "name": "Kanban",
-      "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.graph.json.",
-      "version": "1.0.0",
+      "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -303,17 +303,17 @@
       "files": [
         "README.md",
         "init.lua",
-        "kanban.graph.json",
+        "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "771357eb7ab9b92f91704dbf26c5e394de1be9e8",
-      "updated": "2026-10-01T18:59:22Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "icons.badges",
       "name": "Letter Badges",
       "description": "A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.icons",
@@ -334,8 +334,8 @@
         "init.lua",
         "tests/pack.test.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "proteus.logs",
@@ -468,8 +468,8 @@
     {
       "id": "proteus.notes",
       "name": "Notes",
-      "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.graph.json.",
-      "version": "1.0.0",
+      "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -497,11 +497,11 @@
       "files": [
         "README.md",
         "init.lua",
-        "notes.graph.json",
+        "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "theme.outrun",
@@ -1153,8 +1153,8 @@
     {
       "id": "proteus.nodal.terminal",
       "name": "Terminal",
-      "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.graph.json.",
-      "version": "1.0.0",
+      "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1183,11 +1183,11 @@
       "files": [
         "README.md",
         "init.lua",
-        "terminal.graph.json",
+        "terminal.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "proteus.terminal",
@@ -1297,7 +1297,7 @@
       "id": "icons.vivid",
       "name": "Vivid Icons",
       "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.icons",
@@ -1318,8 +1318,8 @@
         "init.lua",
         "tests/pack.test.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "proteus.code.welcome",
@@ -1418,7 +1418,7 @@
       "id": "code",
       "name": "Code Editor",
       "description": "Open a project folder: edit, search, run a terminal, and commit to Git.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "requires": {
         "proteus": ">=0.3.0",
@@ -1456,8 +1456,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "git",
@@ -1494,7 +1494,7 @@
       "id": "kanban",
       "name": "Kanban",
       "description": "Cards in columns. Drag them along as work moves.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "requires": {
         "proteus": ">=0.3.0",
@@ -1518,8 +1518,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "logs",
@@ -1603,7 +1603,7 @@
       "id": "notes",
       "name": "Notes",
       "description": "Markdown notes, saved as files in data/notes.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "requires": {
         "proteus": ">=0.3.0",
@@ -1627,8 +1627,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+      "updated": "2026-10-01T15:10:14-06:00"
     },
     {
       "id": "shader",
