@@ -80,524 +80,6 @@
       "updated": "2026-09-30T20:09:08Z"
     },
     {
-      "id": "chiptune",
-      "name": "Chiptune",
-      "description": "Pulse, triangle and noise instruments and a bit crusher for the DAW, in the style of old game consoles.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.devices"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "README.md",
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.arrange",
-      "name": "DAW arrangement",
-      "description": "Tracks and clips along a timeline, with the ruler and the loop.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "ui.shell",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "daw.engine",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.menus",
-        "ui.palette",
-        "ui.views",
-        "ui.notify",
-        "ui.tabs",
-        "core.keys",
-        "ui.windows"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
-      "updated": "2026-09-30T21:17:51Z"
-    },
-    {
-      "id": "daw.browser",
-      "name": "DAW browser",
-      "description": "Songs, instruments, effects and presets, one click away.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "ui.views",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.menus",
-        "ui.palette"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.channels",
-      "name": "DAW channel rack",
-      "description": "The Channel Rack: every instrument as a channel, with a step sequencer that writes into the Playlist.",
-      "version": "1.1.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "daw.engine",
-        "ui.windows",
-        "core.commands"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions",
-          "windows"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
-      "updated": "2026-09-30T21:17:51Z"
-    },
-    {
-      "id": "daw.keyboard",
-      "name": "DAW computer keyboard",
-      "description": "Play the selected track from the computer keyboard.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.core",
-        "daw.engine",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.statusbar",
-        "core.settings",
-        "core.keys"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.core",
-      "name": "DAW core",
-      "description": "The logic behind the DAW: songs, notes, steps, devices, time and undo.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "README.md",
-        "daw_demo.lua",
-        "daw_device.lua",
-        "daw_file.lua",
-        "daw_history.lua",
-        "daw_notes.lua",
-        "daw_resolve.lua",
-        "daw_song.lua",
-        "daw_steps.lua",
-        "daw_time.lua",
-        "init.lua",
-        "tests/core.test.lua",
-        "tests/devices.test.lua",
-        "tests/steps.test.lua",
-        "types/daw.lua"
-      ],
-      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
-      "updated": "2026-09-30T23:15:54Z"
-    },
-    {
-      "id": "daw.rack",
-      "name": "DAW device rack",
-      "description": "The instrument and effects of the selected track, with every parameter.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "ui.views",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.palette",
-        "ui.menus",
-        "daw.engine",
-        "ui.windows"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
-      "updated": "2026-09-30T21:53:19Z"
-    },
-    {
-      "id": "daw.devices",
-      "name": "DAW devices",
-      "description": "The registry of instruments and effects that plugins add to the DAW.",
-      "version": "1.1.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.core"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
-      "updated": "2026-09-30T21:53:19Z"
-    },
-    {
-      "id": "daw.effects",
-      "name": "DAW effects",
-      "description": "EQ, filter, delay, reverb, compressor, drive, chorus and utility for the DAW.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.devices"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "daw_effects.lua",
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.engine",
-      "name": "DAW engine",
-      "description": "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.toolbar",
-        "ui.notify",
-        "core.keys",
-        "ui.windows",
-        "core.settings",
-        "daw.native"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions",
-          "webview",
-          "grants",
-          "autoplay",
-          "webview-files"
-        ]
-      },
-      "files": [
-        "init.lua",
-        "page/editor.html",
-        "page/editor.js",
-        "page/engine.css",
-        "page/engine.html",
-        "page/engine.js",
-        "page/expr.js",
-        "page/files.js",
-        "page/main.js",
-        "page/mixer.js",
-        "page/patch.js",
-        "page/wam-host.js",
-        "page/wam.js",
-        "page/wam/LICENSE",
-        "page/wam/index.js",
-        "vendor.json"
-      ],
-      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
-      "updated": "2026-09-30T23:15:54Z"
-    },
-    {
-      "id": "daw.instruments",
-      "name": "DAW instruments",
-      "description": "Synth, FM Keys, Drum Kit and Sampler for the DAW.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.devices"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "daw_instruments.lua",
-        "init.lua"
-      ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
-    },
-    {
-      "id": "daw.midi",
-      "name": "DAW MIDI keyboards",
-      "description": "Play and record the DAW from a MIDI keyboard, with the sustain pedal.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.core",
-        "daw.engine",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.notify"
-      ],
-      "permissions": [
-        "midi"
-      ],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions",
-          "midi"
-        ]
-      },
-      "files": [
-        "init.lua",
-        "tests/midi.test.lua"
-      ],
-      "commit": "2ca5b4988ae3c5a09c3a36b150256678063c4113",
-      "updated": "2026-09-30T19:31:45Z"
-    },
-    {
-      "id": "daw.mixer",
-      "name": "DAW mixer",
-      "description": "Faders, pans, meters, mute and solo for every track.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "ui.views",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "daw.engine"
-      ],
-      "optional": [
-        "ui.windows"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
-      "updated": "2026-09-30T21:17:51Z"
-    },
-    {
-      "id": "daw.pianoroll",
-      "name": "DAW piano roll",
-      "description": "Draw, move and shape the notes of a clip.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "ui.views",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "daw.engine",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.menus",
-        "ui.palette",
-        "core.keys",
-        "ui.windows"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "58881c11975ed8cd017c6786fb87351164aa2cd4",
-      "updated": "2026-09-30T21:17:51Z"
-    },
-    {
-      "id": "daw.session",
-      "name": "DAW session",
-      "description": "The open song: its file, undo and redo, and what is selected.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.core",
-        "core.commands"
-      ],
-      "optional": [
-        "core.settings",
-        "ui.palette",
-        "ui.notify",
-        "ui.statusbar",
-        "core.keys"
-      ],
-      "permissions": [],
-      "folders": [
-        "songs"
-      ],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
-      "id": "daw.transport",
-      "name": "DAW transport",
-      "description": "Play, stop, record, loop, the metronome, the position and the tempo.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "daw.core",
-        "daw.session",
-        "daw.engine",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.toolbar",
-        "ui.statusbar",
-        "core.keys",
-        "ui.palette"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "2bcaeb418a0aa0860ae008eba30bb3f3812785df",
-      "updated": "2026-09-30T17:32:45Z"
-    },
-    {
       "id": "theme.dracula",
       "name": "Dracula theme",
       "description": "A dark theme with vivid pink, purple and green, from the Dracula palette.",
@@ -719,38 +201,6 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
-    },
-    {
-      "id": "daw.native",
-      "name": "Native plugins",
-      "description": "The CLAP and VST3 plugins installed on this computer, as instruments and effects for the DAW.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.core",
-        "daw.devices",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.notify"
-      ],
-      "permissions": [
-        "native-plugins"
-      ],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions",
-          "native-audio"
-        ]
-      },
-      "files": [
-        "README.md",
-        "init.lua"
-      ],
-      "commit": "2b95b5455df27cd0b930ca80f2ecdb833a37423f",
-      "updated": "2026-09-30T23:15:54Z"
     },
     {
       "id": "theme.nord",
@@ -937,7 +387,7 @@
       "id": "shader.build",
       "name": "Shader build",
       "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [
         "shader.core",
@@ -964,8 +414,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
+      "updated": "2026-10-01T17:10:33Z"
     },
     {
       "id": "shader.canvas",
@@ -1003,7 +453,7 @@
       "id": "shader.code",
       "name": "Shader code",
       "description": "Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -1028,8 +478,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
+      "updated": "2026-10-01T17:10:33Z"
     },
     {
       "id": "shader.core",
@@ -1073,7 +523,7 @@
       "id": "shader.docs",
       "name": "Shader documents",
       "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -1110,8 +560,8 @@
         "examples/waves.frag",
         "init.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
+      "updated": "2026-10-01T17:10:33Z"
     },
     {
       "id": "shader.library",
@@ -1276,88 +726,9 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
-    },
-    {
-      "id": "wam.basics",
-      "name": "WAM Basics",
-      "description": "Two Web Audio Modules for the DAW: PolySynth, a polyphonic synth, and Echo, a stereo delay.",
-      "version": "1.0.0",
-      "author": "nanoqoi",
-      "depends": [
-        "daw.devices"
-      ],
-      "optional": [],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions",
-          "webview-files"
-        ]
-      },
-      "files": [
-        "README.md",
-        "init.lua",
-        "vendor.json",
-        "wam/echo/index.js",
-        "wam/polysynth/gui.js",
-        "wam/polysynth/index.js",
-        "wam/sdk/LICENSE",
-        "wam/sdk/index.js"
-      ],
-      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
-      "updated": "2026-09-30T21:53:19Z"
     }
   ],
   "profiles": [
-    {
-      "id": "daw",
-      "name": "DAW",
-      "description": "Make music in floating windows, like FL Studio: a channel rack with steps, a playlist, a piano roll, a mixer, instruments and effects.",
-      "version": "1.2.0",
-      "author": "nanoqoi",
-      "plugins": [
-        "theme.midnight",
-        "theme.daylight",
-        "theme.retro",
-        "core.keys",
-        "ui.menus",
-        "ui.menubar",
-        "ui.toolbar",
-        "ui.statusbar",
-        "ui.views",
-        "ui.tabs",
-        "ui.palette",
-        "ui.notify",
-        "ui.settings",
-        "core.profiles",
-        "marketplace",
-        "daw.core",
-        "daw.devices",
-        "daw.session",
-        "daw.engine",
-        "ui.windows",
-        "daw.instruments",
-        "daw.effects",
-        "wam.basics",
-        "daw.transport",
-        "daw.channels",
-        "daw.arrange",
-        "daw.pianoroll",
-        "daw.mixer",
-        "daw.rack",
-        "daw.browser",
-        "daw.keyboard",
-        "daw.midi",
-        "discord.rpc"
-      ],
-      "files": [
-        "profile.lua"
-      ],
-      "commit": "6fb914983f6abfe5599bd01d85aa8d1956f2e35f",
-      "updated": "2026-09-30T21:53:19Z"
-    },
     {
       "id": "shader",
       "name": "Shader Builder",
