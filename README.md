@@ -41,7 +41,7 @@ A restricted plugin names its services, events, commands and settings after the 
 
 ## The rules
 
-- The id is lower case letters, digits, dots, dashes and underscores, such as `my.plugin`. It cannot be the id of a plugin or profile that ships with Proteus. `reserved.json` lists those: `ids` and `prefixes` for plugins, and `profiles` for profiles. A plugin and a profile may share an id.
+- The id is lower case letters, digits, dots, dashes and underscores, such as `my.plugin`. It cannot be the id of a plugin or profile that ships with Proteus. `reserved.json` lists those: `ids` and `prefixes` for plugins, and `profiles` for profiles. `ids` also keeps the ids the app's plugins had before 0.3.0, such as `app.notes`, since Proteus still reads them as the new ones. Ids that start with `proteus.` belong to the official plugins and profiles, which the maintainers publish. A plugin and a profile may share an id.
 - A plugin has an `init.lua` at its top, a name, a one-sentence description, and a version such as `1.0.0`.
 - A profile has a `profile.lua` at its top, a name, a one-sentence description, a version, and at least one plugin in its `plugins` list.
 - Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines.
