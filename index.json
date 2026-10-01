@@ -380,6 +380,32 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "theme.nanoqoi",
+      "name": "nanoqoi theme",
+      "description": "A near-black theme in amethyst purples, from nanoqoi's Neovim colors.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "core.themes"
+      ],
+      "optional": [],
+      "permissions": [],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.2.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "tests/theme.test.lua"
+      ],
+      "commit": "dd7ae7b5bc1a30a8ae71b4f9bdcbecdf42d60bd4",
+      "updated": "2026-10-01T13:18:22-06:00"
+    },
+    {
       "id": "theme.nord",
       "name": "Nord theme",
       "description": "An arctic, north-bluish dark theme, from the Nord palette.",
