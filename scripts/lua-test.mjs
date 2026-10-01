@@ -20,7 +20,7 @@
 
 import { declaredOf, engine, reader } from './lua.mjs';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -143,7 +143,7 @@ for (const [root, kind, main] of [
       t.global.set('write', (path, body) => {
         if (!update) throw new Error('write needs --update');
         const target = resolve(ROOT, path);
-        if (!target.startsWith(dir + '/')) throw new Error(`a test may only write inside ${root}/${id}`);
+        if (!target.startsWith(dir + sep)) throw new Error(`a test may only write inside ${root}/${id}`);
         writeFileSync(target, body);
       });
       t.global.set('__read_own', reader(dir));

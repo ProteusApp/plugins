@@ -3,7 +3,7 @@
 
 import { LuaFactory } from 'wasmoon';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 
 // Only what a restricted plugin sees in Proteus: no io, os.execute, package or debug.
 export const SANDBOX = `
@@ -113,7 +113,7 @@ export async function engine() {
 export function reader(dir) {
   return (rel) => {
     const path = resolve(dir, String(rel));
-    if (!path.startsWith(dir + '/') || !existsSync(path) || statSync(path).isDirectory()) return undefined;
+    if (!path.startsWith(dir + sep) || !existsSync(path) || statSync(path).isDirectory()) return undefined;
     return readFileSync(path, 'utf8');
   };
 }
