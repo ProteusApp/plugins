@@ -2,7 +2,7 @@
   "id": "shader",
   "name": "Shader Builder",
   "description": "Build GLSL and WGSL shaders from nodes or code, with a live preview.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "kind": "profile",
   "plugins": [
     "theme.midnight",
@@ -19,6 +19,7 @@
     "ui.notify",
     "ui.settings",
     "core.profiles",
+    "proteus.handbook",
     "shader.core",
     "shader.docs",
     "shader.canvas",

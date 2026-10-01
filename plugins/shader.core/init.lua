@@ -18,7 +18,7 @@ local types = require ('shader_types') --[[@as Shader.TypesModule]]
 return {
   name = 'Shader core',
   description = 'The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)

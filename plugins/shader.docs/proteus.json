@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -41,6 +41,23 @@
     "examples/shapes.shader.json",
     "examples/tunnel.wgsl",
     "examples/waves.frag",
+    "examples/weather.frag",
+    "handbook/colour.md",
+    "handbook/debugging.md",
+    "handbook/first-shader.md",
+    "handbook/glsl-language.md",
+    "handbook/learn-shaders.md",
+    "handbook/lighting.md",
+    "handbook/node-graphs.md",
+    "handbook/noise.md",
+    "handbook/raymarching.md",
+    "handbook/resources.md",
+    "handbook/shapes.md",
+    "handbook/shaping.md",
+    "handbook/space.md",
+    "handbook/volumes.md",
+    "handbook/weather.md",
+    "handbook/wgsl.md",
     "init.lua"
   ]
 }
