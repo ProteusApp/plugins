@@ -17,6 +17,8 @@ Check that:
 - a web view page loads nothing from elsewhere. Proteus blocks it anyway, but code that tries is a warning sign
 - it holds no secrets, tokens or personal data
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
+- every vendored file comes from the source `vendor.json` names, under a license that lets it be shared. The check workflow runs `node scripts/vendor.mjs verify`, which compares each file with that source byte for byte
+- a binary file, which can only be a vendored WebAssembly module, is a published build the plugin needs, such as the processor of a Web Audio Module. No one can read it, so its source is what gets reviewed: a package or address with a known author, and a version, not a build of the author's own put somewhere for the purpose. The code that loads it reads it from the plugin's own folder
 
 Approve a submission by commenting `/approve` on its issue. Text after the command on the same line is fine, such as `/approve thanks!`. The workflow checks three things first:
 

@@ -168,3 +168,21 @@ test('a profile submission writes to profiles/<id>', async () => {
   assert.deepEqual(paths, ['profiles/writer/profile.lua', 'profiles/writer/proteus.json']);
   assert.match(gh.find('POST', '/pulls')[0].body.title, /^Add profile Writer \(writer\) 1\.0\.0$/);
 });
+
+test('a binary file goes to GitHub as a base64 blob', async () => {
+  const binary = readFileSync(new URL('./fixtures/store-binary-issue.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const event = opened();
+  event.issue.title = 'Plugin submission: wam.tone 1.0.0';
+  event.issue.body = binary;
+  const gh = fakeGitHub(world());
+  assert.equal(await submit({ api: gh.api, event, repo: REPO, checkout }), 'opened');
+  const blobs = gh.find('POST', '/git/blobs').map((c) => c.body);
+  assert.equal(blobs.length, 4);
+  const wasm = blobs.filter((b) => b.encoding === 'base64');
+  assert.equal(wasm.length, 1);
+  assert.deepEqual([...Buffer.from(wasm[0].content, 'base64').subarray(0, 8)], [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
+  assert.equal(Buffer.from(wasm[0].content, 'base64').length, 272);
+  const tree = gh.find('POST', '/git/trees')[0].body.tree.map((e) => e.path);
+  assert.ok(tree.includes('plugins/wam.tone/wam/tone.wasm'));
+  assert.match(gh.find('POST', '/pulls')[0].body.body, /a binary WebAssembly module/);
+});
