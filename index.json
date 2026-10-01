@@ -907,7 +907,7 @@
       "id": "shader.core",
       "name": "Shader core",
       "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -938,14 +938,14 @@
         "tests/source.test.lua",
         "types/shader.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "shader.docs",
       "name": "Shader documents",
       "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -980,10 +980,27 @@
         "examples/shapes.shader.json",
         "examples/tunnel.wgsl",
         "examples/waves.frag",
+        "examples/weather.frag",
+        "handbook/colour.md",
+        "handbook/debugging.md",
+        "handbook/first-shader.md",
+        "handbook/glsl-language.md",
+        "handbook/learn-shaders.md",
+        "handbook/lighting.md",
+        "handbook/node-graphs.md",
+        "handbook/noise.md",
+        "handbook/raymarching.md",
+        "handbook/resources.md",
+        "handbook/shapes.md",
+        "handbook/shaping.md",
+        "handbook/space.md",
+        "handbook/volumes.md",
+        "handbook/weather.md",
+        "handbook/wgsl.md",
         "init.lua"
       ],
-      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
-      "updated": "2026-10-01T17:10:33Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "shader.library",
@@ -1636,7 +1653,7 @@
       "id": "shader",
       "name": "Shader Builder",
       "description": "Build GLSL and WGSL shaders from nodes or code, with a live preview.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "plugins": [
         "theme.midnight",
@@ -1653,6 +1670,7 @@
         "ui.notify",
         "ui.settings",
         "core.profiles",
+        "proteus.handbook",
         "shader.core",
         "shader.docs",
         "shader.canvas",
@@ -1665,8 +1683,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "sheet",
