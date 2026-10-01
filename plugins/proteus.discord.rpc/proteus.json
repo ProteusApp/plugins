@@ -1,0 +1,36 @@
+{
+  "id": "proteus.discord.rpc",
+  "name": "Discord Rich Presence",
+  "description": "Shows what you are doing in Proteus on your Discord profile.",
+  "version": "1.0.0",
+  "depends": [],
+  "optional": [
+    "proteus.core.commands",
+    "proteus.ui.notify",
+    "proteus.editor.core"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "discord_presence.lua",
+    "drpc.lua",
+    "handbook/discord.md",
+    "init.lua",
+    "tests/discord.test.lua"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "proteus.code.plugins",
+  "name": "Project Plugins",
+  "description": "Builds Proteus plugins in the open folder's .proteus folder, for everyone who opens it.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.core.commands",
+    "proteus.code.project"
+  ],
+  "optional": [
+    "proteus.ui.notify",
+    "proteus.ui.palette",
+    "proteus.ui.menus",
+    "proteus.editor.core",
+    "proteus.code.explorer",
+    "proteus.marketplace"
+  ],
+  "permissions": [
+    "files",
+    "workspace",
+    "kernel"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

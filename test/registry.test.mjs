@@ -153,6 +153,16 @@ test('validate keeps builtin ids for Proteus', () => {
   assert.match(validate(good({ id: 'core.mine' }), { reserved }).join(), /ships with Proteus/);
 });
 
+test('validate takes an official id only when the check names it', () => {
+  const withOfficial = { ...reserved, prefixes: [...reserved.prefixes, 'proteus.'] };
+  assert.match(validate(good({ id: 'proteus.git' }), { reserved: withOfficial }).join(), /ships with Proteus/);
+  assert.deepEqual(validate(good({ id: 'proteus.git' }), { reserved: withOfficial, official: ['proteus.git'] }), []);
+  assert.match(
+    validate(good({ id: 'proteus.other' }), { reserved: withOfficial, official: ['proteus.git'] }).join(),
+    /ships with Proteus/,
+  );
+});
+
 test('validate lets only the author update a plugin, and only upward', () => {
   const existing = { id: 'hello.world', version: '1.0.0', author: { login: 'ann', id: 1 } };
   assert.match(validate(good(), { existing, author: { login: 'bob', id: 2 }, reserved }).join(), /belongs to @ann/);

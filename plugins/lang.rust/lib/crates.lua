@@ -38,7 +38,8 @@ function M.new (app)
   -- Folder to the Cargo.toml text there, or false when there is none.
   local manifests = {} ---@type table<string, string|false>
 
-  app.on ('disk:changed', function (changes)
+  ---@param changes any
+  local function forget (changes)
     for _, change in
       ipairs (changes or {} --[[@as Proteus.DirChange[] ]])
     do
@@ -47,7 +48,10 @@ function M.new (app)
         return
       end
     end
-  end)
+  end
+  -- The Code Editor sends code:disk_changed from Proteus 0.3.0, and disk:changed before.
+  app.on ('code:disk_changed', forget)
+  app.on ('disk:changed', forget)
 
   ---@param dir string
   ---@param cb fun(text: string?)

@@ -1,0 +1,44 @@
+{
+  "id": "proteus.logs",
+  "name": "Logs",
+  "description": "Follow a log file or a program, filter the lines, and spot errors.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.shell",
+    "proteus.ui.views",
+    "proteus.core.commands"
+  ],
+  "optional": [
+    "proteus.ui.toolbar",
+    "proteus.ui.statusbar",
+    "proteus.ui.palette",
+    "proteus.ui.notify",
+    "proteus.core.keys",
+    "proteus.ui.menus",
+    "proteus.ui.tabs"
+  ],
+  "permissions": [
+    "clipboard",
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "log_filter.lua",
+    "tests/logs.test.lua"
+  ]
+}

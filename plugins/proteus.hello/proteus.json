@@ -1,0 +1,27 @@
+{
+  "id": "proteus.hello",
+  "name": "Hello",
+  "description": "A one-plugin app: a counter and a way back to the Plugin Editor.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

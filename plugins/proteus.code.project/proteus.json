@@ -1,0 +1,36 @@
+{
+  "id": "proteus.code.project",
+  "name": "Project",
+  "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.commands",
+    "proteus.core.settings"
+  ],
+  "optional": [
+    "proteus.ui.notify",
+    "proteus.ui.palette",
+    "proteus.ui.statusbar"
+  ],
+  "permissions": [
+    "files",
+    "kernel"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "handbook/project.md",
+    "init.lua"
+  ]
+}

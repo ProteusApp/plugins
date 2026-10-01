@@ -51,7 +51,7 @@ for (const [root, kind] of [
       if (listed !== Object.keys(files).sort().join('\n')) {
         problems.push('The files in proteus.json do not match the files in the folder.');
       }
-      problems.push(...validate({ ...meta, format: 1, files }, { reserved, known }));
+      problems.push(...validate({ ...meta, format: 1, files }, { reserved, known, official: reserved.official ?? [] }));
     }
     if (problems.length > 0) {
       failed++;

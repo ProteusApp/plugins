@@ -295,17 +295,22 @@ export function versionSpecProblem(spec) {
  * means it can become a pull request. `existing` is the plugin's or profile's proteus.json on
  * the main branch, when it is listed already. `author` is the GitHub user who sent it.
  * `reserved` holds the ids of what ships with Proteus: `ids` and `prefixes` for plugins, and
- * `profiles` for profiles.
+ * `profiles` for profiles. `official` lists reserved ids the maintainers publish here, such as
+ * `proteus.git`. Only the check of a pull request passes it, so an issue never publishes one.
  */
-export function validate(sub, { existing = null, author = null, reserved = { ids: [], prefixes: [] }, known = null } = {}) {
+export function validate(
+  sub,
+  { existing = null, author = null, reserved = { ids: [], prefixes: [] }, known = null, official = [] } = {},
+) {
   const problems = [];
   const kind = kindOf(sub);
   const noun = kind === 'profile' ? 'profile' : 'plugin';
   const id = sub.id;
   const taken =
-    kind === 'profile'
+    !official.includes(id) &&
+    (kind === 'profile'
       ? (reserved.profiles ?? []).includes(id)
-      : (reserved.ids ?? []).includes(id) || (reserved.prefixes ?? []).some((p) => id.startsWith(p));
+      : (reserved.ids ?? []).includes(id) || (reserved.prefixes ?? []).some((p) => id.startsWith(p)));
   if (sub.kind !== undefined && !KINDS.includes(sub.kind)) {
     problems.push(`The kind must be one of ${KINDS.join(' or ')}.`);
   }
