@@ -1,0 +1,28 @@
+{
+  "id": "theme.nanoqoi",
+  "name": "nanoqoi theme",
+  "description": "A near-black theme in amethyst purples, from nanoqoi's Neovim colors.",
+  "version": "1.0.0",
+  "depends": [
+    "core.themes"
+  ],
+  "optional": [],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.2.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "tests/theme.test.lua"
+  ]
+}
