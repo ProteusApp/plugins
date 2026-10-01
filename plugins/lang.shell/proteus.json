@@ -1,0 +1,52 @@
+{
+  "id": "lang.shell",
+  "name": "Shell",
+  "description": "Shell scripts with bash-language-server, ShellCheck and shfmt: completion, hover help, go to definition, problems and formatting.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.core.files",
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/completion.lua",
+    "lib/config.lua",
+    "lib/dialect.lua",
+    "lib/format.lua",
+    "lib/helper.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/provider.lua",
+    "lib/release.lua",
+    "lib/server.lua",
+    "tests/completion.test.lua",
+    "tests/config.test.lua",
+    "tests/dialect.test.lua",
+    "tests/launch.test.lua"
+  ]
+}
