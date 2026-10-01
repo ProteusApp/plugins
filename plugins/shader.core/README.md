@@ -6,7 +6,7 @@ Builds GLSL and WGSL shaders from a node graph or as code, with a live preview. 
 |--------|--------------|-------------|
 | `shader.core` | The node catalog, graph operations, the GLSL and WGSL compiler, code shaders and files. Pure Lua, with tests in `tests/`. | none |
 | `shader.docs` | The open shaders and their undo. On the first start it copies the examples into `shaders/`. | none, writes in `shaders/` |
-| `shader.canvas` | The node editor. | none |
+| `shader.canvas` | The node editor: frames, reroute points, copy and paste, and a minimap. It uses the node canvas in Proteus's own `lib/`, so it needs Proteus 0.3.1. | none |
 | `shader.code` | Code shaders, with GLSL and WGSL added to the code editor as data languages. | none |
 | `shader.preview` | Runs the shader live: GLSL on WebGL 2 and WGSL on WebGPU, in a sandboxed web view, `page/`. | none |
 | `shader.library` | The list of shaders and nodes. | none |

@@ -163,7 +163,37 @@ function M.save (doc)
       .. ' }'
       .. (i < #doc.edges and ',' or '')
   end
-  lines[#lines + 1] = '  ]'
+  -- The canvas's frames and reroute points, one to a line, only when there are some.
+  local canvas = (graph.set_canvas (doc, doc.canvas) or doc).canvas
+  if canvas then
+    lines[#lines + 1] = '  ],'
+    lines[#lines + 1] = '  "canvas": {'
+    lines[#lines + 1] = '    "frames": ['
+    for i, f in ipairs (canvas.frames) do
+      lines[#lines + 1] = '      '
+        .. encode ({
+          id = f.id,
+          title = f.title,
+          x = f.x,
+          y = f.y,
+          w = f.w,
+          h = f.h,
+          color = f.color,
+        })
+        .. (i < #canvas.frames and ',' or '')
+    end
+    lines[#lines + 1] = '    ],'
+    lines[#lines + 1] = '    "routes": ['
+    for i, r in ipairs (canvas.routes) do
+      lines[#lines + 1] = '      '
+        .. encode ({ to = r.to, input = r.input, points = r.points })
+        .. (i < #canvas.routes and ',' or '')
+    end
+    lines[#lines + 1] = '    ]'
+    lines[#lines + 1] = '  }'
+  else
+    lines[#lines + 1] = '  ]'
+  end
   lines[#lines + 1] = '}'
   return table.concat (lines, '\n') .. '\n'
 end
@@ -430,6 +460,11 @@ function M.load (text)
           { from = e.from, output = e.output, to = e.to, input = e.input }
       end
     end
+  end
+  -- Frames and reroute points that do not read leave the canvas bare, rather than losing the
+  -- graph.
+  if type (data.canvas) == 'table' then
+    doc = graph.set_canvas (doc, data.canvas) or doc
   end
   return doc
 end
