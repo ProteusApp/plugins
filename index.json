@@ -380,6 +380,40 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "code.minimap",
+      "name": "Minimap",
+      "description": "Shows the file in front in miniature beside the code, shades the part on screen, and scrolls there on a click.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.views",
+        "proteus.ui.tabs",
+        "proteus.editor.core"
+      ],
+      "optional": [
+        "proteus.core.settings"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "minimap_render.lua",
+        "tests/render.test.lua"
+      ],
+      "commit": "5be43989bc636a311483ff92101f4a11f07511d0",
+      "updated": "2026-10-01T14:42:51-06:00"
+    },
+    {
       "id": "theme.nanoqoi",
       "name": "nanoqoi theme",
       "description": "A near-black theme in amethyst purples, from nanoqoi's Neovim colors.",
