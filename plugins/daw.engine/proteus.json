@@ -52,6 +52,7 @@
     "page/wam.js",
     "page/wam/LICENSE",
     "page/wam/index.js",
+    "tests/engine.test.lua",
     "tests/states.test.lua",
     "vendor.json"
   ]
