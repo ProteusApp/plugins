@@ -53,6 +53,7 @@
 ---| 'icons' # File icon packs registered with the `icons` service.
 ---| 'windows' # Floating windows on a desktop, from `proteus.ui.windows` and the `windows` service.
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
+---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -1111,4 +1112,5 @@ function Kernel.sandbox (name) end
 ---@field block_keywords? string|string[] Keywords that open a block, for indenting.
 ---@field directive? '#'|'@'|'$'|'!'|'%' A character that makes the rest of the line preprocessor text.
 ---@field attribute? '#'|'@'|'$'|'!'|'%' A character that starts an attribute word, such as `@vertex`.
+---@field comment? '#'|';'|'//'|'--'|string[] What starts a line comment, such as `'#'`. With it, `/*` no longer opens a C block comment.
 ---@field extensions? string|string[] File extensions without the dot, such as `'wgsl'`. The editor opens those files in this language.
