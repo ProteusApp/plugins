@@ -2,7 +2,7 @@
   "id": "code",
   "name": "Code Editor",
   "description": "Open a project folder: edit, search, run a terminal, and commit to Git.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "profile",
   "plugins": [
     "proteus.theme.midnight",

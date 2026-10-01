@@ -5,7 +5,7 @@
 return {
   name = 'Code Editor',
   description = 'Open a project folder: edit, search, run a terminal, and commit to Git.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0' },
   plugins = {
     'proteus.theme.midnight',
@@ -44,8 +44,9 @@ return {
   extensible = true,
   settings = {
     theme = 'midnight',
-    -- The left sidebar's panels show as a bar of icons along the window's edge.
+    -- Both sidebars' panels show as a bar of icons along the window's edge.
     ['views.left_style'] = 'bar',
+    ['views.right_style'] = 'bar',
     -- Prettier would reformat every file of a project that does not use it.
     ['editor.format_on_save'] = false,
   },

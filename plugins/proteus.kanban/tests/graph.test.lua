@@ -1,15 +1,15 @@
 -- proteus.kanban is a Nodal graph built as an app. The app's scripts/build-graphs.mjs writes init.lua
--- from graphs/kanban.graph.json, with the wrapper Nodal's Build as App writes, and puts a copy of the
+-- from graphs/kanban.ndg, with the wrapper Nodal's Build as App writes, and puts a copy of the
 -- graph beside it. Neither file is edited by hand: change the graph in the app, then run
 -- `node scripts/build-graphs.mjs --plugins ../plugins/plugins` there. These tests fail when
 -- init.lua no longer matches the graph file, or its wrapper is not the one Nodal writes.
 
 local DIR = 'plugins/proteus.kanban/'
-local GRAPH_FILE = 'kanban.graph.json'
+local GRAPH_FILE = 'kanban.ndg'
 
 -- init.lua up to the graph.
 local HEAD = [==[
--- Built by Nodal from graphs/kanban.graph.json. Building again replaces this file.
+-- Built by Nodal from graphs/kanban.ndg. Building again replaces this file.
 -- It runs the graph below with the Nodal runtime, as the Nodal preview does.
 -- To change it, change the graph.
 
@@ -28,8 +28,8 @@ local TAIL = [==[
 ---@type Proteus.Plugin
 return {
   name = NAME,
-  description = 'Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.graph.json.',
-  version = '1.0.0',
+  description = 'Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.',
+  version = '1.1.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },

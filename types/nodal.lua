@@ -84,8 +84,8 @@
 ---@field formula string The main output's formula. `''` for a code block.
 ---@field outputs? Nodal.PortDef[] More outputs, each with its own `formula` in a formula block.
 ---@field kind? 'formula'|'code' nil means `'formula'`.
----@field source? string The block's file text, for a block written as a `.block.lua` file.
----@field file? string The workspace path of that file, such as `'blocks/split-name.block.lua'`.
+---@field source? string The block's file text, for a block written as a `.ndb.lua` file.
+---@field file? string The workspace path of that file, such as `'blocks/split-name.ndb.lua'`.
 
 ---------------------------------------------------------------------------------------------
 -- Formulas
@@ -634,7 +634,7 @@
 ---@field apply fun(doc: Nodal.Doc, spec: Nodal.Interface): Nodal.Doc?, Nodal.Refusal?
 
 ---------------------------------------------------------------------------------------------
--- A block written as a Lua file: blocks/<name>.block.lua
+-- A block written as a Lua file: blocks/<name>.ndb.lua
 ---------------------------------------------------------------------------------------------
 
 ---One input or output of a block written in a file.
@@ -656,7 +656,7 @@
 ---With a single output, returning the value itself works too. It must not wait or loop forever.
 ---@field run? fun(input: table<string, any>): any
 
----Loads and writes blocks kept as `.block.lua` files. The file is real Lua, run in a small
+---Loads and writes blocks kept as `.ndb.lua` files. The file is real Lua, run in a small
 ---sandbox with the string, table, math and utf8 libraries and nothing that reaches outside.
 ---@class Nodal.CodeBlockModule
 ---Loads a block file. A refusal (`'invalid-block'`) carries the line when there is one.
@@ -731,7 +731,7 @@
 ---@field fixtures Nodal.FixturesModule
 ---@field interface Nodal.InterfaceModule The inputs and outputs as a Lua table.
 ---@field block_source Nodal.BlockSourceModule A custom block as a Lua table.
----@field code_block Nodal.CodeBlockModule Blocks written as `.block.lua` files.
+---@field code_block Nodal.CodeBlockModule Blocks written as `.ndb.lua` files.
 ---@field runtime Nodal.RuntimeModule Runs a graph as a live app.
 
 ---------------------------------------------------------------------------------------------

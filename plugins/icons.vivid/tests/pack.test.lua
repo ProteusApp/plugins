@@ -122,7 +122,7 @@ test ('well known files get their icons', function ()
     'flask-conical',
     'a test beats its language'
   )
-  eq (find ('graphs/todo.graph.json').icon, 'workflow', 'a graph beats JSON')
+  eq (find ('graphs/todo.ndg').icon, 'workflow', 'a graph has its own icon')
   eq (find ('data.json').icon, 'braces')
   eq (find ('Cargo.toml').icon, 'package', 'a name beats its extension')
   eq (find ('readme.md').icon, 'info', 'case does not matter')

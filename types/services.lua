@@ -1080,7 +1080,7 @@ function Discord.connected () end
 ---Ties a kind of file to a value, such as a JSON schema.
 ---@class Proteus.FileAssociation
 ---@field kind string Such as `'schema'`. The plugins that handle a kind decide what its values mean.
----@field pattern string Which files: `'Cargo.toml'` matches the name anywhere, `'*.graph.json'` any name that fits, and `'.cargo/config.toml'` the end of a path. `**` crosses folders.
+---@field pattern string Which files: `'Cargo.toml'` matches the name anywhere, `'*.ndg'` any name that fits, and `'.cargo/config.toml'` the end of a path. `**` crosses folders.
 ---@field value any For `'schema'`, a JSON schema's address. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
 ---@field owner? string Set by the service: the plugin that added it.
 

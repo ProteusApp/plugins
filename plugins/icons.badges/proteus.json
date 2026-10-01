@@ -2,7 +2,7 @@
   "id": "icons.badges",
   "name": "Letter Badges",
   "description": "A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "core.icons",
     "core.files"

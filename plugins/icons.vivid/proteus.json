@@ -2,7 +2,7 @@
   "id": "icons.vivid",
   "name": "Vivid Icons",
   "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "core.icons",
     "core.files"

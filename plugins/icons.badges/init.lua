@@ -94,8 +94,8 @@ local EXTENSIONS = {
   },
   { { 'lock' }, '', FAINT, icon = 'lock' },
   -- Proteus's own files.
-  { { 'graph.json' }, '', ACCENT, icon = 'workflow' },
-  { { 'block.lua' }, '', ACCENT, icon = 'blocks' },
+  { { 'ndg' }, '', ACCENT, icon = 'workflow' },
+  { { 'ndb.lua' }, '', ACCENT, icon = 'blocks' },
 }
 
 ---Files known by their whole name.
@@ -139,7 +139,7 @@ local FOLDERS = {
 return {
   name = 'Letter Badges',
   description = 'A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'icons' } },
   permissions = {},
   depends = { 'core.icons', 'core.files' },

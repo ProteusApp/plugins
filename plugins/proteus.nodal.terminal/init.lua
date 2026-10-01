@@ -1,4 +1,4 @@
--- Built by Nodal from graphs/terminal.graph.json. Building again replaces this file.
+-- Built by Nodal from graphs/terminal.ndg. Building again replaces this file.
 -- It runs the graph below with the Nodal runtime, as the Nodal preview does.
 -- To change it, change the graph.
 
@@ -167,8 +167,8 @@ local GRAPH = [[
 ---@type Proteus.Plugin
 return {
   name = NAME,
-  description = 'A terminal in the bottom dock, built with Nodal from graphs/terminal.graph.json.',
-  version = '1.0.0',
+  description = 'A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.',
+  version = '1.1.0',
   depends = { 'proteus.lib.ui', 'proteus.ui.views', 'proteus.nodal.app' },
   permissions = { 'process' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },

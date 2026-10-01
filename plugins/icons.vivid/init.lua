@@ -69,8 +69,8 @@ local EXTENSIONS = {
   { { 'wasm' }, 'binary', '#654ff0' },
   { { 'env' }, 'key-round', '#ecd53f' },
   -- Proteus's own files.
-  { { 'graph.json' }, 'workflow', '#7c6cff' },
-  { { 'block.lua' }, 'blocks', '#7c6cff' },
+  { { 'ndg' }, 'workflow', '#7c6cff' },
+  { { 'ndb.lua' }, 'blocks', '#7c6cff' },
   -- Tests, whatever the language.
   {
     {
@@ -182,7 +182,7 @@ local FOLDERS = {
 return {
   name = 'Vivid Icons',
   description = 'A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'icons' } },
   permissions = {},
   depends = { 'core.icons', 'core.files' },

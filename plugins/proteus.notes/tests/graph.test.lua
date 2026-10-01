@@ -1,15 +1,15 @@
 -- proteus.notes is a Nodal graph built as an app. The app's scripts/build-graphs.mjs writes init.lua
--- from graphs/notes.graph.json, with the wrapper Nodal's Build as App writes, and puts a copy of the
+-- from graphs/notes.ndg, with the wrapper Nodal's Build as App writes, and puts a copy of the
 -- graph beside it. Neither file is edited by hand: change the graph in the app, then run
 -- `node scripts/build-graphs.mjs --plugins ../plugins/plugins` there. These tests fail when
 -- init.lua no longer matches the graph file, or its wrapper is not the one Nodal writes.
 
 local DIR = 'plugins/proteus.notes/'
-local GRAPH_FILE = 'notes.graph.json'
+local GRAPH_FILE = 'notes.ndg'
 
 -- init.lua up to the graph.
 local HEAD = [==[
--- Built by Nodal from graphs/notes.graph.json. Building again replaces this file.
+-- Built by Nodal from graphs/notes.ndg. Building again replaces this file.
 -- It runs the graph below with the Nodal runtime, as the Nodal preview does.
 -- To change it, change the graph.
 
@@ -28,8 +28,8 @@ local TAIL = [==[
 ---@type Proteus.Plugin
 return {
   name = NAME,
-  description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.graph.json.',
-  version = '1.0.0',
+  description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.',
+  version = '1.1.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },

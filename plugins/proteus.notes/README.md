@@ -2,7 +2,7 @@
 
 Markdown notes, saved as you type. Install the **Notes** profile from the marketplace to run it as an app of its own.
 
-This plugin is a Nodal graph built as an app. Every list, button and command in it is a block. The graph ships with Proteus as `graphs/notes.graph.json`. Open it in the Plugin Editor or the **Nodal** profile to see how it works.
+This plugin is a Nodal graph built as an app. Every list, button and command in it is a block. The graph ships with Proteus as `graphs/notes.ndg`. Open it in the Plugin Editor or the **Nodal** profile to see how it works.
 
 ## What it does
 
@@ -13,7 +13,7 @@ This plugin is a Nodal graph built as an app. Every list, button and command in 
 
 ## How it is built
 
-The app's `scripts/build-graphs.mjs` writes `init.lua` from the graph, the way Nodal's **Build as App** does, and puts a copy of the graph beside it as `notes.graph.json`. Neither is edited by hand. `tests/graph.test.lua` fails when `init.lua` no longer carries that graph in Nodal's own wrapper.
+The app's `scripts/build-graphs.mjs` writes `init.lua` from the graph, the way Nodal's **Build as App** does, and puts a copy of the graph beside it as `notes.ndg`. Neither is edited by hand. `tests/graph.test.lua` fails when `init.lua` no longer carries that graph in Nodal's own wrapper.
 
 Its commands are named after it, such as `notes.nodal.n52` for **New Note**, since it runs restricted.
 

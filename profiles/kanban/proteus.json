@@ -2,7 +2,7 @@
   "id": "kanban",
   "name": "Kanban",
   "description": "Cards in columns. Drag them along as work moves.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "profile",
   "plugins": [
     "proteus.theme.daylight",

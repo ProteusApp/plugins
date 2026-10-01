@@ -1,4 +1,4 @@
--- Built by Nodal from graphs/notes.graph.json. Building again replaces this file.
+-- Built by Nodal from graphs/notes.ndg. Building again replaces this file.
 -- It runs the graph below with the Nodal runtime, as the Nodal preview does.
 -- To change it, change the graph.
 
@@ -2030,8 +2030,8 @@ local GRAPH = [[
 ---@type Proteus.Plugin
 return {
   name = NAME,
-  description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.graph.json.',
-  version = '1.0.0',
+  description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.',
+  version = '1.1.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },

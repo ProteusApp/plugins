@@ -2,7 +2,7 @@
   "id": "notes",
   "name": "Notes",
   "description": "Markdown notes, saved as files in data/notes.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "profile",
   "plugins": [
     "proteus.theme.daylight",

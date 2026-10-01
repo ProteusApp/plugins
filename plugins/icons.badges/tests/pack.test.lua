@@ -124,7 +124,7 @@ test ('well known files get their badges', function ()
   eq (find ('package.json').text, 'NPM', 'a name beats its extension')
   eq (find ('Main.CPP').text, 'C++', 'case does not matter')
   eq (find ('logo.png').icon, 'image', 'pictures show an icon, not letters')
-  eq (find ('todo.graph.json').icon, 'workflow')
+  eq (find ('todo.ndg').icon, 'workflow')
   eq (find ('notes.xyz').icon, 'file', 'the pack default')
 end)
 
