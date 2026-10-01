@@ -16,6 +16,10 @@
 //   { type: 'retry', file }                 try a file that failed again
 //   { type: 'render', file, from, to }      play the song into a WAV file the user chose to
 //                                           save. With `to` at or before `from`, to the end.
+//   { type: 'set_state', device, state }    a device's saved state, as text. A module playing
+//                                           it takes it now, and one made later starts from it.
+//                                           Without `state`, the page forgets it.
+//   { type: 'get_states', id }              asks what every device would save now
 //   { type: 'native', on }                  the app's native engine plays, and the page is
 //                                           only the meter
 //   { type: 'meter', master }               the native engine's master level, to draw
@@ -29,6 +33,7 @@
 //   { type: 'warning', message }            a patch had a mistake
 //   { type: 'rendered', file, seconds }     the WAV file is written
 //   { type: 'render_failed', file, error }
+//   { type: 'states', id, states }          the answer to get_states: the text by device id
 // and the file messages in files.js.
 
 'use strict';
@@ -168,6 +173,12 @@ proteus.on((m) => {
       break;
     case 'render':
       void renderTo(String(m.file), num(m.from), num(m.to));
+      break;
+    case 'set_state':
+      engine.setState(String(m.device), typeof m.state === 'string' ? m.state : '');
+      break;
+    case 'get_states':
+      void engine.getStates().then((states) => post({ type: 'states', id: m.id, states }));
       break;
     case 'native':
       native = m.on === true;

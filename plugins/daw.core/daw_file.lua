@@ -2,12 +2,16 @@
 -- older version, from another program, or from a hand edit, so every field is checked and
 -- anything missing gets its default. An empty list that went through JSON may come back as
 -- an empty object, which reads the same here.
+--
+-- Format 2 lets each device keep `state`, the text its engine saved for it, such as the
+-- samples and presets inside a Web Audio Module or a CLAP or VST3 plugin. A format 1 song
+-- has none, so it reads as it is and saves as format 2.
 
 local song_mod = require ('daw_song') --[[@as Daw.SongModule]]
 
 local M = {}
 
-M.FORMAT = 1
+M.FORMAT = 2
 M.EXT = '.song.json'
 
 ---@param value any
@@ -127,6 +131,7 @@ function M.normalize (value)
       params = params,
       bypass = d.bypass == true,
       preset = type (d.preset) == 'string' and d.preset or nil,
+      state = type (d.state) == 'string' and d.state ~= '' and d.state or nil,
     }
   end
 

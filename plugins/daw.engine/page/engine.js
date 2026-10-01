@@ -3,6 +3,9 @@
 // Lua cannot keep time to the millisecond, so the transport lives here. Every 25 ms it
 // looks 150 ms ahead and hands the Web Audio clock each note that starts in that stretch.
 // The plugin sends the whole song whenever it changes, and the next stretch plays the new song.
+//
+// Each device's saved state, such as a module's sample, sits in DEVICE_STATES (wam-host.js)
+// by device id. A load forgets the states of devices the song no longer has.
 
 'use strict';
 
@@ -45,7 +48,18 @@ class Engine {
     this.ctx.onstatechange = () => emit('context', { state: this.ctx.state });
   }
 
+  /** The id of every device in the song now. */
+  deviceIds = new Set();
+
   load(song) {
+    const ids = new Set();
+    for (const t of list(song?.tracks)) {
+      if (t.instrument?.id) ids.add(t.instrument.id);
+      for (const d of list(t.effects)) ids.add(d.id);
+    }
+    for (const d of list(song?.master?.effects)) ids.add(d.id);
+    for (const id of [...DEVICE_STATES.keys()]) if (!ids.has(id)) DEVICE_STATES.delete(id);
+    this.deviceIds = ids;
     const oldSpb = this.mixer.spb;
     this.mixer.load(song);
     if (this.playing && this.mixer.spb !== oldSpb) {
@@ -223,6 +237,41 @@ class Engine {
     return [this.peak(this.splitL), this.peak(this.splitR)];
   }
 
+  // Saved states -----------------------------------------------------------------------------
+
+  /** Holds a device's saved state, and gives it to the module that plays it now. Empty forgets it. */
+  setState(id, text) {
+    if (!text) {
+      DEVICE_STATES.delete(id);
+      return;
+    }
+    if (DEVICE_STATES.get(id) === text) return;
+    DEVICE_STATES.set(id, text);
+    for (const { device, player } of this.mixer.modules()) {
+      if (device.id === id) void player.restore();
+    }
+  }
+
+  /**
+   * What every device would save now, by device id: each module that plays says, and the rest
+   * keep the state the page holds. It answers for the song that plays when it is asked, even
+   * when another loads meanwhile.
+   */
+  async getStates() {
+    const out = new Map(DEVICE_STATES);
+    await Promise.all(
+      this.mixer.modules().map(async ({ device, player }) => {
+        await within(player.ready, 5000, undefined);
+        if (!player.node) return;
+        const text = await saveWam(player.node);
+        if (text === undefined) return;
+        out.set(device.id, text);
+        if (this.deviceIds.has(device.id)) DEVICE_STATES.set(device.id, text);
+      }),
+    );
+    return Object.fromEntries(out);
+  }
+
   // Rendering --------------------------------------------------------------------------------
 
   /**
@@ -234,6 +283,8 @@ class Engine {
     if (!(end > from)) throw new Error('the song is empty');
     const rate = 44100;
     const seconds = (end - from) * this.mixer.spb + tail;
+    // The render's modules start where the playing ones are now.
+    await this.getStates();
     const off = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(seconds * rate), sampleRate: rate });
     const mixer = new Mixer(off, (msg) => this.emit('warning', { message: msg }));
     mixer.load(JSON.parse(JSON.stringify(this.mixer.song)));

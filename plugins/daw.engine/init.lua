@@ -16,6 +16,11 @@
 -- takes the same messages as the page and can host CLAP and VST3 plugins. The setting
 -- daw.engine picks it. The page then only draws the master meter, from the engine's levels.
 --
+-- A device may keep a state of its own, such as a module's or a native plugin's samples and
+-- presets. The song keeps it as text, and the engine restores it: each state goes to the
+-- engine once, before the load that first has its device, and again after a song opens or an
+-- engine starts. A save asks the engine for every device's state through session.capture.
+--
 -- Audio files come from the user, one pick at a time, through app.grants: the plugin holds
 -- an id and a name, never a path. A song keeps the ids, the page asks for a file when it
 -- needs one, and the app sends the bytes straight into the page. Export as WAV works the
@@ -54,7 +59,7 @@ local CSS = [[
 return {
   name = 'DAW engine',
   description = "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
-  version = '1.2.0',
+  version = '1.3.0',
   requires = {
     proteus = '>=0.2.0',
     features = {
@@ -116,6 +121,14 @@ return {
     local push_pending = false
     local view = nil ---@type Proteus.El?
     local files = {} ---@type table<string, Daw.EngineFile>
+    -- The saved state the engine holds for each device, by device id, as the plugin sent it.
+    local sent = {} ---@type table<string, string>
+    -- A song opened: the engine drops every device before the new song loads, so each plugin
+    -- starts again from the state the song saved.
+    local reopen = false
+    -- Saves waiting for the engine to say what the devices saved, by request id.
+    local asking = {} ---@type table<string, fun(states: table<string, string>?)>
+    local asked = 0
     -- The name of each file an export is writing, by grant id.
     local exporting = {} ---@type table<string, string>
 
@@ -167,9 +180,44 @@ return {
       return value
     end
 
+    ---A message about saved states. An older native engine refuses them, so the song plays
+    ---on without its states there.
+    ---@param message table
+    ---@return boolean sent
+    local function post_state (message)
+      local ok = pcall (post, message)
+      return ok
+    end
+
+    ---Hands the engine the saved state of each device it does not hold one for.
+    ---@param song Daw.Song
+    local function send_states (song)
+      local now = daw.song.states (song)
+      for id in pairs (sent) do
+        -- The engine forgets a device the song lost, so one that comes back is sent again.
+        if not now[id] then
+          sent[id] = nil
+        end
+      end
+      for id, state in pairs (now) do
+        if sent[id] == nil then
+          sent[id] = state
+          post_state ({ type = 'set_state', device = id, state = state })
+        end
+      end
+    end
+
     local function push ()
       push_pending = false
-      local resolved, missing = daw.resolve.song (session.song (), devices.get)
+      local song = session.song ()
+      if reopen then
+        reopen = false
+        sent = {}
+        local empty = daw.resolve.song (daw.song.new (), devices.get)
+        post ({ type = 'load', song = app.json.encode (empty) })
+      end
+      send_states (song)
+      local resolved, missing = daw.resolve.song (song, devices.get)
       -- As JSON text, so an empty list stays a list on the way.
       post ({ type = 'load', song = app.json.encode (resolved) })
       for _, id in ipairs (missing) do
@@ -318,6 +366,8 @@ return {
       end
       local kind = m.type --[[@as string?]]
       if kind == 'ready' then
+        -- A new engine holds no states yet.
+        sent = {}
         post ({ type = 'metronome', on = metronome })
         post ({ type = 'live', track = live_track () or '' })
         push ()
@@ -350,6 +400,22 @@ return {
         app.emit ('daw:sound', sound)
       elseif kind == 'warning' then
         app.warn (tostring (m.message))
+      elseif kind == 'states' then
+        local done = asking[tostring (m.id)]
+        asking[tostring (m.id)] = nil
+        if done then
+          local states = {} ---@type table<string, string>
+          for id, text in
+            pairs (
+              (type (m.states) == 'table' and m.states or {}) --[[@as table<any, any>]]
+            )
+          do
+            if type (id) == 'string' and type (text) == 'string' then
+              states[id] = text
+            end
+          end
+          done (states)
+        end
       elseif kind == 'wam_params' then
         devices.describe (
           tostring (m.device),
@@ -514,6 +580,8 @@ return {
         end
         page_post ({ type = 'native', on = false })
         page_post ({ type = 'metronome', on = metronome })
+        -- The page may hold states from before the native engine played.
+        reopen = true
         push ()
       end
     end
@@ -612,13 +680,21 @@ return {
           if m.type == 'ready' then
             editor.ready = true
             local url = '_/' .. tostring (spec.owner) .. '/' .. spec.wam.path
+            local now = daw.song.device (session.song (), device_id)
             editor.view:widget ('post', {
               type = 'open',
               url = url,
               values = module_values (device_id),
+              state = now and now.state or nil,
             })
           elseif m.type == 'values' and type (m.values) == 'table' then
             from_editor (device_id, m.values)
+          elseif m.type == 'state' and type (m.state) == 'string' then
+            -- The module changed inside its editor. The engine's instance takes it, and the
+            -- next save reads it back into the song.
+            local state = m.state --[[@as string]]
+            sent[device_id] = state
+            post_state ({ type = 'set_state', device = device_id, state = state })
           end
         end,
       })
@@ -639,8 +715,20 @@ return {
       windows.show (win_id)
     end
 
-    app.on ('daw:changed', function (_, change)
+    app.on ('daw:changed', function (song, change)
       local c = change --[[@as Daw.Change]]
+      if c.kind == 'state' then
+        -- The states came from the engine, which holds them already.
+        for id, state in
+          pairs (daw.song.states (song --[[@as Daw.Song]]))
+        do
+          sent[id] = state
+        end
+        return
+      end
+      if c.kind == 'open' or c.kind == 'new' then
+        reopen = true
+      end
       local editor = c.device and editors[c.device]
       if editor and editor.ready and c.kind == 'param' and c.key then
         editor.view:widget ('post', {
@@ -670,6 +758,26 @@ return {
     end)
     app.on ('daw:selection', function ()
       post ({ type = 'live', track = live_track () or '' })
+    end)
+
+    -- A save asks the engine what each device would save now. An older daw.session saves
+    -- the song without asking.
+    local capture = session.capture or function (_) end
+    capture (function (done)
+      if not (native or view) then
+        done (nil)
+        return
+      end
+      asked = asked + 1
+      local id = 'save' .. asked
+      asking[id] = done
+      if not post_state ({ type = 'get_states', id = id }) then
+        asking[id] = nil
+        done (nil)
+      end
+    end)
+    app.dispose (function ()
+      capture (nil)
     end)
 
     -- The service -----------------------------------------------------------------------------

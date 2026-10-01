@@ -2,7 +2,7 @@
   "id": "daw.session",
   "name": "DAW session",
   "description": "The open song: its file, undo and redo, and what is selected.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "daw.core",
     "core.commands"
@@ -30,6 +30,7 @@
   },
   "issue": null,
   "files": [
-    "init.lua"
+    "init.lua",
+    "tests/session.test.lua"
   ]
 }

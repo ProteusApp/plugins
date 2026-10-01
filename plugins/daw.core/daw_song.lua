@@ -47,7 +47,7 @@ end
 function M.new (name)
   ---@type Daw.Song
   return {
-    format = 1,
+    format = 2,
     name = name or 'Untitled',
     tempo = 120,
     signature = { 4, 4 },
@@ -410,13 +410,73 @@ end
 ---@return Daw.Song
 function M.update_device (song, id, fields)
   return with_device (song, id, function (d)
+    local was = d.device
     for k, v in pairs (fields) do
       if k ~= 'id' then
         (d --[[@as table<string, any>]])[k] = v
       end
     end
+    -- What one device saved means nothing to another.
+    if d.device ~= was and fields.state == nil then
+      d.state = nil
+    end
     return d
   end)
+end
+
+---Every device in the song, the master's effects first.
+---@param song Daw.Song
+---@return Daw.DeviceRef[]
+local function all_devices (song)
+  local out = {} ---@type Daw.DeviceRef[]
+  for _, d in ipairs (song.master.effects) do
+    out[#out + 1] = d
+  end
+  for _, t in ipairs (song.tracks) do
+    if t.instrument then
+      out[#out + 1] = t.instrument
+    end
+    for _, d in ipairs (t.effects) do
+      out[#out + 1] = d
+    end
+  end
+  return out
+end
+
+---The state each device saved, by device id, for the devices that have one.
+---@param song Daw.Song
+---@return table<string, string>
+function M.states (song)
+  local out = {} ---@type table<string, string>
+  for _, d in ipairs (all_devices (song)) do
+    if d.state then
+      out[d.id] = d.state
+    end
+  end
+  return out
+end
+
+---Keeps what devices saved: `states` holds the text by device id, and an empty text takes a
+---state away. A device the song does not have is left out, and the song comes back as it was
+---when nothing changes.
+---@param song Daw.Song
+---@param states table<string, string>
+---@return Daw.Song
+function M.set_states (song, states)
+  local s = song
+  for _, d in ipairs (all_devices (song)) do
+    local given = states[d.id]
+    if type (given) == 'string' then
+      local want = given ~= '' and given or nil
+      if d.state ~= want then
+        s = with_device (s, d.id, function (copy)
+          copy.state = want
+          return copy
+        end)
+      end
+    end
+  end
+  return s
 end
 
 ---@param song Daw.Song

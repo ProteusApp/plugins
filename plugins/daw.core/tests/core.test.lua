@@ -288,6 +288,84 @@ test (
   end
 )
 
+test ('a format 1 song reads as format 2, without device states', function ()
+  local old = file.normalize ({
+    format = 1,
+    tracks = {
+      {
+        id = 't1',
+        instrument = { id = 'd1', device = 'daw.synth', params = {} },
+        effects = { { id = 'd2', device = 'daw.delay' } },
+      },
+    },
+  })
+  eq (old.format, 2)
+  eq (old.tracks[1].instrument and old.tracks[1].instrument.state, nil)
+  eq (song.states (old), {})
+  eq (file.for_save (old).format, 2)
+end)
+
+test ('a device keeps its saved state through a save', function ()
+  local s = file.normalize ({
+    format = 2,
+    master = {
+      effects = {
+        { id = 'd3', device = 'wam.echo', state = '{"feedback":0.4}' },
+      },
+    },
+    tracks = {
+      {
+        id = 't1',
+        instrument = { id = 'd1', device = 'native.clap.x', state = 'AAEC' },
+        effects = {
+          { id = 'd2', device = 'daw.delay', state = '' },
+          { id = 'd4', device = 'daw.delay', state = { 'not text' } },
+        },
+      },
+    },
+  })
+  eq (song.states (s), { d1 = 'AAEC', d3 = '{"feedback":0.4}' })
+  eq (s.tracks[1].effects[1].state, nil, 'an empty state is none')
+  eq (s.tracks[1].effects[2].state, nil, 'a state is text')
+  local back = file.normalize (file.for_save (s))
+  eq (back, s)
+end)
+
+test (
+  'set_states keeps what devices saved, and only copies what changed',
+  function ()
+    local s = file.normalize ({
+      tracks = {
+        {
+          id = 't1',
+          instrument = { id = 'd1', device = 'native.clap.x' },
+          effects = { { id = 'd2', device = 'daw.delay' } },
+        },
+        { id = 't2', instrument = { id = 'd3', device = 'daw.synth' } },
+      },
+    })
+    local next_song = song.set_states (s, { d1 = 'AAEC', gone = 'xyz' })
+    eq (song.states (next_song), { d1 = 'AAEC' })
+    eq (song.states (s), {}, 'the old song stays as it was')
+    ok (next_song.tracks[2] == s.tracks[2], 'other tracks are shared')
+    ok (song.set_states (next_song, { d1 = 'AAEC' }) == next_song, 'nothing new')
+    ok (song.set_states (next_song, {}) == next_song)
+    eq (song.states (song.set_states (next_song, { d1 = '' })), {})
+    -- A copied device keeps its state, and a different device drops it.
+    local ref = song.copy (next_song.tracks[1].instrument) --[[@as Daw.DeviceRef]]
+    ref.id = ''
+    local copied = song.add_track (next_song, { instrument = ref })
+    local inst = copied.tracks[3].instrument --[[@as Daw.DeviceRef]]
+    eq (inst.state, 'AAEC')
+    ok (inst.id ~= 'd1', 'the copy has an id of its own')
+    local swapped =
+      song.update_device (next_song, 'd1', { device = 'native.vst3.y' })
+    eq (song.states (swapped), {})
+    local same = song.update_device (next_song, 'd1', { bypass = true })
+    eq (song.states (same), { d1 = 'AAEC' })
+  end
+)
+
 -- history ----------------------------------------------------------------------------------
 
 test (

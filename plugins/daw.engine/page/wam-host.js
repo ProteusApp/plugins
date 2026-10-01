@@ -7,8 +7,42 @@
 //
 // Messages to the plugin:
 //   { type: 'wam_params', device, info }    a module's parameters, once, for its device id
+//
+// A module may keep more than its parameters, such as a sample or a preset of its own. The
+// page asks it with getState and gives it back with setState, as text the song keeps (see
+// wam-state.js). An instance starts from the state the page holds for its device, then takes
+// the song's values.
 
 'use strict';
+
+/** The saved state of each device, by device id: what the plugin restored, or a module said. */
+const DEVICE_STATES = new Map();
+
+/** Resolves to `fallback` when `promise` takes longer than `ms`, as a module that went may. */
+function within(promise, ms, fallback) {
+  return Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
+/**
+ * Gives a ready instance the state the page holds for its device, then the song's values, so
+ * they stay the ones it plays. A state it cannot take leaves it as it is, with a warning.
+ */
+async function restoreWam(node, device, warn) {
+  const text = DEVICE_STATES.get(device.id);
+  if (text) {
+    try {
+      await node.setState(decodeWamState(text));
+    } catch (err) {
+      warn(`${device.kind}: its saved state did not load: ${err?.message ?? err}`);
+    }
+  }
+  node.setParameterValues(wamValues(device.params));
+}
+
+/** What a ready instance would save now, as text, or undefined. */
+async function saveWam(node) {
+  return encodeWamState(await within(node.getState(), 2000, undefined));
+}
 
 /** Each audio context's host group, set up once. */
 const WAM_GROUPS = new WeakMap();
@@ -37,15 +71,18 @@ function createWam(ctx, device) {
     const mod = await (await loadWamSdk()).load('./' + device.wam.url);
     return mod.default.createInstance(groupId, ctx, {});
   })();
-  if (!WAM_PENDING.has(ctx)) WAM_PENDING.set(ctx, new Set());
   if (!WAM_NODES.has(ctx)) WAM_NODES.set(ctx, new Set());
-  const pending = WAM_PENDING.get(ctx);
-  pending.add(made);
-  made
-    .then((instance) => WAM_NODES.get(ctx).add(instance.audioNode))
-    .finally(() => pending.delete(made))
-    .catch(() => {});
+  wamPending(ctx, made);
+  made.then((instance) => WAM_NODES.get(ctx).add(instance.audioNode)).catch(() => {});
   return made;
+}
+
+/** Counts `promise` as loading in `ctx` until it settles, so a render waits for it. */
+function wamPending(ctx, promise) {
+  if (!WAM_PENDING.has(ctx)) WAM_PENDING.set(ctx, new Set());
+  const pending = WAM_PENDING.get(ctx);
+  pending.add(promise);
+  promise.finally(() => pending.delete(promise)).catch(() => {});
 }
 
 /** Waits until every instance `ctx` started loading is ready, or failed. */
@@ -103,14 +140,22 @@ class WamInstrument {
   constructor(ctx, device, out, warn) {
     this.ctx = ctx;
     this.device = device;
+    this.warn = warn;
     this.ready = createWam(ctx, device)
-      .then((instance) => {
+      .then(async (instance) => {
+        await restoreWam(instance.audioNode, device, warn);
         this.node = instance.audioNode;
         this.node.connect(out);
-        this.node.setParameterValues(wamValues(device.params));
         reportWam(ctx, device, this.node);
       })
       .catch((err) => warn(`${device.kind}: ${err?.message ?? err}`));
+    // Ready once its state is in, which a render waits for.
+    wamPending(ctx, this.ready);
+  }
+
+  /** Takes the state the page now holds for this device. */
+  restore() {
+    return this.ready.then(() => this.node && restoreWam(this.node, this.device, this.warn));
   }
 
   noteOn(t, key, vel) {
@@ -152,16 +197,24 @@ class WamEffect {
     this.input.connect(this.output);
     this.scope = { bpm };
     this.device = device;
+    this.warn = warn;
     this.ready = createWam(ctx, device)
-      .then((instance) => {
+      .then(async (instance) => {
+        await restoreWam(instance.audioNode, device, warn);
         this.node = instance.audioNode;
         this.input.disconnect();
         this.input.connect(this.node);
         this.node.connect(this.output);
-        this.node.setParameterValues(wamValues(device.params));
         reportWam(ctx, device, this.node);
       })
       .catch((err) => warn(`${device.kind}: ${err?.message ?? err}`));
+    // Ready once its state is in, which a render waits for.
+    wamPending(ctx, this.ready);
+  }
+
+  /** Takes the state the page now holds for this device. */
+  restore() {
+    return this.ready.then(() => this.node && restoreWam(this.node, this.device, this.warn));
   }
 
   start() {}

@@ -2,7 +2,7 @@
   "id": "daw.engine",
   "name": "DAW engine",
   "description": "Plays the song through Web Audio in a web view, or on the app's native engine: instruments, effects, the mixer and recording.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "depends": [
     "lib.ui",
     "daw.core",
@@ -48,9 +48,11 @@
     "page/mixer.js",
     "page/patch.js",
     "page/wam-host.js",
+    "page/wam-state.js",
     "page/wam.js",
     "page/wam/LICENSE",
     "page/wam/index.js",
+    "tests/states.test.lua",
     "vendor.json"
   ]
 }

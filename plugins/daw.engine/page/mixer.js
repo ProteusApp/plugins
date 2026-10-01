@@ -478,6 +478,20 @@ class Mixer {
     this.sounding.clear();
   }
 
+  /** Every device that plays as a Web Audio Module, with what plays it. */
+  modules() {
+    const out = [];
+    const add = (device, player) => {
+      if (device?.wam && player) out.push({ device, player });
+    };
+    for (const fx of this.masterChain.effects.values()) add(fx.device, fx.built);
+    for (const t of this.tracks.values()) {
+      add(t.instrument?.device, t.instrument);
+      for (const fx of t.chain.effects.values()) add(fx.device, fx.built);
+    }
+    return out;
+  }
+
   /** Where the song's last clip ends, in beats. */
   end() {
     let end = 0;
