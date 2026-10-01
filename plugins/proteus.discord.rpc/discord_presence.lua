@@ -71,14 +71,14 @@ M.APPS = {
   {
     id = 'kanban',
     name = 'Kanban',
-    plugins = { 'proteus.kanban', 'proteus.kanban.classic' },
+    plugins = { 'proteus.kanban' },
     details = 'Moving cards along',
     state = 'Kanban',
   },
   {
     id = 'notes',
     name = 'Notes',
-    plugins = { 'proteus.notes', 'proteus.notes.classic' },
+    plugins = { 'proteus.notes' },
     details = 'Writing notes',
     state = 'Notes',
   },

@@ -58,8 +58,8 @@ The app is picked by the profile's id, or else by the plugins that run. Each lin
 | `api` | `proteus.api` runs | Testing an API | API Client |
 | `logs` | `proteus.logs` runs | Reading logs | Logs |
 | `sheet` | `proteus.sheet` runs | Working in a spreadsheet | Sheet |
-| `kanban` | `proteus.kanban` or `proteus.kanban.classic` runs | Moving cards along | Kanban |
-| `notes` | `proteus.notes` or `proteus.notes.classic` runs | Writing notes | Notes |
+| `kanban` | `proteus.kanban` runs | Moving cards along | Kanban |
+| `notes` | `proteus.notes` runs | Writing notes | Notes |
 | `todo` | `proteus.todo` runs | Checking off tasks | {left} left to do, or All done |
 | `code` | `proteus.code.project` runs | Editing {file}, Working on {project}, or Writing code | In {project}, or Code Editor |
 | `editor` | `proteus.ws.explorer` runs | Editing {file}, or Browsing the workspace | In {plugin}, or Building with Proteus |

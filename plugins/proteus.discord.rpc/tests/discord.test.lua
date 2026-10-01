@@ -52,10 +52,7 @@ test (
       ).id,
       'nodal'
     )
-    eq (
-      presence.detect ('work', running ({ 'proteus.kanban.classic' })).id,
-      'kanban'
-    )
+    eq (presence.detect ('work', running ({ 'proteus.kanban' })).id, 'kanban')
   end
 )
 

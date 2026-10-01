@@ -21,4 +21,4 @@ Its commands are named after it, such as `kanban.nodal.n72` for **New Card**, si
 
 | Permission | Why |
 |------------|-----|
-| `workspace` | It keeps the boards in `data/kanban`, which is not its own `data/proteus.kanban` folder, so the classic Kanban and older boards open there too. |
+| `workspace` | It keeps the boards in `data/kanban`, which is not its own `data/proteus.kanban` folder, so boards from older versions open there too. |
