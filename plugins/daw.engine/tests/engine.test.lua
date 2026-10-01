@@ -38,6 +38,15 @@ local function start ()
   local services = {
     ui = anything (),
     daw = {
+      -- A song with no saved states, so only crashes are under test here.
+      song = {
+        new = function ()
+          return { tracks = {} }
+        end,
+        states = function ()
+          return {}
+        end,
+      },
       resolve = {
         song = function ()
           return { tempo = 120, tracks = {} }, {}

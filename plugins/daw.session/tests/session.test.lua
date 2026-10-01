@@ -10,6 +10,8 @@ local function core ()
   local function req (name)
     if mods[name] == nil then
       local path = 'plugins/daw.core/' .. name .. '.lua'
+      -- daw.core's modules need the whole library, with their own require.
+      -- selene: allow(global_usage)
       local env = setmetatable ({ require = req }, { __index = _G })
       mods[name] = assert (load (read (path), '@' .. path, 't', env)) ()
     end
@@ -149,7 +151,10 @@ test ('a save writes what the engine says each device saved', function ()
   end)
   ok (asked, 'the save asks the engine')
   eq (saved, nil, 'and waits for its answer')
-  assert (asked) ({ [id] = 'AAEC', nowhere = 'x' })
+  assert (asked, 'the engine was asked for its states') ({
+    [id] = 'AAEC',
+    nowhere = 'x',
+  })
   eq (saved, 'songs/Demo.song.json')
   local file = run.written['songs/Demo.song.json']
   eq (file.format, 2)
@@ -198,7 +203,7 @@ test ('an edit while the engine answers leaves the song unsaved', function ()
   run.session.apply (
     run.daw.song.set_param (run.session.song (), id, 'cutoff', 700)
   )
-  assert (asked) ({ [id] = 'AAEC' })
+  assert (asked, 'the engine was asked for its states') ({ [id] = 'AAEC' })
   ok (run.session.dirty (), 'the file has the song from before the edit')
   eq (run.daw.song.states (run.session.song ()), { [id] = 'AAEC' })
 end)
@@ -211,7 +216,7 @@ test ('opening another song saves the one that goes with its states', function (
   end)
   local id = with_device (run)
   run.session.new ()
-  assert (asked) ({ [id] = 'AAEC' })
+  assert (asked, 'the engine was asked for its states') ({ [id] = 'AAEC' })
   eq (
     run.daw.song.states (run.written['songs/Demo.song.json']),
     { [id] = 'AAEC' }

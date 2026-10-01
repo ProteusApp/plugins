@@ -10,6 +10,8 @@ local function core ()
   local function req (name)
     if mods[name] == nil then
       local path = 'plugins/daw.core/' .. name .. '.lua'
+      -- daw.core's modules need the whole library, with their own require.
+      -- selene: allow(global_usage)
       local env = setmetatable ({ require = req }, { __index = _G })
       mods[name] = assert (load (read (path), '@' .. path, 't', env)) ()
     end
