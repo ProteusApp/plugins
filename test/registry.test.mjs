@@ -16,6 +16,12 @@ import {
   pathProblem,
   textProblem,
   vendorOf,
+  BINARY_TYPES,
+  LIMITS,
+  base64Lines,
+  binaryProblem,
+  fromBase64,
+  isBinaryPath,
   sha256,
   pullRequestBody,
   validate,
@@ -359,4 +365,113 @@ test('a vendored file may have long lines, when vendor.json vouches for it', () 
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'file:///etc/passwd' }) }).problems[0], /source/);
   assert.match(vendorOf({ 'vendor.json': '{' }).problems[0], /not valid JSON/);
   assert.equal(textProblem('lib/built.js', built.replace('1;', '\u0000;'), { vendored: true }) !== null, true, 'control characters still count');
+});
+
+// The app writes this issue for a plugin with a vendored WebAssembly module. See
+// tests/lua/interface/store_binary_issue.md in the Proteus repository.
+const BINARY_SAMPLE = readFileSync(new URL('./fixtures/store-binary-issue.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+
+/** A WebAssembly module that holds every byte from 0 to 255 in a custom section, as in the sample. */
+const WASM = Buffer.concat([Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 0, 0x85, 0x02, 4]), Buffer.from('data'), Buffer.from([...Array(256).keys()])]);
+
+/** vendor.json for some files, each with its true hash. */
+const vendorFor = (files) =>
+  JSON.stringify({
+    files: Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, { source: 'npm:@proteus-samples/tone@1.0.0/dist/tone.wasm', license: 'MIT', sha256: sha256(bytes) }])),
+  });
+
+/** A plugin that vendors WebAssembly modules. */
+function withWasm(wasm = { 'wam/tone.wasm': WASM }, extra = {}) {
+  return good({ id: 'wam.tone', files: { 'init.lua': 'return {}', ...wasm, 'vendor.json': vendorFor(wasm) }, ...extra });
+}
+
+test('the binary sample issue from the app reads back to the module\'s bytes', () => {
+  const got = collectSubmission([BINARY_SAMPLE]);
+  assert.equal(got.complete, true);
+  assert.deepEqual(Object.keys(got.sub.files), ['init.lua', 'vendor.json', 'wam/tone.wasm']);
+  assert.ok(Buffer.isBuffer(got.sub.files['wam/tone.wasm']));
+  assert.ok(got.sub.files['wam/tone.wasm'].equals(WASM));
+  assert.equal(typeof got.sub.files['init.lua'], 'string');
+  assert.deepEqual(validate(got.sub, { reserved }), []);
+});
+
+test('base64 travels in lines of 76 and reads back to the same bytes', () => {
+  const bytes = Buffer.from([...Array(1000).keys()].map((i) => (i * 7) % 256));
+  const text = base64Lines(bytes);
+  assert.ok(text.split('\n').every((line) => line.length <= 76));
+  assert.ok(fromBase64(text).equals(bytes));
+  assert.equal(fromBase64('AGFz bQ==\n').toString('latin1'), '\0asm');
+  assert.equal(fromBase64('AGFzbQ'), null, 'a length that is not a multiple of 4');
+  assert.equal(fromBase64('AGF$bQ=='), null);
+  assert.equal(fromBase64('AG==bQ=='), null, 'padding only at the end');
+});
+
+test('a base64 block is read only for a binary file, and only when it is base64', () => {
+  const manifest = (files) => `<!-- proteus-manifest -->\n${FENCE}json\n${JSON.stringify({ format: 2, revision: 'r', id: 'a.b', name: 'A', description: 'B.', version: '1.0.0', files })}\n${FENCE}`;
+  const blockAs = (path, encoding, text, k = 1, n = 1) =>
+    `<!-- proteus-file path="${path}" part="${k}" of="${n}" rev="r"${encoding ? ` encoding="${encoding}"` : ''} -->\n${FENCE}text\n${text}\n${FENCE}`;
+  const half = base64Lines(WASM).split('\n');
+  const got = collectSubmission([
+    manifest(['m.wasm']),
+    blockAs('m.wasm', 'base64', half.slice(0, 2).join('\n') + '\n', 1, 2),
+    blockAs('m.wasm', 'base64', half.slice(2).join('\n'), 2, 2),
+  ]);
+  assert.ok(got.sub.files['m.wasm'].equals(WASM));
+  assert.match(collectSubmission([manifest(['init.lua']), blockAs('init.lua', 'base64', 'cmV0dXJuIHt9')]).error, /only a binary file/);
+  assert.match(collectSubmission([manifest(['m.wasm']), blockAs('m.wasm', 'base64', 'not base64!')]).error, /not valid base64/);
+  assert.match(collectSubmission([manifest(['m.wasm']), blockAs('m.wasm', 'hex', '0061736d')]).error, /encoding this registry does not know/);
+  assert.match(
+    collectSubmission([manifest(['m.wasm']), blockAs('m.wasm', 'base64', half[0], 1, 2), blockAs('m.wasm', '', half[1], 2, 2)]).error,
+    /different encodings/,
+  );
+});
+
+test('a binary file must be a vendored WebAssembly module', () => {
+  assert.deepEqual(Object.keys(BINARY_TYPES), ['wasm']);
+  assert.ok(isBinaryPath('wam/dsp.wasm'));
+  assert.ok(isBinaryPath('DSP.WASM'));
+  assert.ok(!isBinaryPath('logo.png'));
+  assert.ok(!isBinaryPath('wasm'));
+  assert.deepEqual(validate(withWasm(), { reserved }), []);
+  const bare = good({ files: { 'init.lua': 'return {}', 'wam/tone.wasm': WASM } });
+  assert.deepEqual(validate(bare, { reserved }), [
+    'Wam/tone.wasm is a binary file, which the registry takes only when vendor.json lists it with its source, license and sha256.',
+  ]);
+  const fake = Buffer.from('MZ\x90\x00not wasm');
+  assert.deepEqual(validate(withWasm({ 'wam/tone.wasm': fake }), { reserved }), ['Wam/tone.wasm is not a WebAssembly module.']);
+  assert.match(binaryProblem('a.png', WASM, { vendored: true }), /not a kind of binary file/);
+  // The hash still ties the bytes to vendor.json.
+  const sub = withWasm();
+  sub.files['wam/tone.wasm'] = Buffer.concat([WASM, Buffer.from([0])]);
+  assert.match(validate(sub, { reserved }).join(), /does not match the sha256/);
+  // Any other file that is not text is refused, vendored or not.
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.deepEqual(validate(withWasm({ 'logo.png': png }), { reserved }), ['Logo.png is not UTF-8 text.']);
+});
+
+test('binary files are held to a size of their own, and stay out of profiles', () => {
+  const big = Buffer.concat([WASM, Buffer.alloc(400 * 1024)]);
+  const three = { 'wam/a.wasm': big, 'wam/b.wasm': big, 'wam/c.wasm': big };
+  assert.equal(LIMITS.binaryBytes, 1024 * 1024);
+  assert.deepEqual(validate(withWasm(three), { reserved }), ["The plugin's binary files come to more than 1 MB."]);
+  const huge = Buffer.concat([WASM, Buffer.alloc(LIMITS.fileBytes)]);
+  assert.match(validate(withWasm({ 'wam/a.wasm': huge }), { reserved }).join(), /larger than 512 KB/);
+  const profile = goodProfile({ files: { 'profile.lua': 'return {}', 'm.wasm': WASM } });
+  assert.match(validate(profile, { reserved }).join(), /M\.wasm is not UTF-8 text|M\.wasm holds control characters/);
+});
+
+test('the index lists a plugin\'s binary files, and the pull request marks them', () => {
+  const sub = withWasm();
+  const m = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  const index = buildIndex([
+    { manifest: m, commit: 'abc', updated: '' },
+    { manifest: manifestFor(good(), { login: 'ann', id: 1 }, 8), commit: 'def', updated: '' },
+  ]);
+  assert.deepEqual(index.plugins.find((p) => p.id === 'wam.tone').binary, ['wam/tone.wasm']);
+  assert.equal('binary' in index.plugins.find((p) => p.id === 'hello.world'), false);
+  const body = pullRequestBody(m, sub, 7, false);
+  assert.match(body, /`plugins\/wam\.tone\/wam\/tone\.wasm` from `npm:@proteus-samples\/tone@1\.0\.0\/dist\/tone\.wasm` \(MIT, a binary WebAssembly module\)/);
+  assert.match(body, /`plugins\/wam\.tone\/wam\/tone\.wasm` \(0\.3 KB, binary\)/);
+  assert.match(body, /Every binary file is a published build/);
+  assert.doesNotMatch(pullRequestBody(manifestFor(good(), { login: 'ann', id: 1 }, 7), good(), 7, false), /Every binary file/);
 });

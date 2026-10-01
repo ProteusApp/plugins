@@ -19,6 +19,14 @@
 // own block. The block holds the file's text plus one newline before the closing fence. A
 // file too big for one comment is split at a line break into numbered parts.
 //
+// A binary file, such as a WebAssembly module, travels as base64 in lines of 76 characters,
+// and its marker says so. The registry takes one only when vendor.json vouches for it.
+//
+//   <!-- proteus-file path="wam/dsp.wasm" part="1" of="1" rev="k2x9" encoding="base64" -->
+//   ```text
+//   AGFzbQEAAAA=
+//   ```
+//
 // Publishing again edits the same issue. Every publish has its own revision, on the manifest
 // and on each block, and only blocks of the manifest's revision count. So an issue caught
 // halfway through an edit is read as incomplete rather than as a mix of two versions.
@@ -99,7 +107,43 @@ export const LIMITS = {
   depth: 4,
   /** Parts of one file. */
   parts: 100,
+  /** All of a plugin's binary files together. Each is held to fileBytes as well. */
+  binaryBytes: 1024 * 1024,
 };
+
+/**
+ * The kinds of binary file a plugin may hold, by extension, with the bytes each one starts
+ * with. Every other file is text. A binary file is never read by a reviewer, so it must be
+ * vendored: vendor.json names its source, license and SHA-256, and
+ * `node scripts/vendor.mjs verify` compares it with that source.
+ */
+export const BINARY_TYPES = {
+  wasm: { label: 'WebAssembly module', magic: [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00] },
+};
+
+/** True for a path the registry keeps as bytes, such as wam/dsp.wasm. */
+export function isBinaryPath(path) {
+  const m = /\.([^./]+)$/.exec(String(path));
+  return Boolean(m && Object.hasOwn(BINARY_TYPES, m[1].toLowerCase()));
+}
+
+/** The encodings a file block may name. Text needs none. */
+const ENCODINGS = ['base64'];
+
+/** Base64 in lines of 76 characters, the way a binary file travels in an issue. */
+export function base64Lines(bytes) {
+  const text = Buffer.from(bytes).toString('base64');
+  const lines = [];
+  for (let i = 0; i < text.length; i += 76) lines.push(text.slice(i, i + 76));
+  return lines.join('\n');
+}
+
+/** The bytes of base64 text, with its line breaks, or null when it is not base64. */
+export function fromBase64(text) {
+  const clean = String(text).replace(/[ \t\r\n]/g, '');
+  if (clean.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(clean)) return null;
+  return Buffer.from(clean, 'base64');
+}
 
 /** A line longer than this hides code from a reviewer, as minified code does. */
 export const MAX_LINE = 1000;
@@ -126,14 +170,15 @@ export const RESERVED_FOLDERS = ['data', 'plugins', 'profiles', 'lib', 'types', 
 // opening fence, and must end its line.
 const MANIFEST = /<!--\s*proteus-manifest\s*-->[ \t]*\n(`{3,})json[ \t]*\n([\s\S]*?)\n\1[ \t]*(?=\n|$)/;
 const FILE =
-  /<!--\s*proteus-file path="([^"\n]+)" part="(\d+)" of="(\d+)"(?: rev="([^"\n]*)")?\s*-->[ \t]*\n(`{3,})[^\n`]*\n([\s\S]*?)\n\5[ \t]*(?=\n|$)/g;
+  /<!--\s*proteus-file path="([^"\n]+)" part="(\d+)" of="(\d+)"(?: rev="([^"\n]*)")?(?: encoding="([^"\n]*)")?\s*-->[ \t]*\n(`{3,})[^\n`]*\n([\s\S]*?)\n\6[ \t]*(?=\n|$)/g;
 
 /**
  * Reads a submission out of the texts of an issue and its comments. Returns
  * `{ complete, sub, missing, error }`. `complete` is true once the manifest is there and every
  * file it lists has all its parts. `sub` is then the submission: the manifest's fields, with
  * `files` mapping each path to its text. A part that appears twice keeps its last copy, so an
- * edited comment replaces the old text. Line endings become \n.
+ * edited comment replaces the old text. Line endings become \n. A file sent as base64 maps to
+ * its bytes, as a Buffer, and only a binary file may be sent that way.
  */
 export function collectSubmission(texts) {
   const all = texts.map((t) => String(t ?? '').replace(/\r\n/g, '\n'));
@@ -155,13 +200,14 @@ export function collectSubmission(texts) {
   const found = new Map();
   for (const text of all) {
     for (const m of text.matchAll(FILE)) {
-      const [, path, k, n, rev] = m;
+      const [, path, k, n, rev, encoding] = m;
       const part = Number(k);
       const of = Number(n);
       if (!(part >= 1 && part <= of && of <= LIMITS.parts)) continue;
       if ((rev ?? '') !== String(manifest.revision ?? '')) continue;
-      const entry = found.get(path) ?? { of, pieces: new Map() };
-      entry.pieces.set(part, m[6]);
+      const entry = found.get(path) ?? { of, pieces: new Map(), encodings: new Map() };
+      entry.pieces.set(part, m[7]);
+      entry.encodings.set(part, encoding ?? '');
       found.set(path, entry);
     }
   }
@@ -175,8 +221,26 @@ export function collectSubmission(texts) {
       if (!entry.pieces.has(part)) break;
       pieces.push(entry.pieces.get(part));
     }
-    if (!entry || pieces.length !== entry.of) missing.push(name);
-    else files[name] = pieces.join('');
+    if (!entry || pieces.length !== entry.of) {
+      missing.push(name);
+      continue;
+    }
+    const encodings = new Set([...entry.encodings].filter(([part]) => part <= entry.of).map(([, e]) => e));
+    const encoding = encodings.size === 1 ? [...encodings][0] : null;
+    if (encoding === null) return { complete: false, missing: [], error: `The parts of ${name} name different encodings.` };
+    if (encoding === '') {
+      files[name] = pieces.join('');
+      continue;
+    }
+    if (!ENCODINGS.includes(encoding)) {
+      return { complete: false, missing: [], error: `${name} is sent in an encoding this registry does not know.` };
+    }
+    if (!isBinaryPath(name)) {
+      return { complete: false, missing: [], error: `${name} is sent as ${encoding}, which only a binary file may be.` };
+    }
+    const bytes = fromBase64(pieces.join(''));
+    if (!bytes) return { complete: false, missing: [], error: `${name} is not valid base64.` };
+    files[name] = bytes;
   }
   const complete = names.length > 0 && missing.length === 0;
   return { complete, missing, sub: complete ? { ...manifest, files } : null };
@@ -233,6 +297,23 @@ export function textProblem(path, text, { vendored = false } = {}) {
   const lines = s.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if ([...lines[i]].length > MAX_LINE) return `${path} has a line longer than ${MAX_LINE} characters, at line ${i + 1}`;
+  }
+  return null;
+}
+
+/**
+ * Why a binary file cannot go in the registry, or null. It must be one of BINARY_TYPES, start
+ * with that type's bytes, and be vendored, since no reviewer reads it: vendor.json names where
+ * it was published, and its hash ties the file to that source. `bytes` is a Buffer, or text.
+ */
+export function binaryProblem(path, bytes, { vendored = false } = {}) {
+  const ext = /\.([^./]+)$/.exec(String(path))?.[1]?.toLowerCase();
+  const type = ext && Object.hasOwn(BINARY_TYPES, ext) ? BINARY_TYPES[ext] : null;
+  if (!type) return `${path} is not a kind of binary file the registry takes`;
+  const data = typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : bytes;
+  if (!type.magic.every((b, i) => data[i] === b)) return `${path} is not a ${type.label}`;
+  if (!vendored) {
+    return `${path} is a binary file, which the registry takes only when vendor.json lists it with its source, license and sha256`;
   }
   return null;
 }
@@ -400,18 +481,24 @@ export function validate(sub, { existing = null, author = null, reserved = { ids
   const vendor = vendorOf(files);
   problems.push(...vendor.problems);
   let total = 0;
+  let binary = 0;
   for (const name of names) {
-    const problem = pathProblem(name) ?? textProblem(name, files[name], { vendored: vendor.vendored.has(name) });
-    if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
     if (typeof files[name] !== 'string' && !(files[name] instanceof Uint8Array)) {
       problems.push(`${name} is not text.`);
       continue;
     }
+    const vendored = vendor.vendored.has(name);
+    // A binary file goes only in a plugin, where vendor.json can vouch for it.
+    const asBinary = kind === 'plugin' && isBinaryPath(name);
+    const problem = pathProblem(name) ?? (asBinary ? binaryProblem(name, files[name], { vendored }) : textProblem(name, files[name], { vendored }));
+    if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
     const bytes = typeof files[name] === 'string' ? Buffer.byteLength(files[name], 'utf8') : files[name].length;
     total += bytes;
+    if (asBinary) binary += bytes;
     if (bytes > LIMITS.fileBytes) problems.push(`${name} is larger than ${LIMITS.fileBytes / 1024} KB.`);
   }
   if (total > LIMITS.totalBytes) problems.push(`The ${noun} is larger than ${LIMITS.totalBytes / 1024 / 1024} MB.`);
+  if (binary > LIMITS.binaryBytes) problems.push(`The ${noun}'s binary files come to more than ${LIMITS.binaryBytes / 1024 / 1024} MB.`);
   if (existing) {
     const owner = existing.author ?? {};
     if (author && owner.id && owner.id !== author.id) {
@@ -453,11 +540,20 @@ export function manifestFor(sub, author, issue) {
   };
 }
 
+/** `{ binary }`, the binary files among a plugin's files, or nothing when it has none. */
+function binaryOf(files) {
+  const binary = (files ?? []).filter(isBinaryPath);
+  return binary.length ? { binary } : {};
+}
+
 /**
  * The index the app reads: one entry per plugin and one per profile, each list in name order.
  * `commit` is the last commit that changed the folder, so the app installs exactly what was
  * approved. The format stays 1, since a version of the app that knows only plugins reads the
- * `plugins` list and leaves `profiles` alone.
+ * `plugins` list and leaves `profiles` alone. A plugin with binary files lists them in
+ * `binary` as well. A version of the app that cannot write bytes refuses to install it, and
+ * one from before `binary` fails to download a file that is not text, so neither installs it
+ * broken.
  */
 export function buildIndex(entries) {
   const byName = (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
@@ -479,6 +575,7 @@ export function buildIndex(entries) {
       folders: e.manifest.folders ?? [],
       ...(e.manifest.requires ? { requires: e.manifest.requires } : {}),
       files: e.manifest.files ?? [],
+      ...binaryOf(e.manifest.files),
       commit: e.commit,
       updated: e.updated,
     }))
@@ -527,14 +624,18 @@ export function pullRequestBody(manifest, sub, issue, updating) {
     const vendored = Object.entries(entries);
     if (vendored.length) {
       lines.push('### Vendored files', '', 'Checked by hash against their source instead of line by line:', '');
-      for (const [path, e] of vendored) lines.push(`- \`${folder}/${path}\` from \`${e.source}\` (${e.license})`);
+      for (const [path, e] of vendored) {
+        const what = isBinaryPath(path) ? `, a binary ${BINARY_TYPES[path.split('.').pop().toLowerCase()].label}` : '';
+        lines.push(`- \`${folder}/${path}\` from \`${e.source}\` (${e.license}${what})`);
+      }
       lines.push('');
     }
   }
   lines.push('### Files', '');
   for (const name of manifest.files) {
-    const kb = (Buffer.byteLength(sub.files[name], 'utf8') / 1024).toFixed(1);
-    lines.push(`- \`${folder}/${name}\` (${kb} KB)`);
+    const file = sub.files[name];
+    const kb = ((typeof file === 'string' ? Buffer.byteLength(file, 'utf8') : file.length) / 1024).toFixed(1);
+    lines.push(`- \`${folder}/${name}\` (${kb} KB${typeof file === 'string' ? '' : ', binary'})`);
   }
   const review =
     kind === 'profile'
@@ -550,6 +651,9 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
           '- [ ] It holds no secrets, tokens or personal data.',
           '- [ ] Every vendored file comes from the source vendor.json names, under a license that lets it be shared, and `node scripts/vendor.mjs verify` agrees.',
+          ...(manifest.files.some(isBinaryPath)
+            ? ['- [ ] Every binary file is a published build its purpose needs, such as the WebAssembly of a Web Audio Module, and the code loads it only from the plugin.']
+            : []),
         ];
   lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);
   return lines.join('\n');

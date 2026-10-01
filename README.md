@@ -14,7 +14,7 @@ Write the plugin in the Plugin Editor, then choose **Plugins > Publish Plugin**.
 
 Publishing then takes these steps:
 
-1. Proteus opens an issue labeled `[AUTOMATED] Plugin Request`. It holds a manifest and every file of the plugin as a code block that folds shut. A profile's manifest says `"kind": "profile"` and lists the plugins it runs, and its one file is `profile.lua`. A large plugin continues in comments on the same issue, and a very large file splits into numbered parts.
+1. Proteus opens an issue labeled `[AUTOMATED] Plugin Request`. It holds a manifest and every file of the plugin as a code block that folds shut, with a binary file as base64. A profile's manifest says `"kind": "profile"` and lists the plugins it runs, and its one file is `profile.lua`. A large plugin continues in comments on the same issue, and a very large file splits into numbered parts.
 2. The submission workflow checks the submission against the rules below. When it passes, the workflow opens a pull request with the files in `plugins/<id>/`, or `profiles/<id>/` for a profile, and links it on the issue. When it fails, the workflow explains why on the issue.
 3. A maintainer reviews the code in the pull request.
 4. The maintainer approves it by commenting `/approve` on the issue, or by merging the pull request. The index workflow rebuilds `index.json`, and the marketplace lists it.
@@ -44,12 +44,13 @@ A restricted plugin names its services, events, commands and settings after the 
 - The id is lower case letters, digits, dots, dashes and underscores, such as `my.plugin`. It cannot be the id of a plugin or profile that ships with Proteus. `reserved.json` lists those: `ids` and `prefixes` for plugins, and `profiles` for profiles. A plugin and a profile may share an id.
 - A plugin has an `init.lua` at its top, a name, a one-sentence description, and a version such as `1.0.0`.
 - A profile has a `profile.lua` at its top, a name, a one-sentence description, a version, and at least one plugin in its `plugins` list.
-- Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines.
+- Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines. The one exception is a vendored binary file, below.
 - What `init.lua` declares matches `proteus.json`: name, description, version, `depends`, `optional`, `permissions`, `folders` and `requires`. The marketplace reads `proteus.json` before an install, and Proteus runs what `init.lua` says, so they must agree.
 - Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
 - The Lua passes StyLua and selene with this repository's `stylua.toml` and `selene.toml`, and the plugin's tests pass.
 - A plugin holds up to 200 files and 2 MB, with no file over 512 KB and no folder more than three deep.
-- A file copied from a published package, such as a library's built JavaScript, is listed in the plugin's `vendor.json` with its `source` (`npm:<package>@<version>/<path>`), `license` and `sha256`. The check compares each hash with the file, and `node scripts/vendor.mjs verify plugins/<id>` compares it with the published package. Its lines may be as long as the build made them, since the reviewer checks where it came from rather than reading it. It is still text: no control characters and no characters that reorder text.
+- A file copied from a published package, such as a library's built JavaScript, is listed in the plugin's `vendor.json` with its `source` (`npm:<package>@<version>/<path>`, or an https address), `license` and `sha256`. The check compares each hash with the file, and `node scripts/vendor.mjs verify plugins/<id>` compares it with the published package. Its lines may be as long as the build made them, since the reviewer checks where it came from rather than reading it. It is still text: no control characters and no characters that reorder text.
+- A plugin may hold a binary file only when it is a WebAssembly module (`.wasm`), such as the processor of a Web Audio Module, that `vendor.json` lists. It must start with the WebAssembly header, and a plugin's binary files come to at most 1 MB together, each under the 512 KB limit. `vendor.mjs verify` compares it with its source byte for byte, and fails a binary file that `vendor.json` does not list. In a submission issue it travels as base64, in a block whose marker says `encoding="base64"`, and the workflow decodes it before the checks. The index lists a plugin's binary files in `binary`.
 
 ## Layout
 
