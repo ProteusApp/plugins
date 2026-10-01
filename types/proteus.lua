@@ -109,9 +109,11 @@ function PluginFiles.list (rel) end
 ---| 'fs:changed' # A workspace file changed. Receives its path, and true when another window or another program changed it.
 ---| 'fs:renamed' # A workspace file or folder moved. Receives the old path, the new path, and true when another window or another program moved it.
 ---| 'file:open' # Ask an editor to open a file. Send a workspace path or a full path, and optional `{ line, col }`.
----| 'disk:changed' # Files changed in the open project folder. Receives a Proteus.DirChange[] and the whole Proteus.DirEvent. A restricted plugin needs `files`.
----| 'disk:renamed' # A file or folder on disk moved inside the app. Receives the old and the new full path. A restricted plugin needs `files`.
----| 'git:status' # Git's view of the project folder changed. Receives a table of full paths to a Git.Kind such as 'modified'. A restricted plugin needs `files`.
+---| 'disk:changed' # A trusted plugin tells the editor that files on disk changed. Receives a Proteus.DirChange[] and the whole Proteus.DirEvent. A restricted plugin needs `files` to hear it.
+---| 'disk:renamed' # A trusted plugin tells the editor that a file or folder on disk moved. Receives the old and the new full path. A restricted plugin needs `files` to hear it.
+---| 'code:disk_changed' # From the Code Editor: files changed in the open folder. Receives a Proteus.DirChange[] and the whole Proteus.DirEvent. Needs `files`.
+---| 'code:disk_renamed' # From the Code Editor: a file or folder moved in its explorer. Receives the old and the new full path. Needs `files`.
+---| 'git:status' # From the Git plugin: Git's view of the open folder changed. Receives a table of full paths to a Git.Kind such as 'modified'. Needs `files`.
 ---| 'kernel:ready' # Every plugin in the profile has started.
 ---| 'kernel:error' # A plugin raised an error. Receives the plugin id and the message.
 ---| 'kernel:plugin_started' # Receives the plugin id.
@@ -252,6 +254,7 @@ function App.provide_scoped (name, make, opts) end
 ---@overload fun(name: 'discord'): Proteus.Discord
 ---@overload fun(name: 'project'): Proteus.Project
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace
+---@overload fun(name: 'publishing'): Proteus.Publishing
 ---@overload fun(name: 'files'): Proteus.Files
 ---@overload fun(name: 'nodal'): Nodal.Core
 ---@overload fun(name: 'nodal.store'): Nodal.Store
@@ -287,6 +290,7 @@ function App.use (name) end
 ---@overload fun(name: 'discord'): Proteus.Discord?
 ---@overload fun(name: 'project'): Proteus.Project?
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace?
+---@overload fun(name: 'publishing'): Proteus.Publishing?
 ---@overload fun(name: 'files'): Proteus.Files?
 ---@overload fun(name: 'nodal'): Nodal.Core?
 ---@overload fun(name: 'nodal.store'): Nodal.Store?
@@ -892,7 +896,7 @@ function System.create_launcher (name, profile, cb) end
 ---@field error? string
 ---@field in_profile boolean
 ---@field locked boolean True for the plugins that ship with the app outside `plugins/themes`. Their files cannot change.
----@field required boolean True for a locked plugin that stays on: one in `plugins/core`, or one the running profile's own list names. Any other plugin can be switched on and off.
+---@field required boolean True for a locked plugin that stays on: one the running profile's own list names, or one in `plugins/core` that was not switched on in the app. Any other plugin can be switched on and off.
 ---@field group? string The group folder, such as `'themes'`.
 ---@field source Proteus.FileSource|'missing'
 ---@field path string Its `init.lua`.
@@ -959,13 +963,16 @@ function Kernel.reload (id) end
 ---Looks for plugin folders added since start.
 function Kernel.rescan () end
 
----Switches a plugin on or off in the running profile, and keeps the choice.
----Fails for a builtin profile.
+---Switches a plugin on or off in a profile, and keeps the choice. In the running profile it
+---also starts or stops the plugin. Another profile keeps the choice for the next time it
+---opens. Fails for a builtin profile that is not `extensible`, for a `required` plugin, and
+---for a plugin that conflicts with one the profile runs.
 ---@param id string
 ---@param on boolean
+---@param profile? string A profile's id. The running profile when nil.
 ---@return boolean ok
 ---@return string? err
-function Kernel.set_enabled (id, on) end
+function Kernel.set_enabled (id, on, profile) end
 
 ---Reads a plugin's init.lua again and returns the table it returns, without starting it.
 ---`plugin` gives the copy loaded when the plugin loaded, and this one shows changes saved
@@ -1048,6 +1055,13 @@ function Kernel.version () end
 ---The features this version of Proteus has, for `requires.features`.
 ---@return Proteus.Feature[]
 function Kernel.features () end
+
+---What a restricted plugin with this id may name its services, events, commands and
+---settings after: the first and the last part of the id, past `proteus.`, less the parts the
+---app's own plugins use. Empty when the app uses every part.
+---@param id string
+---@return string[]
+function Kernel.namespaces (id) end
 
 ---True when `version` meets every condition in `spec`, such as `'>=0.2.0 <1.0.0'`.
 ---@param version string

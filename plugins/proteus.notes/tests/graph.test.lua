@@ -1,35 +1,27 @@
--- proteus.notes is a Nodal graph built as an app. The app's scripts/build-graphs.mjs writes init.lua
--- from graphs/notes.ndg, with the wrapper Nodal's Build as App writes, and puts a copy of the
--- graph beside it. Neither file is edited by hand: change the graph in the app, then run
+-- proteus.notes is a Nodal graph plugin, run as an app. The app's scripts/build-graphs.mjs writes
+-- notes.ndg from graphs/notes.ndg, and the init.lua beside it that reads the graph and runs it.
+-- Neither file is edited by hand: change the graph in the app, then run
 -- `node scripts/build-graphs.mjs --plugins ../plugins/plugins` there. These tests fail when
--- init.lua no longer matches the graph file, or its wrapper is not the one Nodal writes.
+-- init.lua is no longer the one Nodal writes, or the graph file is not a graph.
 
 local DIR = 'plugins/proteus.notes/'
 local GRAPH_FILE = 'notes.ndg'
 
--- init.lua up to the graph.
-local HEAD = [==[
--- Built by Nodal from graphs/notes.ndg. Building again replaces this file.
--- It runs the graph below with the Nodal runtime, as the Nodal preview does.
--- To change it, change the graph.
+-- init.lua as Nodal writes it.
+local EXPECTED = [==[
+-- Built by Nodal from graphs/notes.ndg. Nodal writes this file, so change the graph instead.
+-- It runs the graph beside it with the Nodal runtime, as the Nodal preview does.
+-- Placement: app
 
 -- Plugin id: proteus.notes
 local NAME = 'Notes'
-
--- lang=json
-local GRAPH = [[
-]==]
-
--- init.lua after the graph.
-local TAIL = [==[
-
-]]
+local GRAPH_FILE = 'notes.ndg'
 
 ---@type Proteus.Plugin
 return {
   name = NAME,
   description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.',
-  version = '1.1.0',
+  version = '1.2.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
@@ -43,8 +35,12 @@ return {
     'proteus.ui.menus',
   },
   activate = function (app)
+    local graph = app.plugin.read (GRAPH_FILE)
+    if not graph then
+      error ('the graph ' .. GRAPH_FILE .. ' is missing')
+    end
     local handle, refusal =
-      app.use ('nodal.app').mount_text (GRAPH, { status_bar = true })
+      app.use ('nodal.app').mount_text (graph, { status_bar = true })
     if not handle then
       error ('the graph did not load: ' .. tostring (refusal and refusal.code))
     end
@@ -62,17 +58,21 @@ return {
 local source = read (DIR .. 'init.lua')
 local graph = read (DIR .. GRAPH_FILE)
 
-test ('init.lua carries the graph file as it is', function ()
-  local _, body = source:match ('\nlocal GRAPH = %[(=*)%[\n(.-)\n%]%1%]\n')
-  ok (body, 'init.lua holds the graph in GRAPH')
-  ok (body .. '\n' == graph, 'GRAPH in init.lua is not ' .. GRAPH_FILE)
-end)
+test (
+  'init.lua is the one Nodal writes, which reads the graph beside it',
+  function ()
+    ok (source == EXPECTED, 'init.lua is not what build-graphs.mjs writes')
+    ok (
+      source:find ("\nlocal GRAPH_FILE = '" .. GRAPH_FILE .. "'\n", 1, true),
+      'init.lua reads ' .. GRAPH_FILE
+    )
+  end
+)
 
-test ('init.lua is the wrapper Nodal writes, around the graph', function ()
-  ok (source:sub (1, #HEAD) == HEAD, 'the lines before the graph changed')
-  ok (source:sub (-#TAIL) == TAIL, 'the lines after the graph changed')
+test ('the graph file is a Nodal graph', function ()
   ok (
-    source == HEAD .. graph:gsub ('\n$', '') .. TAIL,
-    'init.lua is more than the graph and its wrapper'
+    graph:find ('^{\n  "version": 3,'),
+    GRAPH_FILE .. ' is not a version 3 graph'
   )
+  ok (graph:find ('"nodes": [', 1, true), GRAPH_FILE .. ' has no nodes')
 end)

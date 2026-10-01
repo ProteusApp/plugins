@@ -423,6 +423,8 @@
 ---@field description? string
 ---@field placement 'panel'|'bottom'|'app' `'panel'` adds a panel to the right dock, and `'bottom'` one to the bottom dock. `'app'` fills the main area, or the whole window when there is no layout.
 ---@field source_name? string The graph file, named in the header comment.
+---@field version? string The plugin's version, `'1.0.0'` when left out. The runtime plugin declares it.
+---@field graph_file? string The graph's file name beside init.lua, such as `'clock.ndg'`. A runtime plugin reads it when it starts.
 
 ---Emits a complete Proteus plugin: the logic, a form for the inputs, the results, and the
 ---triggers and effects wired into the app. The source follows the project's StyLua, selene
@@ -438,8 +440,9 @@
 ---@field supported fun(program: Nodal.Program): boolean
 ---The permissions a graph's blocks need when it runs as a plugin that does not ship with the app.
 ---@field permissions_of fun(graph: string): string[]
----A plugin that carries the graph file's text and runs it with the Nodal runtime, as the
----preview does. It is what Build as App writes for a graph `supported` turns down.
+---A plugin that reads the graph file beside it, `opts.graph_file`, and runs it with the Nodal
+---runtime, as the preview does. Every graph plugin is built this way. `graph` is the file's
+---text, for the permissions its blocks need.
 ---@field runtime fun(graph: string, opts: Nodal.PluginOptions): string
 
 ---------------------------------------------------------------------------------------------

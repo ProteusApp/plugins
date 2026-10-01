@@ -398,7 +398,7 @@ function Shell.is_collapsed (dock) end
 ---@field order? number
 ---@field key? string A shortcut that shows the view.
 ---@field on_show? fun()
----@field shared? boolean Lets restricted plugins show and toggle it. Without it they show and toggle only their own views.
+---@field shared? boolean Lets restricted plugins show and toggle it, and run its command. Without it they show and toggle only their own views.
 
 ---@class Proteus.View
 ---@field id string
@@ -1172,6 +1172,10 @@ function Marketplace.entry (kind, id) end
 ---@return number
 function Marketplace.read_at () end
 
+---Every plugin and profile the registry lists, sorted by name. Empty before the index is read.
+---@return Store.Entry[]
+function Marketplace.entries () end
+
 ---The registry, as owner/name.
 ---@return string
 function Marketplace.repository () end
@@ -1183,12 +1187,30 @@ function Marketplace.repository () end
 function Marketplace.installed (kind, id) end
 
 ---------------------------------------------------------------------------------------------
+-- publishing (proteus.plugin.publish)
+---------------------------------------------------------------------------------------------
+
+---The Publishing card on the page of one of your own plugins. The service needs the `kernel`
+---permission.
+---@class Proteus.Publishing
+local Publishing = {}
+
+---Fills `el` with the Publishing card of your own plugin `id`, and keeps it up to date: where
+---the plugin stands in the registry, links to its issue and pull request, the conversation
+---with the reviewers, and a box to reply. The card stays hidden for a plugin never sent.
+---Returns a function that stops the updates.
+---@param id string
+---@param el Proteus.El
+---@return fun()
+function Publishing.follow (id, el) end
+
+---------------------------------------------------------------------------------------------
 -- project (proteus.code.project)
 ---------------------------------------------------------------------------------------------
 
 ---The folder the Code Editor works on. Every path is a full path with `/`, such as
 ---`C:/code/app/src/main.rs`. Opening another folder reloads the window, so a plugin reads
----`root` once when it starts. Changes on disk arrive as the `disk:changed` event.
+---`root` once when it starts. Changes on disk arrive as the `code:disk_changed` event.
 ---@class Proteus.Project
 local Project = {}
 
