@@ -1,0 +1,53 @@
+{
+  "id": "lang.tailwind",
+  "name": "Tailwind CSS",
+  "description": "Tailwind CSS class completion, with the CSS each class makes, and problems such as conflicting classes, in HTML, CSS, JSX, TSX, Vue and Svelte files.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/client.lua",
+    "lib/completion.lua",
+    "lib/config.lua",
+    "lib/detect.lua",
+    "lib/documents.lua",
+    "lib/items.lua",
+    "lib/languages.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/server.lua",
+    "tests/config.test.lua",
+    "tests/detect.test.lua",
+    "tests/items.test.lua",
+    "tests/languages.test.lua",
+    "tests/launch.test.lua"
+  ]
+}
