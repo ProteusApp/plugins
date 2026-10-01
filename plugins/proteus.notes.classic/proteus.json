@@ -1,0 +1,39 @@
+{
+  "id": "proteus.notes.classic",
+  "name": "Notes (classic)",
+  "description": "Write and search Markdown notes.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.shell",
+    "proteus.ui.views",
+    "proteus.core.commands"
+  ],
+  "optional": [
+    "proteus.ui.toolbar",
+    "proteus.ui.statusbar",
+    "proteus.ui.palette",
+    "proteus.ui.notify",
+    "proteus.core.keys",
+    "proteus.ui.menus"
+  ],
+  "permissions": [
+    "workspace"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

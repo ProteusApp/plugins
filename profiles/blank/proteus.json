@@ -1,0 +1,22 @@
+{
+  "id": "blank",
+  "name": "Blank",
+  "description": "One plugin on an empty window. Copy it to start a new app.",
+  "version": "1.0.0",
+  "kind": "profile",
+  "plugins": [
+    "proteus.hello"
+  ],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": []
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "profile.lua"
+  ]
+}

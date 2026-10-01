@@ -1,0 +1,41 @@
+{
+  "id": "proteus.nodal.terminal",
+  "name": "Terminal",
+  "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.graph.json.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.nodal.app"
+  ],
+  "optional": [
+    "proteus.ui.notify",
+    "proteus.ui.statusbar",
+    "proteus.ui.shell",
+    "proteus.core.commands",
+    "proteus.core.settings",
+    "proteus.core.themes",
+    "proteus.ui.menus"
+  ],
+  "permissions": [
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "terminal.graph.json",
+    "tests/graph.test.lua"
+  ]
+}

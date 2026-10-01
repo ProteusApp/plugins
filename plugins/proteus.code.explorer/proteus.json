@@ -1,0 +1,41 @@
+{
+  "id": "proteus.code.explorer",
+  "name": "Project Explorer",
+  "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.code.project",
+    "proteus.core.settings",
+    "proteus.core.icons"
+  ],
+  "optional": [
+    "proteus.core.keys",
+    "proteus.core.commands",
+    "proteus.ui.menus",
+    "proteus.ui.palette",
+    "proteus.ui.notify",
+    "proteus.ui.tabs",
+    "proteus.editor.core"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

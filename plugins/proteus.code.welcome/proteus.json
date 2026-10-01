@@ -1,0 +1,43 @@
+{
+  "id": "proteus.code.welcome",
+  "name": "Welcome",
+  "description": "What the Code Editor shows while no file is open: the Welcome page, or the folder.",
+  "version": "1.2.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.tabs",
+    "proteus.core.commands",
+    "proteus.code.project"
+  ],
+  "optional": [
+    "proteus.core.keys",
+    "proteus.editor.core",
+    "proteus.git",
+    "proteus.code.search",
+    "proteus.terminal",
+    "proteus.ui.palette",
+    "proteus.ui.settings",
+    "proteus.core.themes",
+    "proteus.code.plugins",
+    "proteus.marketplace"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

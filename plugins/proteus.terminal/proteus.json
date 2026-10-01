@@ -1,0 +1,38 @@
+{
+  "id": "proteus.terminal",
+  "name": "Terminal",
+  "description": "Terminals in the bottom dock, which start in the folder open in the Code Editor.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.core.settings"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.core.commands",
+    "proteus.core.keys",
+    "proteus.ui.menus"
+  ],
+  "permissions": [
+    "process",
+    "files",
+    "clipboard"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "id": "proteus.sheet",
+  "name": "Sheet",
+  "description": "A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.shell",
+    "proteus.ui.views",
+    "proteus.core.commands"
+  ],
+  "optional": [
+    "proteus.ui.toolbar",
+    "proteus.ui.statusbar",
+    "proteus.ui.palette",
+    "proteus.ui.notify",
+    "proteus.core.keys",
+    "proteus.ui.menus",
+    "proteus.ui.menubar",
+    "proteus.ui.tabs"
+  ],
+  "permissions": [
+    "clipboard",
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "sheet_book.lua",
+    "sheet_chart.lua",
+    "sheet_ctl.lua",
+    "sheet_format.lua",
+    "sheet_formula.lua",
+    "sheet_grid.lua",
+    "sheet_grid_act.lua",
+    "sheet_grid_calc.lua",
+    "sheet_grid_draw.lua",
+    "sheet_grid_edit.lua",
+    "sheet_grid_tabs.lua",
+    "sheet_model.lua",
+    "sheet_ops.lua",
+    "sheet_panel_find.lua",
+    "sheet_panel_pop.lua",
+    "sheet_panel_side.lua",
+    "sheet_panel_text.lua",
+    "sheet_panels.lua",
+    "sheet_toolbar.lua",
+    "sheet_xlsx.lua",
+    "tests/sheet.test.lua",
+    "tests/sheet_book.test.lua",
+    "tests/sheet_chart.test.lua",
+    "tests/sheet_ctl.test.lua",
+    "tests/sheet_format.test.lua",
+    "tests/sheet_formula.test.lua",
+    "tests/sheet_grid.test.lua",
+    "tests/sheet_model.test.lua",
+    "tests/sheet_ops.test.lua",
+    "tests/sheet_panels.test.lua",
+    "tests/sheet_xlsx.test.lua"
+  ]
+}

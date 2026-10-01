@@ -1,0 +1,27 @@
+{
+  "id": "todo",
+  "name": "Todo",
+  "description": "A one-screen to-do list with no menus or toolbar.",
+  "version": "1.0.0",
+  "kind": "profile",
+  "plugins": [
+    "proteus.theme.retro",
+    "proteus.theme.midnight",
+    "proteus.theme.daylight",
+    "proteus.ui.menus",
+    "proteus.todo",
+    "proteus.discord.rpc"
+  ],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": []
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "profile.lua"
+  ]
+}

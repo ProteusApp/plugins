@@ -1,0 +1,40 @@
+{
+  "id": "proteus.notes",
+  "name": "Notes",
+  "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.graph.json.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.nodal.app"
+  ],
+  "optional": [
+    "proteus.ui.notify",
+    "proteus.ui.statusbar",
+    "proteus.ui.shell",
+    "proteus.core.commands",
+    "proteus.core.settings",
+    "proteus.core.themes",
+    "proteus.ui.menus"
+  ],
+  "permissions": [
+    "workspace"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "notes.graph.json",
+    "tests/graph.test.lua"
+  ]
+}

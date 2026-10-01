@@ -1,0 +1,30 @@
+{
+  "id": "proteus.todo",
+  "name": "Todo",
+  "description": "A single-screen to-do list.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui"
+  ],
+  "optional": [
+    "proteus.core.themes",
+    "proteus.ui.menus"
+  ],
+  "permissions": [],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua"
+  ]
+}
