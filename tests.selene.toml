@@ -2,7 +2,7 @@
 # Lua 5.2+ library functions on top of Lua 5.1, since selene's parser is 5.1 only. Tests are
 # linted with tests.selene.toml, which knows the globals the test runner gives them.
 std = "proteus+proteus_tests"
-exclude = ["node_modules/**", "plugins/*/types/**"]
+exclude = ["node_modules/**", "types/**", "plugins/*/types/**"]
 
 [lints]
 multiple_statements = "deny"

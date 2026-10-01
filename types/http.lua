@@ -1,0 +1,156 @@
+---@meta
+
+-- Types for the `http` service from proteus.lib.http. It builds HTTP requests, reads and writes curl
+-- commands, and reads and formats JSON. It sends nothing. Send a built request with
+-- `app.net.fetch`.
+
+---One row of a key and value table, such as a query parameter, a header or a form field.
+---@class Http.Row
+---@field key string
+---@field value string
+---@field on boolean False when the row is switched off, so it stays out of the request.
+
+---@alias Http.BodyMode 'none'|'json'|'text'|'form'
+---@alias Http.AuthMode 'none'|'bearer'|'basic'
+
+---@class Http.Auth
+---@field mode Http.AuthMode
+---@field token string For a Bearer token.
+---@field user string For Basic.
+---@field password string For Basic.
+
+---A request as the API client edits it and saves it.
+---@class Http.Request
+---@field name string
+---@field method string
+---@field url string The address as typed. Its query holds every parameter row that is on.
+---@field params Http.Row[]
+---@field headers Http.Row[]
+---@field body_mode Http.BodyMode
+---@field body string The text sent in JSON and Text mode.
+---@field form Http.Row[] The rows sent in Form mode.
+---@field auth Http.Auth
+
+---A request ready for `app.net.fetch`, with every variable filled in.
+---@class Http.Built
+---@field method string
+---@field url string
+---@field headers table<string, string>
+---@field body? string
+---@field order string[] The header names in the order they go out.
+---@field missing string[] The variable names that had no value.
+
+---An address split at its `?`.
+---@class Http.UrlParts
+---@field base string Everything before the `?`.
+---@field rows Http.Row[] One row for each `key=value` in the query, decoded.
+---@field hash string The `#` part, or an empty string.
+
+---The environments file, checked.
+---@class Http.Envs
+---@field active string The active environment, or an empty string for none.
+---@field names string[] Every environment, sorted.
+---@field environments table<string, table<string, string>>
+
+---A saved request or a folder, as the request list shows it.
+---@class Http.ListItem
+---@field path string
+---@field name string
+---@field dir boolean
+---@field depth integer How many folders deep it sits.
+---@field method string
+---@field url string
+
+---One request in the history.
+---@class Http.HistoryEntry
+---@field method string
+---@field url string The address as it went out.
+---@field status integer 0 when no answer came.
+---@field time number Milliseconds since 1970.
+---@field request Http.Request
+
+---Get it with `app.use('http')`.
+---@class Proteus.Http
+---@field METHODS string[] The methods the API client offers, in order.
+---@field ENV_TEMPLATE string The text a new environments file starts with.
+---Trims spaces from both ends.
+---@field trim fun(text: string): string
+---Percent-encodes a query key or value. A `{{variable}}` stays as it is.
+---@field encode fun(text: string): string
+---Decodes a query key or value, `+` included.
+---@field decode fun(text: string): string
+---Splits an address into its base, its query rows and its `#` part.
+---@field split_url fun(url: string): Http.UrlParts
+---Builds an address from a base and the rows that are on.
+---@field join_url fun(base: string, rows: Http.Row[], hash?: string): string
+---The parameter rows after the address changed. The address decides the rows that are on.
+---Rows that are off keep their place.
+---@field sync_params fun(rows: Http.Row[], url: string): Http.Row[]
+---The address after the parameter rows changed.
+---@field url_with_params fun(url: string, rows: Http.Row[]): string
+---Fills in `{{name}}` variables. Returns the text and the names that had no value.
+---@field fill fun(text: string, env: table<string, string>): string, string[]
+---Base64, as Basic auth needs it.
+---@field base64 fun(text: string): string
+---The request that goes out, with the environment filled in.
+---@field build fun(request: Http.Request, env?: table<string, string>): Http.Built
+---A built request as a curl command.
+---@field to_curl fun(built: Http.Built): string
+---Reads a curl command. Returns nil and a message when it cannot.
+---@field from_curl fun(text: string): Http.Request?, string?
+---A complete request from a saved file or anything like one.
+---@field normalize fun(saved: any): Http.Request
+---A deep copy of a request.
+---@field copy fun(request: Http.Request): Http.Request
+---The file text for a request.
+---@field encode_request fun(request: Http.Request): string
+---Reads JSON. Returns nil and a message with the line and column when it cannot.
+---@field json_decode fun(text: string): any, string?
+---JSON as text, with sorted keys and two-space indents.
+---@field json_encode fun(value: any): string
+---Formats JSON text with two-space indents and keeps the keys in their order.
+---@field pretty_json fun(text: string): string?, string?
+---True when the text starts like a JSON object or list.
+---@field looks_like_json fun(text: string): boolean
+---Checks decoded environments data.
+---@field check_envs fun(value: any): Http.Envs?, string?
+---Reads the environments file. Missing or empty text gives no environments.
+---@field parse_envs fun(text: string?): Http.Envs?, string?
+---The environments file with another active environment, changing nothing else.
+---@field set_active fun(text: string, name: string): string?, string?
+---The variables of the active environment.
+---@field env_vars fun(envs: Http.Envs): table<string, string>
+---Checks a request or folder name. Returns the trimmed name, or nil and a message.
+---@field check_name fun(text: string, at_top: boolean): string?, string?
+---A name for a new request, taken from its method and address.
+---@field suggest_name fun(request: Http.Request): string
+---The name, or the name with "copy" and a number, whichever `taken` says is free.
+---@field unique_name fun(name: string, taken: fun(name: string): boolean): string
+---True when the query is in the name, method or address.
+---@field matches fun(item: { name: string, method: string, url: string }, query: string): boolean
+---The list rows to show. Folded folders hide what they hold, and a search shows every match.
+---@field visible_items fun(items: Http.ListItem[], folded: table<string, boolean>, query: string): Http.ListItem[]
+---How many rows are on and have text.
+---@field count_rows fun(rows: Http.Row[]): integer
+---A short label for a method, such as DEL for DELETE.
+---@field method_short fun(method: string): string
+---'info', 'success', 'redirect', 'client' or 'server'.
+---@field status_class fun(code: number): string
+---The code and its reason, such as "404 Not Found".
+---@field status_line fun(code: number): string
+---A size such as "512 B" or "1.2 KB".
+---@field human_size fun(bytes: number): string
+---A time such as "85 ms".
+---@field format_ms fun(ms: number): string
+---How long ago, such as "5 min ago".
+---@field ago fun(time: number, now: number): string
+---'json', 'html', 'xml' or 'text', from the Content-Type or the body.
+---@field body_kind fun(headers: table<string, string>, body: string): string
+---What to say when no answer came.
+---@field error_text fun(err: string?, browser: boolean): string
+---What to say about variables that had no value, or nil when there were none.
+---@field missing_text fun(missing: string[], env: string): string?
+---The history with a new entry first, cut to `max` entries.
+---@field add_history fun(list: Http.HistoryEntry[], entry: Http.HistoryEntry, max: integer): Http.HistoryEntry[]
+---The two requests a new install starts with.
+---@field examples fun(): Http.Request[]
