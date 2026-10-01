@@ -382,8 +382,8 @@
     {
       "id": "code.minimap",
       "name": "Minimap",
-      "description": "Shows the file in front in miniature beside the code, shades the part on screen, and scrolls there on a click.",
-      "version": "1.0.0",
+      "description": "Shows the file in front in miniature at the side of the code, with the part on screen, the selection and problems marked.",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "proteus.lib.ui",
@@ -392,7 +392,9 @@
         "proteus.editor.core"
       ],
       "optional": [
-        "proteus.core.settings"
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.tools.diagnostics"
       ],
       "permissions": [
         "files"
@@ -410,8 +412,8 @@
         "minimap_render.lua",
         "tests/render.test.lua"
       ],
-      "commit": "5be43989bc636a311483ff92101f4a11f07511d0",
-      "updated": "2026-10-01T14:42:51-06:00"
+      "commit": "c85a2117cefa265bb1f20a5ce8b58b6442a3a28f",
+      "updated": "2026-10-01T15:20:40-06:00"
     },
     {
       "id": "theme.nanoqoi",
