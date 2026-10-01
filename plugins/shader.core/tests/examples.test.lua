@@ -31,7 +31,12 @@ test ('each example graph compiles cleanly', function ()
 end)
 
 test ('each example code shader has what the preview needs', function ()
-  for _, name in ipairs ({ 'waves.frag', 'raymarch.frag', 'shadertoy.frag' }) do
+  for _, name in ipairs ({
+    'waves.frag',
+    'raymarch.frag',
+    'shadertoy.frag',
+    'weather.frag',
+  }) do
     local _, errors = source.glsl_program (read (EXAMPLES .. name))
     eq (errors, {}, name)
   end
