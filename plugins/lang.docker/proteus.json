@@ -1,0 +1,54 @@
+{
+  "id": "lang.docker",
+  "name": "Docker",
+  "description": "Dockerfiles with docker-langserver and Hadolint: completion, hover help, problems and formatting. Compose files get their schema for a YAML plugin.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/completion.lua",
+    "lib/compose.lua",
+    "lib/config.lua",
+    "lib/edits.lua",
+    "lib/hadolint.lua",
+    "lib/launch.lua",
+    "lib/lint.lua",
+    "lib/program.lua",
+    "lib/provider.lua",
+    "lib/release.lua",
+    "lib/server.lua",
+    "tests/completion.test.lua",
+    "tests/compose.test.lua",
+    "tests/config.test.lua",
+    "tests/edits.test.lua",
+    "tests/hadolint.test.lua"
+  ]
+}
