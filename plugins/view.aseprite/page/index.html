@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="viewer.css" />
+  </head>
+  <body>
+    <div id="main">
+      <div id="frame" tabindex="0">
+        <div id="box" class="checker pixelated" hidden><canvas id="sprite"></canvas></div>
+        <div id="note" hidden></div>
+      </div>
+      <aside id="side">
+        <div class="head">Layers</div>
+        <ul id="layers"></ul>
+        <div id="side-note" hidden></div>
+      </aside>
+    </div>
+    <div id="timeline" hidden>
+      <button id="play" type="button"></button>
+      <button id="prev" type="button" title="Previous frame (Left)"></button>
+      <button id="next" type="button" title="Next frame (Right)"></button>
+      <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Frame" />
+      <span id="frame-label"></span>
+      <select id="tag" aria-label="Tag" hidden></select>
+    </div>
+    <script src="theme.js"></script>
+    <script src="zoom.js"></script>
+    <script src="aseprite-parse.js"></script>
+    <script src="aseprite-render.js"></script>
+    <script src="aseprite-play.js"></script>
+    <script src="aseprite.js"></script>
+  </body>
+</html>
