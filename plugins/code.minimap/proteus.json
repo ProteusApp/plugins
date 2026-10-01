@@ -1,0 +1,36 @@
+{
+  "id": "code.minimap",
+  "name": "Minimap",
+  "description": "Shows the file in front in miniature beside the code, shades the part on screen, and scrolls there on a click.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.ui.tabs",
+    "proteus.editor.core"
+  ],
+  "optional": [
+    "proteus.core.settings"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "minimap_render.lua",
+    "tests/render.test.lua"
+  ]
+}

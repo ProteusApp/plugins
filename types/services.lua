@@ -771,6 +771,8 @@ function Status.add (spec) end
 ---@field insert fun(text: string)
 ---@field save fun(cb?: fun())
 ---@field replace fun(text: string) Replaces the whole text as one edit that can be undone.
+---@field viewport fun(): { first: integer, last: integer }? The first and last lines on screen, from 1. Nil while the editor is out of sight.
+---@field scroll_to fun(line: integer) Scrolls so the line, from 1, sits at the top. The cursor and the focus stay put.
 
 ---A document open in an editor tab, as language plugins see it.
 ---@class Proteus.DocInfo

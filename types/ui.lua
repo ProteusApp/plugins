@@ -422,6 +422,8 @@ function El:scroll_into_view () end
 ---@overload fun(self: Proteus.El, method: 'cursor'): { line: integer, col: integer }
 ---@overload fun(self: Proteus.El, method: 'goto', line: integer, col?: integer)
 ---@overload fun(self: Proteus.El, method: 'reveal', line: integer)
+---@overload fun(self: Proteus.El, method: 'scroll_to', line: integer)
+---@overload fun(self: Proteus.El, method: 'viewport'): { first: integer, last: integer }?
 ---@overload fun(self: Proteus.El, method: 'insert', text: string)
 ---@overload fun(self: Proteus.El, method: 'focus')
 ---@overload fun(self: Proteus.El, method: 'select_all')
@@ -468,6 +470,7 @@ function El:widget (method, ...) end
 ---@field completions? string[] Extra words to offer.
 ---@field on_change? fun() Runs after each edit. Read the text with `get_text`.
 ---@field on_cursor? fun(line: integer, col: integer) Lines and columns start at 1.
+---@field on_scroll? fun(first: integer, last: integer) Runs with the first and last lines on screen, from 1, when they change.
 ---@field provider? Proteus.CodeProvider Smarter help from a language server.
 
 ---A position inside a document. Both start at 0, as in the Language Server Protocol.
