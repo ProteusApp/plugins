@@ -16,7 +16,7 @@ local time = require ('daw_time') --[[@as Daw.TimeModule]]
 return {
   name = 'DAW core',
   description = 'The logic behind the DAW: songs, notes, steps, devices, time and undo.',
-  version = '1.2.0',
+  version = '1.3.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)

@@ -3,6 +3,10 @@
 -- `apply`, which sends `daw:changed` with the new song, so each view redraws from the same
 -- value and never keeps a song of its own.
 --
+-- A save first asks the engine for what each device saved, such as a plugin's samples and
+-- presets, through the function daw.engine gives `capture`, and writes the song with it. The
+-- open song keeps the states too, as a change of kind `state` that is no undo step.
+--
 -- Events it sends:
 --   daw:changed (song, change)   the song changed, see Daw.Change
 --   daw:selection ()             the selected track or clips changed
@@ -13,6 +17,9 @@
 local DIR = 'songs'
 local AUTOSAVE_MS = 1500
 local RECENT = 10
+-- How long a save waits for the engine to say what the devices saved. Without an answer, the
+-- song keeps the states it had.
+local CAPTURE_MS = 3000
 
 ---@param text string
 ---@return string
@@ -28,7 +35,7 @@ end
 return {
   name = 'DAW session',
   description = 'The open song: its file, undo and redo, and what is selected.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   folders = { 'songs' },
@@ -66,6 +73,11 @@ return {
     local selected_clips = {} ---@type string[]
     local editing = nil ---@type string?
     local cancel_save = nil ---@type fun()?
+    -- Reads what the devices saved, from daw.engine.
+    local capture = nil ---@type (fun(done: fun(states: table<string, string>?)))?
+    -- Counts the songs opened, and the changes made, so a save that waited knows what moved.
+    local opened = 0
+    local edits = 0
 
     local item = status
       and status.add ({
@@ -91,22 +103,72 @@ return {
 
     -- Files -----------------------------------------------------------------------------------
 
+    ---Writes a song to its file now, as it is.
     ---@param target string
+    ---@param src Daw.Song
     ---@return boolean
-    local function write (target)
+    local function write_now (target, src)
       app.fs.mkdir (DIR)
-      local ok, err =
-        pcall (app.fs.write_json, target, daw.file.for_save (song))
+      local ok, err = pcall (app.fs.write_json, target, daw.file.for_save (src))
       if not ok then
         if notify then
           notify.error ('Could not save the song: ' .. tostring (err))
         end
         return false
       end
-      dirty = false
-      show_state ()
-      app.emit ('daw:saved', target)
       return true
+    end
+
+    -- `replace` comes later, and keeps the states in the open song.
+    local keep_states = nil ---@type fun(states: table<string, string>)?
+
+    ---Writes `src`, the open song when nil, once the engine said what its devices saved.
+    ---@param target string
+    ---@param done? fun(ok: boolean)
+    ---@param src? Daw.Song
+    local function write (target, done, src)
+      local from = src or song
+      local at_open, at_edit = opened, edits
+      local finished = false
+      local cancel_wait = nil ---@type fun()?
+      ---@param states table<string, string>?
+      local function finish (states)
+        if finished then
+          return
+        end
+        finished = true
+        if cancel_wait then
+          cancel_wait ()
+        end
+        local full = states and daw.song.set_states (from, states) or from
+        if states and opened == at_open and keep_states then
+          keep_states (states)
+        end
+        local ok = write_now (target, full)
+        if ok then
+          if opened == at_open and edits == at_edit then
+            dirty = false
+            show_state ()
+          end
+          app.emit ('daw:saved', target)
+        end
+        if done then
+          done (ok)
+        end
+      end
+      if not capture then
+        finish (nil)
+        return
+      end
+      cancel_wait = app.timer.after (CAPTURE_MS, function ()
+        cancel_wait = nil
+        finish (nil)
+      end)
+      local ok, err = pcall (capture, finish) ---@type boolean, any
+      if not ok then
+        app.warn ('Could not read what the devices saved: ' .. tostring (err))
+        finish (nil)
+      end
     end
 
     ---@param target string
@@ -164,6 +226,13 @@ return {
       app.emit ('daw:changed', song, change)
     end
 
+    keep_states = function (states)
+      local next_song = daw.song.set_states (song, states)
+      if next_song ~= song then
+        replace (next_song, { kind = 'state' })
+      end
+    end
+
     ---@param next_song Daw.Song
     ---@param change? Daw.Change
     ---@param coalesce? string
@@ -173,6 +242,7 @@ return {
       end
       history.push (song, coalesce)
       dirty = true
+      edits = edits + 1
       replace (next_song, change or { kind = 'edit' })
       schedule_save ()
     end
@@ -186,8 +256,10 @@ return {
         cancel_save = nil
       end
       if dirty and path then
-        write (path)
+        -- The engine still plays the song that goes, so it can say what it saved.
+        write (path, nil, song)
       end
+      opened = opened + 1
       history.clear ()
       path = target
       dirty = false
@@ -250,13 +322,15 @@ return {
     local function save_as (done)
       if not picker then
         local target = DIR .. '/' .. safe_name (song.name) .. EXT
-        if write (target) then
-          path = target
-          remember (target)
-          if done then
-            done (target)
+        write (target, function (ok)
+          if ok then
+            path = target
+            remember (target)
+            if done then
+              done (target)
+            end
           end
-        end
+        end)
         return
       end
       picker.input ({
@@ -276,13 +350,15 @@ return {
               song = daw.song.set (song, { name = name })
               replace (song, { kind = 'edit', label = 'Rename' })
             end
-            if write (target) then
-              path = target
-              remember (target)
-              if done then
-                done (target)
+            write (target, function (ok)
+              if ok then
+                path = target
+                remember (target)
+                if done then
+                  done (target)
+                end
               end
-            end
+            end)
           end
           if target ~= path and app.fs.exists (target) then
             picker.confirm ({
@@ -299,10 +375,13 @@ return {
 
     ---@param done? fun(path: string)
     local function save (done)
-      if path then
-        if write (path) and done then
-          done (path)
-        end
+      local target = path
+      if target then
+        write (target, function (ok)
+          if ok and done then
+            done (target)
+          end
+        end)
       else
         save_as (done)
       end
@@ -331,6 +410,7 @@ return {
       local prev = history.undo (song)
       if prev then
         dirty = true
+        edits = edits + 1
         replace (prev, { kind = 'undo' })
         schedule_save ()
       end
@@ -340,6 +420,7 @@ return {
       local next_song = history.redo (song)
       if next_song then
         dirty = true
+        edits = edits + 1
         replace (next_song, { kind = 'undo' })
         schedule_save ()
       end
@@ -372,6 +453,9 @@ return {
       open = open,
       save = save,
       save_as = save_as,
+      capture = function (fn)
+        capture = fn
+      end,
       list = list,
       selected_track = function ()
         return selected_track
@@ -565,16 +649,18 @@ return {
       else
         load (daw.demo.song (), nil, 'new')
         local target = DIR .. '/Demo' .. EXT
-        if write (target) then
+        if write_now (target, song) then
           path = target
           remember (target)
+          app.emit ('daw:saved', target)
         end
       end
     end
 
     app.dispose (function ()
-      if dirty and path then
-        write (path)
+      -- Stopping cannot wait for the engine, so the song keeps the states it has.
+      if dirty and path and write_now (path, song) then
+        dirty = false
       end
     end)
   end,

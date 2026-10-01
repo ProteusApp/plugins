@@ -122,6 +122,8 @@ Songs never change in place. Each operation in `daw_song.lua` returns a new song
 | `metronome` (`on`), `record` (`on`) | |
 | `missing` (`file`, `error`), `retry` (`file`) | The plugin cannot send a file the page asked for, or it can again |
 | `render` (`file`, `from`, `to`) | Play the song into the WAV file the user chose. With `to` at or before `from`, to the end. |
+| `set_state` (`device`, `state`) | A device's saved state, as text. The module or plugin playing it takes it at once, and one made later starts from it. Without `state`, the engine forgets it. |
+| `get_states` (`id`) | Ask what every device would save now |
 
 | From the page | What it says |
 |---------------|--------------|
@@ -134,6 +136,7 @@ Songs never change in place. Each operation in `daw_song.lua` returns a new song
 | `want` (`file`) | The page needs this file |
 | `file` (`file`, `seconds`, `peaks`), `file_failed` (`file`, `error`) | A file decoded, or could not be read |
 | `rendered` (`file`, `seconds`), `render_failed` (`file`, `error`) | The export finished |
+| `states` (`id`, `states`) | The answer to `get_states`: each device's state, as text by device id |
 | `warning` (`message`) | A patch had a mistake |
 
 That stays well under the web view's limits of 500 messages a second and 1 MB a message.
@@ -144,7 +147,7 @@ A song is a JSON file in `songs/` in the workspace, the folder `daw.session` cla
 
 ```json
 {
-  "format": 1,
+  "format": 2,
   "name": "Demo",
   "tempo": 112,
   "signature": [4, 4],
@@ -169,7 +172,19 @@ A song is a JSON file in `songs/` in the workspace, the folder `daw.session` cla
 - A device on a track names its device by id, a preset by name, and only the values changed by hand. Its sound is the device's defaults, then the preset, then those values.
 - `kind` is `instrument` or `audio`. An audio track's clips have no notes: `file` is the id of a file the user gave `daw.engine`, `offset` is where in the file the clip starts, in seconds, and `gain` is in decibels. Splitting an audio clip moves the right half's offset.
 - `ids` counts up, so a new id never repeats one that was deleted.
+- A device may keep `state`: what its Web Audio Module or native plugin saved of itself, such as a sample it loaded or a preset of its own, as text the song keeps as it is. Format 2 added it, so a format 1 song reads as one whose devices saved nothing.
 - `daw_file.normalize` reads anything: an older file, a hand edit, or an empty list that came back from JSON as an empty object. Every field is checked, and anything missing gets its default.
+
+### Saved states
+
+A device's parameters are not all it knows. A module or a plugin can load a sample, pick a preset of its own, or keep how its editor was left, and none of that is a parameter. The song keeps it as the device's `state`:
+
+- **Saving.** Before `daw.session` writes a song, it asks `daw.engine` through `session.capture`, which asks the engine (`get_states`). A Web Audio Module answers its `getState`, as JSON where bytes go as base64, and a CLAP or VST3 plugin its own saved state, as base64. The song keeps each answer, as a change of kind `state` that is no undo step. An engine that does not answer within a few seconds leaves the states the song had.
+- **Loading.** `daw.engine` sends each device's state (`set_state`) before the load that first has the device. When a song opens, the engine drops every device first, so each starts again from what the song saved. A device starts from its state, then takes the song's values, so they stay the ones the rack shows.
+- **Rendering.** Export as WAV starts each device of the render where the playing one is now, on either engine.
+- **Editors.** A module's editor starts from the device's state, and says when the module's state changes, which the engine's instance takes. The next save keeps it.
+
+A state travels in one message, so on the web engine it must stay under the web view's 1 MB a message.
 
 A song that names a device no running plugin provides keeps it. The track plays without it, the rack shows it in red, and a message says which plugin is missing.
 
@@ -273,6 +288,7 @@ return {
 - An instrument hears its notes as MIDI events on the audio clock. An effect passes its sound straight through until its module is ready.
 - A module with an editor gets a button in the rack that opens it in a floating window. The editor runs its own silent copy of the module, and every change it makes goes to the song, so undo and saving work as they do for the rack's controls.
 - A render waits for every module to load before it starts.
+- A module that keeps more than its parameters saves it through `getState` and gets it back through `setState`, so a song keeps its samples and presets. See [Saved states](#saved-states).
 
 `wam.basics` in this registry holds a polyphonic synth with an editor and a stereo echo, and is the smallest example. It copies the WAM SDK, listed in its `vendor.json`.
 
@@ -285,6 +301,7 @@ The DAW also plays on the app's native engine, a process of its own that plays t
 - A native device resolves to `{ id, kind, params, native = { plugin } }`. The app puts the binary's path in before the engine sees the song, and the DAW never learns it.
 - A native plugin that crashes takes the native engine with it, never the app. The app starts the engine again on its own, `daw.engine` tells the user once why and sends it the song when it is ready, and the user's answers about native plugins still hold. After a few crashes in a row the engine stays stopped, and **Restart the Sound Engine** starts it again.
 - The web engine cannot play native devices. It says so, leaves the instrument silent and passes an effect's sound through. The native engine cannot play Web Audio Modules, and says so too.
+- A plugin's own state, such as a sample it loaded or a preset it picked, saves with the song as base64. See [Saved states](#saved-states).
 
 ## The engine
 

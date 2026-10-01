@@ -13,7 +13,7 @@
 ---A song, as saved in `songs/<name>.song.json`. Times are in beats, where a beat is a
 ---quarter note, and the song starts at beat 0.
 ---@class Daw.Song
----@field format integer The file format, 1 for now.
+---@field format integer The file format, 2 for now. Format 1 had no device states.
 ---@field name string
 ---@field tempo number Beats per minute.
 ---@field signature integer[] Beats per bar and the beat's note value, such as `{ 4, 4 }`.
@@ -54,6 +54,7 @@
 ---@field params table<string, Daw.Value> Values changed on the track. The rest come from the preset, then the defaults.
 ---@field bypass boolean
 ---@field preset? string The preset it loaded, by name. Its values sit under `params`.
+---@field state? string What the device's engine saved for it, such as a Web Audio Module's or a native plugin's samples and presets, as text the song keeps as it is. The engine restores it when the song loads, and reads it again when the song saves.
 
 ---@class Daw.Clip
 ---@field id string
@@ -74,7 +75,7 @@
 
 ---What changed in the song, sent with each `daw:changed` event.
 ---@class Daw.Change
----@field kind 'edit'|'param'|'mix'|'open'|'undo'|'new'
+---@field kind 'edit'|'param'|'mix'|'open'|'undo'|'new'|'state' `state`: devices' saved states were read from the engine for a save. It is no undo step, and nothing that plays changes.
 ---@field label? string
 ---@field device? string For `param`: the device's id in the song.
 ---@field track? string For `mix`: the track's id, or `'master'`.
@@ -242,7 +243,9 @@
 ---@field remove_device fun(song: Daw.Song, id: string): Daw.Song
 ---@field move_effect fun(song: Daw.Song, id: string, index: integer): Daw.Song
 ---@field set_param fun(song: Daw.Song, id: string, key: string, value: Daw.Value): Daw.Song
----@field update_device fun(song: Daw.Song, id: string, fields: table<string, any>): Daw.Song
+---@field update_device fun(song: Daw.Song, id: string, fields: table<string, any>): Daw.Song A new `device` drops the state the old one saved.
+---@field states fun(song: Daw.Song): table<string, string> The state each device saved, by device id.
+---@field set_states fun(song: Daw.Song, states: table<string, string>): Daw.Song Keeps saved states by device id. An empty text takes one away.
 ---@field set_preset fun(song: Daw.Song, id: string, name?: string): Daw.Song Loads a preset, or the defaults for nil, and drops the values changed by hand.
 ---@field add_clip fun(song: Daw.Song, track_id: string, fields: table<string, any>): Daw.Song, string
 ---@field update_clip fun(song: Daw.Song, id: string, fields: table<string, any>): Daw.Song
@@ -414,12 +417,19 @@ function Session.new (song) end
 ---@return boolean ok
 function Session.open (path) end
 
----Saves the song. Asks for a name the first time.
+---Saves the song. Asks for a name the first time. It first asks the engine what each
+---device saved, so `done` runs once the file is written.
 ---@param done? fun(path: string)
 function Session.save (done) end
 
 ---@param done? fun(path: string)
 function Session.save_as (done) end
+
+---Sets what a save asks for the devices' saved states: `fn` calls `done` with the text by
+---device id, or nil when it has none. daw.engine sets it. A save that gets no answer in a
+---few seconds keeps the states the song has.
+---@param fn? fun(done: fun(states: table<string, string>?))
+function Session.capture (fn) end
 
 ---Songs in `songs/`, the most recently opened first.
 ---@return { path: string, name: string }[]
