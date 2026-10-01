@@ -183,7 +183,7 @@ test (
   function ()
     local name = string.rep ('é', 80) .. '.lua'
     local p = presence.build (preset ('editor'), {}, { file = name }, opts ())
-    local details = assert (p.details)
+    local details = assert (p.details, 'the presence has details')
     ok (#details <= 128)
     ok (details:sub (-3) == '...')
     ok (utf8.len (details) ~= nil)
