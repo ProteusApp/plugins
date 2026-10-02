@@ -53,6 +53,10 @@ local CSS = [[
 .git-head-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .git-head-top .git-repo { flex: 1; }
 .git-head-tools { flex: none; display: flex; gap: 2px; }
+.git-op { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--warning) 12%, transparent);
+  font-size: 12px; }
+.git-op-btns { display: flex; gap: 6px; }
 .git-commit-box { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
   border-top: 1px solid var(--border); }
 .git-message { width: 100%; min-height: 64px; max-height: 40vh; resize: vertical; line-height: 1.4; }
@@ -228,6 +232,9 @@ return {
     local log_seq = 0
     -- What the repository's status.showUntrackedFiles says, read when it opens.
     local untracked_mode = nil ---@type string?
+    -- The repository's .git folder, and the operation that stopped there part way.
+    local git_dir = nil ---@type string?
+    local operation = nil ---@type Git.Operation?
     -- The lists drawn whole after Show All, by 's' or 'u'.
     local show_all = {} ---@type table<string, boolean>
     -- When the last status read ended, and how long it took, in milliseconds.
@@ -338,7 +345,7 @@ return {
     ---Runs a git command that changes something. Shows Git's error when it fails, runs
     ---`after` when it works, and refreshes either way.
     ---@param args string[]
-    ---@param opts? { stdin?: string }
+    ---@param opts? { stdin?: string, env?: table<string, string> }
     ---@param after? fun(res: Proteus.RunResult)
     local function act (args, opts, after)
       git (args, opts, function (res, err)
@@ -403,6 +410,34 @@ return {
       }),
     })
     local changes_list = ui.div ({ class = 'git-list' })
+    ---@param label string
+    ---@param id string
+    ---@param variant? string
+    ---@return Proteus.El
+    local function op_button (label, id, variant)
+      return ui.button ({
+        label,
+        variant = variant,
+        onclick = function ()
+          commands.run (id)
+          return nil
+        end,
+      })
+    end
+    local op_text = ui.span ({})
+    local op_skip = op_button ('Skip', 'git.skip')
+    op_skip:set ('title', 'Leave out this commit and go on')
+    local op_bar = ui.div ({
+      class = 'git-op',
+      op_text,
+      ui.div ({
+        class = 'git-op-btns',
+        op_button ('Continue', 'git.continue', 'primary'),
+        op_skip,
+        op_button ('Abort', 'git.abort', 'ghost'),
+      }),
+    })
+    op_bar:show (false)
     local message = ui.input ({
       multiline = true,
       class = 'git-message',
@@ -562,6 +597,15 @@ return {
       repo_name:set ('title', repo)
       branch_label:text (status and m.branch_text (status) or '…')
       sync_label:text (status and m.sync_text (status) or '')
+    end
+
+    local function render_operation ()
+      local op = repo and status and operation or nil
+      op_bar:show (op ~= nil)
+      if op and status then
+        op_text:text (m.operation_text (op, m.conflict_count (status)))
+        op_skip:show (op == 'rebase')
+      end
     end
 
     local function render_changes ()
@@ -939,6 +983,15 @@ return {
           status = m.parse_status (res.stdout)
           announce ()
           render_head ()
+          local dir = git_dir
+          if dir then
+            app.fs.list_dir (dir, function (names)
+              if at == repo then
+                operation = names and m.operation (names) or nil
+                render_operation ()
+              end
+            end)
+          end
           local sel = selection
           if sel and sel.kind == 'file' then
             local e = m.reselect (status, sel.group or 'u', sel.path or '')
@@ -1015,20 +1068,30 @@ return {
           changes_list:html ('')
           history_list:html ('')
           show_placeholder ()
-          git (
-            { 'config', '--get', 'status.showUntrackedFiles' },
-            nil,
-            function (cfg)
-              untracked_mode = cfg and cfg.code == 0 and cfg.stdout or nil
-              refresh ()
-            end
-          )
+          operation, git_dir = nil, nil
+          render_operation ()
+          git ({ 'rev-parse', '--absolute-git-dir' }, nil, function (dir)
+            git_dir = dir
+                and dir.code == 0
+                and dir.stdout:match ('^%s*(.-)%s*$')
+              or nil
+            git (
+              { 'config', '--get', 'status.showUntrackedFiles' },
+              nil,
+              function (cfg)
+                untracked_mode = cfg and cfg.code == 0 and cfg.stdout or nil
+                refresh ()
+              end
+            )
+          end)
         end
       )
     end
 
     local function close_repo ()
       repo, status, commits, selection, shown_key = nil, nil, {}, nil, nil
+      operation, git_dir = nil, nil
+      render_operation ()
       app.store.set ('reopen', false)
       render_side ()
       render_bar ()
@@ -1349,6 +1412,287 @@ return {
       end)
     end
 
+    -- Merge, rebase, cherry-pick, revert and reset -----------------------------------------
+
+    ---Runs a merge, rebase, cherry-pick or revert. One that stops at conflicts says so, and the
+    ---bar above the Changes list then offers Continue and Abort.
+    ---@param args string[]
+    ---@param success string
+    ---@param opts? { stdin?: string }
+    ---@param after? fun()
+    local function run_operation (args, success, opts, after)
+      local env = m.operation_env ()
+      git (args, { env = env, stdin = opts and opts.stdin }, function (res, err)
+        if res and res.code == 0 then
+          done (success)
+          if after then
+            after ()
+          end
+        elseif m.stopped_at_conflict (res) then
+          tell (
+            'Stopped at conflicts. Resolve them and stage them, then Continue.'
+          )
+          views.show ('git.changes')
+        else
+          fail (m.error_text (res, err))
+        end
+        refresh ()
+      end)
+    end
+
+    ---Lists the branches other than the current one, then calls `fn` with the one picked.
+    ---@param placeholder string
+    ---@param locals_only boolean
+    ---@param fn fun(name: string)
+    local function pick_branch (placeholder, locals_only, fn)
+      if not picker then
+        fail ('This needs the command palette.')
+        return
+      end
+      git (m.branch_args (), nil, function (res, err)
+        if not res or res.code ~= 0 then
+          fail (m.error_text (res, err))
+          return
+        end
+        local items = {} ---@type Proteus.PickItem[]
+        for _, b in ipairs (m.other_branches (m.parse_branches (res.stdout))) do
+          if not (locals_only and b.remote) then
+            items[#items + 1] = {
+              label = b.name,
+              detail = b.remote and 'remote' or b.upstream,
+              icon = b.remote and 'cloud' or 'git-branch',
+              value = b.name,
+            }
+          end
+        end
+        if #items == 0 then
+          tell ('There is no other branch.')
+          return
+        end
+        picker.pick ({
+          items = items,
+          placeholder = placeholder,
+          on_pick = function (item)
+            fn (item.value --[[@as string]])
+          end,
+        })
+      end)
+    end
+
+    local function merge_branch ()
+      pick_branch ('Merge a branch into the current one', false, function (name)
+        run_operation (m.merge_args (name), 'Merged ' .. name .. '.')
+      end)
+    end
+
+    local function rebase_branch ()
+      pick_branch (
+        'Rebase the current branch onto a branch',
+        false,
+        function (name)
+          local st = status
+          local here = st and m.branch_text (st) or 'the current branch'
+          confirm (
+            'Rebase '
+              .. here
+              .. ' onto '
+              .. name
+              .. '? Its own commits get new hashes, so a branch already pushed needs a forced push.',
+            'Rebase',
+            function ()
+              run_operation (
+                m.rebase_args (name),
+                'Rebased onto ' .. name .. '.'
+              )
+            end
+          )
+        end
+      )
+    end
+
+    ---@param c Git.Commit
+    local function cherry_pick (c)
+      run_operation (
+        m.cherry_pick_args (c.hash, #c.parents),
+        'Cherry-picked ' .. c.short .. '.'
+      )
+    end
+
+    ---@param c Git.Commit
+    local function revert (c)
+      confirm (
+        'Revert ' .. c.short .. '? A new commit undoes its changes.',
+        'Revert',
+        function ()
+          run_operation (
+            m.revert_args (c.hash, #c.parents),
+            'Reverted ' .. c.short .. '.'
+          )
+        end
+      )
+    end
+
+    ---@param c Git.Commit
+    local function reset_to (c)
+      if not picker then
+        fail ('Reset needs the command palette.')
+        return
+      end
+      picker.pick ({
+        placeholder = 'Reset the current branch to ' .. c.short,
+        items = {
+          {
+            label = 'Soft',
+            detail = 'keep the changes since then, staged',
+            icon = 'git-commit-horizontal',
+            value = 'soft',
+          },
+          {
+            label = 'Mixed',
+            detail = 'keep the changes since then, not staged',
+            icon = 'git-commit-horizontal',
+            value = 'mixed',
+          },
+          {
+            label = 'Hard',
+            detail = 'throw away the commits since then and every change',
+            icon = 'triangle-alert',
+            value = 'hard',
+          },
+        },
+        on_pick = function (item)
+          local mode = item.value --[[@as 'soft'|'mixed'|'hard']]
+          local function run ()
+            act (m.reset_args (mode, c.hash), nil, function ()
+              done ('Reset to ' .. c.short .. '.')
+            end)
+          end
+          if mode == 'hard' then
+            confirm (
+              'Reset hard to '
+                .. c.short
+                .. '? Every uncommitted change is lost, and the commits after it leave the branch.',
+              'Reset',
+              run
+            )
+          else
+            run ()
+          end
+        end,
+      })
+    end
+
+    ---@param c Git.Commit
+    local function branch_here (c)
+      if not picker then
+        return
+      end
+      picker.input ({
+        prompt = 'Name of the new branch at ' .. c.short,
+        placeholder = 'feature/my-change',
+        select = false,
+        validate = m.check_branch_name,
+        on_submit = function (name)
+          act ({ 'switch', '-c', name, c.hash }, nil, function ()
+            done ('Switched to the new branch ' .. name .. '.')
+          end)
+        end,
+      })
+    end
+
+    local function delete_branch ()
+      pick_branch ('Delete a branch', true, function (name)
+        confirm ('Delete the branch ' .. name .. '?', 'Delete', function ()
+          git (m.delete_branch_args (name, false), nil, function (res, err)
+            if res and res.code == 0 then
+              done ('Deleted ' .. name .. '.')
+            elseif m.not_merged (res) then
+              confirm (
+                name
+                  .. ' has commits that no other branch has. Delete it anyway? They are lost.',
+                'Delete Anyway',
+                function ()
+                  act (m.delete_branch_args (name, true), nil, function ()
+                    done ('Deleted ' .. name .. '.')
+                  end)
+                end
+              )
+            else
+              fail (m.error_text (res, err))
+            end
+            refresh ()
+          end)
+        end)
+      end)
+    end
+
+    local function rename_branch ()
+      local st = status
+      local old = st and not st.detached and st.branch or nil
+      if not picker or not old then
+        fail ('Switch to a branch to rename it.')
+        return
+      end
+      picker.input ({
+        prompt = 'New name for ' .. old,
+        value = old,
+        validate = m.check_branch_name,
+        on_submit = function (name)
+          if name ~= old then
+            act (m.rename_branch_args (old, name), nil, function ()
+              done ('Renamed ' .. old .. ' to ' .. name .. '.')
+            end)
+          end
+        end,
+      })
+    end
+
+    local function continue_operation ()
+      local op, st = operation, status
+      if not op or not st then
+        return
+      end
+      if m.conflict_count (st) > 0 then
+        fail ('Resolve the conflicts and stage them first.')
+        return
+      end
+      local text = message:value ()
+      local own = op == 'merge' and not blank (text)
+      ---@type table<Git.Operation, string>
+      local FINISHED = {
+        merge = 'Merged.',
+        rebase = 'Rebased.',
+        ['cherry-pick'] = 'Cherry-picked.',
+        revert = 'Reverted.',
+      }
+      run_operation (
+        m.continue_args (op, own),
+        FINISHED[op],
+        { stdin = own and text or nil },
+        function ()
+          if own then
+            message:value ('')
+          end
+        end
+      )
+    end
+
+    local function abort_operation ()
+      local op = operation
+      if not op then
+        return
+      end
+      confirm (
+        'Abort? The files go back to how they were before it started.',
+        'Abort',
+        function ()
+          act (m.abort_args (op), nil, function ()
+            done ('Aborted.')
+          end)
+        end
+      )
+    end
+
     -- The fetch, pull, push or clone running now, which Cancel stops.
     local remote_run = nil ---@type Proteus.RunHandle?
     local cancelled = false
@@ -1486,7 +1830,13 @@ return {
         icon = 'git-branch',
         order = embedded and 20 or 1,
         key = embedded and 'ctrl+shift+g' or nil,
-        content = ui.div ({ class = 'git-side', head, changes_list, commit_box }),
+        content = ui.div ({
+          class = 'git-side',
+          head,
+          op_bar,
+          changes_list,
+          commit_box,
+        }),
       })
       views.add ('left', {
         id = 'git.history',
@@ -1774,6 +2124,13 @@ return {
         if not hash or not hash:find ('^%x+$') then
           return nil
         end
+        local c = nil ---@type Git.Commit?
+        for _, one in ipairs (commits) do
+          if one.hash == hash then
+            c = one
+          end
+        end
+        local idle_now = operation == nil and busy == nil
         return {
           {
             label = 'Copy Hash',
@@ -1788,6 +2145,48 @@ return {
             icon = 'git-commit-horizontal',
             run = function ()
               checkout (hash)
+            end,
+          },
+          {
+            label = 'Create Branch Here…',
+            icon = 'git-branch-plus',
+            disabled = not c,
+            run = function ()
+              if c then
+                branch_here (c)
+              end
+            end,
+          },
+          { separator = true },
+          {
+            label = 'Cherry-Pick',
+            icon = 'git-pull-request-arrow',
+            disabled = not c or not idle_now,
+            run = function ()
+              if c then
+                cherry_pick (c)
+              end
+            end,
+          },
+          {
+            label = 'Revert',
+            icon = 'undo-2',
+            disabled = not c or not idle_now,
+            run = function ()
+              if c then
+                revert (c)
+              end
+            end,
+          },
+          {
+            label = 'Reset Current Branch to Here…',
+            icon = 'rotate-ccw',
+            danger = true,
+            disabled = not c or not idle_now,
+            run = function ()
+              if c then
+                reset_to (c)
+              end
             end,
           },
         }
@@ -2003,6 +2402,74 @@ return {
       icon = 'check',
       when = has_repo,
       run = commit,
+    })
+    ---@return boolean
+    local function can_operate ()
+      return idle () and operation == nil
+    end
+    commands.register ({
+      id = 'git.merge',
+      category = 'Git',
+      title = 'Merge Branch…',
+      icon = 'git-merge',
+      when = can_operate,
+      run = merge_branch,
+    })
+    commands.register ({
+      id = 'git.rebase',
+      category = 'Git',
+      title = 'Rebase onto Branch…',
+      icon = 'git-pull-request-arrow',
+      when = can_operate,
+      run = rebase_branch,
+    })
+    commands.register ({
+      id = 'git.continue',
+      category = 'Git',
+      title = 'Continue Merge, Rebase, Cherry-Pick or Revert',
+      icon = 'play',
+      when = function ()
+        return has_repo () and operation ~= nil
+      end,
+      run = continue_operation,
+    })
+    commands.register ({
+      id = 'git.abort',
+      category = 'Git',
+      title = 'Abort Merge, Rebase, Cherry-Pick or Revert',
+      icon = 'circle-x',
+      when = function ()
+        return has_repo () and operation ~= nil
+      end,
+      run = abort_operation,
+    })
+    commands.register ({
+      id = 'git.skip',
+      category = 'Git',
+      title = 'Skip This Commit of the Rebase',
+      icon = 'skip-forward',
+      when = function ()
+        return has_repo () and operation == 'rebase'
+      end,
+      run = function ()
+        run_operation ({ 'rebase', '--skip' }, 'Skipped the commit.')
+      end,
+    })
+    commands.register ({
+      id = 'git.delete_branch',
+      category = 'Git',
+      title = 'Delete Branch…',
+      icon = 'trash-2',
+      when = has_repo,
+      run = delete_branch,
+    })
+    commands.register ({
+      id = 'git.rename_branch',
+      category = 'Git',
+      title = 'Rename Branch…',
+      icon = 'pencil',
+      when = has_repo,
+      run = rename_branch,
     })
     commands.register ({
       id = 'git.stash',

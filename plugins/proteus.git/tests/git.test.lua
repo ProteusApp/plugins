@@ -1366,3 +1366,98 @@ test ('parse_stashes reads git stash list', function ()
   has (html, 'a &lt;b&gt;')
   has (html, '<span class="git-hash">stash@{0}</span>')
 end)
+
+---------------------------------------------------------------------------------------------
+-- Merge, rebase, cherry-pick, revert, reset and branches
+---------------------------------------------------------------------------------------------
+
+test ('operation reads what stopped part way from the .git folder', function ()
+  -- Names as app.fs.list_dir gives them, from real merges and rebases in git 2.43.
+  eq (m.operation ({ 'HEAD', 'MERGE_HEAD', 'MERGE_MSG', 'refs/' }), 'merge')
+  eq (m.operation ({ 'MERGE_MSG', 'REBASE_HEAD', 'rebase-merge/' }), 'rebase')
+  eq (m.operation ({ 'rebase-apply/' }), 'rebase')
+  eq (m.operation ({ 'CHERRY_PICK_HEAD' }), 'cherry-pick')
+  eq (m.operation ({ 'REVERT_HEAD' }), 'revert')
+  eq (m.operation ({ 'HEAD', 'ORIG_HEAD', 'index' }), nil)
+end)
+
+test ('operation_text counts the conflicts left', function ()
+  local st = m.parse_status (STATUS_CONFLICT)
+  eq (m.conflict_count (st), 4)
+  eq (
+    m.operation_text ('merge', 4),
+    'Merging. Resolve the 4 conflicts and stage them, then continue.'
+  )
+  eq (
+    m.operation_text ('rebase', 1),
+    'Rebasing. Resolve the conflict and stage it, then continue.'
+  )
+  eq (m.operation_text ('revert', 0), 'Reverting. Continue to finish it.')
+end)
+
+test ('operation command lines', function ()
+  eq (m.operation_env (), { GIT_EDITOR = 'true' })
+  eq (m.continue_args ('merge', false), { 'commit', '--no-edit' })
+  eq (m.continue_args ('merge', true), { 'commit', '-F', '-' })
+  eq (m.continue_args ('rebase', false), { 'rebase', '--continue' })
+  eq (m.continue_args ('cherry-pick', true), { 'cherry-pick', '--continue' })
+  eq (m.abort_args ('revert'), { 'revert', '--abort' })
+  eq (m.merge_args ('origin/main'), { 'merge', '--no-edit', 'origin/main' })
+  eq (m.rebase_args ('main'), { 'rebase', 'main' })
+  eq (m.cherry_pick_args ('abc', 1), { 'cherry-pick', 'abc' })
+  eq (m.cherry_pick_args ('abc', 2), { 'cherry-pick', '-m', '1', 'abc' })
+  eq (m.revert_args ('abc', 1), { 'revert', '--no-edit', 'abc' })
+  eq (m.revert_args ('abc', 2), { 'revert', '--no-edit', '-m', '1', 'abc' })
+  eq (m.reset_args ('hard', 'abc'), { 'reset', '--hard', 'abc' })
+  eq (m.delete_branch_args ('x', false), { 'branch', '-d', 'x' })
+  eq (m.delete_branch_args ('x', true), { 'branch', '-D', 'x' })
+  eq (m.rename_branch_args ('a', 'b'), { 'branch', '-m', 'a', 'b' })
+end)
+
+test ('stopped_at_conflict and not_merged read what Git printed', function ()
+  eq (
+    m.stopped_at_conflict ({
+      code = 1,
+      stdout = 'Auto-merging s.txt\nCONFLICT (add/add): Merge conflict in s.txt\n',
+      stderr = '',
+    }),
+    true
+  )
+  eq (
+    m.stopped_at_conflict ({
+      code = 1,
+      stdout = '',
+      stderr = 'error: could not apply 092d1ec... s on main\n',
+    }),
+    true
+  )
+  eq (
+    m.stopped_at_conflict ({
+      code = 128,
+      stdout = '',
+      stderr = 'fatal: refusing to merge unrelated histories\n',
+    }),
+    false
+  )
+  eq (m.stopped_at_conflict (nil), false)
+  eq (
+    m.not_merged ({
+      code = 1,
+      stdout = '',
+      stderr = "error: The branch 'side' is not fully merged.\n",
+    }),
+    true
+  )
+  eq (m.not_merged ({ code = 1, stdout = '', stderr = 'error: no' }), false)
+end)
+
+test ('other_branches leaves out the current one', function ()
+  local names = {} ---@type string[]
+  for _, b in ipairs (m.other_branches (m.parse_branches (BRANCHES))) do
+    names[#names + 1] = b.name
+  end
+  ok (#names > 0)
+  for _, n in ipairs (names) do
+    ok (n ~= 'main', n)
+  end
+end)

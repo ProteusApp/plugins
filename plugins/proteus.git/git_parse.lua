@@ -128,6 +128,9 @@
 ---@field message string Such as `'On main: try the new parser'`.
 ---@field date string Relative, such as `'2 hours ago'`.
 
+---A merge, rebase, cherry-pick or revert that stopped part way, for conflicts.
+---@alias Git.Operation 'merge'|'rebase'|'cherry-pick'|'revert'
+
 ---@class Git.ListOptions
 ---@field selected? string The key of the selected row, such as `'u:src/a.txt'`.
 ---@field icons? table<string, string> SVG for the row buttons: `stage`, `unstage` and `discard`.
@@ -1108,6 +1111,190 @@ function M.push_args (st, remote)
     return nil, 'This repository has no remote to push to.'
   end
   return { 'push', '-u', remote, st.branch }, nil
+end
+
+---------------------------------------------------------------------------------------------
+-- Merge, rebase, cherry-pick, revert and reset
+---------------------------------------------------------------------------------------------
+
+---@type table<Git.Operation, string>
+local OPERATION_TEXT = {
+  merge = 'Merging',
+  rebase = 'Rebasing',
+  ['cherry-pick'] = 'Cherry-picking',
+  revert = 'Reverting',
+}
+
+---The operation that stopped part way, read from the names in the `.git` folder, as
+---`app.fs.list_dir` gives them: folders end in `/`.
+---@param names string[]
+---@return Git.Operation?
+function M.operation (names)
+  local has = {} ---@type table<string, boolean>
+  for _, n in ipairs (names) do
+    has[(n:gsub ('/$', ''))] = true
+  end
+  if has['rebase-merge'] or has['rebase-apply'] then
+    return 'rebase'
+  elseif has.MERGE_HEAD then
+    return 'merge'
+  elseif has.CHERRY_PICK_HEAD then
+    return 'cherry-pick'
+  elseif has.REVERT_HEAD then
+    return 'revert'
+  end
+  return nil
+end
+
+---Such as `'Merging. Resolve the 2 conflicts and stage them, then continue.'`.
+---@param op Git.Operation
+---@param conflicts integer
+---@return string
+function M.operation_text (op, conflicts)
+  local text = OPERATION_TEXT[op] or op
+  if conflicts > 0 then
+    return text
+      .. '. Resolve '
+      .. (conflicts == 1 and 'the conflict and stage it' or ('the ' .. conflicts .. ' conflicts and stage them'))
+      .. ', then continue.'
+  end
+  return text .. '. Continue to finish it.'
+end
+
+---How many files have conflicts.
+---@param st Git.Status
+---@return integer
+function M.conflict_count (st)
+  local n = 0
+  for _, e in ipairs (st.unstaged) do
+    if e.kind == 'conflicted' then
+      n = n + 1
+    end
+  end
+  return n
+end
+
+---True when a merge, rebase, cherry-pick or revert stopped at conflicts, rather than failing.
+---@param res Proteus.RunResult?
+---@return boolean
+function M.stopped_at_conflict (res)
+  if not res then
+    return false
+  end
+  local text = (res.stdout or '') .. '\n' .. (res.stderr or '')
+  return text:find ('CONFLICT', 1, true) ~= nil
+    or text:find ('could not apply', 1, true) ~= nil
+end
+
+---The variables a merge, rebase, cherry-pick or revert runs with: the app has no terminal for
+---an editor, so Git takes the message it wrote itself.
+---@return table<string, string>
+function M.operation_env ()
+  return { GIT_EDITOR = 'true' }
+end
+
+---Finishes an operation once its conflicts are resolved. A merge commits with the message in
+---the commit box when there is one, read from stdin, or else with Git's own.
+---@param op Git.Operation
+---@param own_message boolean
+---@return string[]
+function M.continue_args (op, own_message)
+  if op == 'merge' then
+    if own_message then
+      return { 'commit', '-F', '-' }
+    end
+    return { 'commit', '--no-edit' }
+  end
+  return { op, '--continue' }
+end
+
+---Gives up an operation and goes back to where it started.
+---@param op Git.Operation
+---@return string[]
+function M.abort_args (op)
+  return { op, '--abort' }
+end
+
+---Merges a branch into the current one.
+---@param branch string
+---@return string[]
+function M.merge_args (branch)
+  return { 'merge', '--no-edit', branch }
+end
+
+---Replays the current branch's own commits on top of another branch.
+---@param branch string
+---@return string[]
+function M.rebase_args (branch)
+  return { 'rebase', branch }
+end
+
+---Copies a commit onto the current branch. A merge commit copies its changes against its
+---first parent.
+---@param hash string
+---@param parents integer
+---@return string[]
+function M.cherry_pick_args (hash, parents)
+  if parents > 1 then
+    return { 'cherry-pick', '-m', '1', hash }
+  end
+  return { 'cherry-pick', hash }
+end
+
+---Makes a commit that undoes a commit. A merge commit is undone against its first parent.
+---@param hash string
+---@param parents integer
+---@return string[]
+function M.revert_args (hash, parents)
+  if parents > 1 then
+    return { 'revert', '--no-edit', '-m', '1', hash }
+  end
+  return { 'revert', '--no-edit', hash }
+end
+
+---Moves the current branch to a commit. `soft` keeps the changes since then staged, `mixed`
+---keeps them unstaged, and `hard` throws them away with every uncommitted change.
+---@param mode 'soft'|'mixed'|'hard'
+---@param hash string
+---@return string[]
+function M.reset_args (mode, hash)
+  return { 'reset', '--' .. mode, hash }
+end
+
+---Deletes a local branch. Without `force`, Git refuses one whose commits are not merged.
+---@param name string
+---@param force boolean
+---@return string[]
+function M.delete_branch_args (name, force)
+  return { 'branch', force and '-D' or '-d', name }
+end
+
+---@param old string
+---@param new string
+---@return string[]
+function M.rename_branch_args (old, new)
+  return { 'branch', '-m', old, new }
+end
+
+---True when Git refused to delete a branch because its commits are merged nowhere.
+---@param res Proteus.RunResult?
+---@return boolean
+function M.not_merged (res)
+  return res ~= nil
+    and (res.stderr or ''):find ('not fully merged', 1, true) ~= nil
+end
+
+---Branches to merge or rebase onto: every branch but the current one, local ones first.
+---@param branches Git.Branch[]
+---@return Git.Branch[]
+function M.other_branches (branches)
+  local out = {} ---@type Git.Branch[]
+  for _, b in ipairs (branches) do
+    if not b.current then
+      out[#out + 1] = b
+    end
+  end
+  return out
 end
 
 ---------------------------------------------------------------------------------------------
