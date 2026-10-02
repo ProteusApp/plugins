@@ -51,6 +51,17 @@
 ---@class Sheet.PanelsModule
 ---@field install fun(app: Proteus.App, ctl: Sheet.Ctl) Registers the panels and their commands.
 
+---What init.lua hands sheet_commands.lua and sheet_menus.lua.
+---@class Sheet.AppEnv
+---@field views Proteus.Views
+---@field commands Proteus.Commands
+---@field tabs? Proteus.Tabs
+---@field menus? Proteus.Menus
+---@field grid Sheet.GridView
+---@field files Sheet.Files The open workbook and its file, from sheet_files.lua.
+---@field on fun(event: Sheet.CtlEvent, fn: fun(...: any)): fun()
+---@field emit fun(event: Sheet.CtlEvent, ...: any)
+
 ---@class Sheet.CtlModule
 local M = {}
 
