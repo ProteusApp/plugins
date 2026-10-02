@@ -58,7 +58,7 @@ end
 
 local http = load_http ()
 
----@class Fake.El
+---@class ApiFake.El
 ---@field props table<string, any>
 ---@field handlers table<string, fun(ev: table): any>
 ---@field val string
@@ -75,7 +75,7 @@ local el_meta = {
 }
 
 ---@param props? table<string, any>
----@return Fake.El
+---@return ApiFake.El
 local function element (props)
   local p = type (props) == 'table' and props or {}
   return setmetatable ({
@@ -149,7 +149,7 @@ end
 ---@return table world What the test reads and answers.
 local function fake_app ()
   local world = {
-    made = {}, ---@type table<string, Fake.El[]>
+    made = {}, ---@type table<string, ApiFake.El[]>
     files = {}, ---@type table<string, string>
     reads = 0,
     fetches = {}, ---@type { request: Proteus.HttpRequest, cb: fun(reply: any, err: any), cancelled: boolean }[]
@@ -387,7 +387,7 @@ end
 ---@param world table
 ---@param class string
 ---@param n? integer
----@return Fake.El
+---@return ApiFake.El
 local function find (world, class, n)
   local list = world.made[class]
   assert (list, 'no element of the class ' .. class)

@@ -1,7 +1,14 @@
 -- log_filter: the logic behind proteus.logs, kept apart from the screen so the tests reach it.
--- It finds the level of a line, filters lines, turns ANSI colour codes into HTML, finds JSON
--- inside a line, and holds lines in a ring of fixed size. It draws nothing and calls no host
--- function.
+-- It finds the level and the time of a line, filters lines by words, regular expressions,
+-- levels and times, turns ANSI colour codes into HTML, finds JSON inside a line, holds lines
+-- in a ring of fixed size, and merges several sources by time. It draws nothing and calls no
+-- host function. Regular expressions are in log_regex.lua, and times in log_time.lua.
+
+local lt = require ('log_time') --[[@as Logs.TimeModule]]
+local re = require ('log_regex') --[[@as { compile: fun(pattern: string, opts?: { fold?: boolean }): LogRegex.Program?, string? }]]
+
+-- The year a syslog or glog line is from, since it writes none.
+local YEAR = math.floor (tonumber (os.date ('%Y')) or 1970)
 
 ---@alias Logs.Level 'error'|'warn'|'info'|'debug'|'other'
 
@@ -19,6 +26,11 @@
 ---@field exclude string[] Words or phrases that hide a line.
 ---@field level? Logs.Level Keeps only lines of this level.
 ---@field skip table<Logs.Level, boolean> Levels `-level:` hides.
+---@field regexes LogRegex.Program[] Regular expressions, from `/.../`, that must all match.
+---@field exclude_regexes LogRegex.Program[] Regular expressions, from `-/.../`, that hide a line.
+---@field after? Logs.When Keeps lines from this time on, from `after:`.
+---@field before? Logs.When Keeps lines up to this time, from `before:`.
+---@field problem? string What the filter could not read, such as a broken regular expression.
 
 ---One line of a source.
 ---@class Logs.Line
@@ -27,6 +39,11 @@
 ---@field plain string The text without colour codes.
 ---@field level Logs.Level
 ---@field err boolean True for a line the program wrote to stderr.
+---@field time? number When it was written, in milliseconds since 1970. A line that says no time, such as a stack trace's, takes the time of the line before it.
+---@field stamped boolean True when the line says its own time.
+---@field lower? string The plain text in lower case, made the first time the filter needs it.
+---@field src? integer The id of the source it came from.
+---@field id? integer A number no other line in the app has, for the merged view.
 
 ---A stretch of text the filter matched, as byte positions in the plain text.
 ---@class Logs.Range
@@ -42,6 +59,7 @@
 ---What one pass over a source found.
 ---@class Logs.Scan
 ---@field shown Logs.Line[] The last lines that pass the filter and the level chips, oldest first.
+---@field all Logs.Line[] Every line that passes the filter and the level chips, oldest first.
 ---@field matched integer How many lines pass the filter and the level chips.
 ---@field levels table<Logs.Level, integer> How many lines of each level pass the filter.
 
@@ -52,6 +70,7 @@
 ---@field command? string The command line of a command.
 ---@field cwd? string The folder a command runs in.
 ---@field name? string The name of pasted text.
+---@field whole? boolean For a file, read from its first line rather than its last thousand.
 
 ---A fixed number of lines. Once it is full, each new line pushes out the oldest.
 ---@class Logs.Ring
@@ -74,22 +93,26 @@ Ring.__index = Ring
 ---@field parse_ansi fun(text: string): Logs.Segment[]
 ---@field escape fun(text: string): string
 ---@field render_line fun(line: string, query: Logs.Query): string
----@field row_html fun(line: Logs.Line, query: Logs.Query): string
+---@field row_html fun(line: Logs.Line, query: Logs.Query, tag?: { name: string, n: integer }): string
 ---@field clip fun(text: string, max: integer): string
 ---@field find_json fun(line: string): string?
 ---@field pretty_json fun(text: string): string?
----@field make_line fun(n: integer, text: string, err?: boolean): Logs.Line
+---@field make_line fun(n: integer, text: string, err?: boolean, prev_time?: number): Logs.Line
+---@field matches_line fun(line: Logs.Line, query: Logs.Query, newest?: number): boolean
 ---@field ring fun(capacity: integer): Logs.Ring
 ---@field find_line fun(ring: Logs.Ring, n: integer): Logs.Line?
 ---@field index_of fun(sorted: integer[], n: integer): integer?
 ---@field zero_levels fun(): table<Logs.Level, integer>
----@field classify fun(line: Logs.Line, query: Logs.Query, hidden: table<string, boolean>): boolean, boolean
----@field scan fun(ring: Logs.Ring, query: Logs.Query, hidden: table<string, boolean>, limit: integer): Logs.Scan
+---@field classify fun(line: Logs.Line, query: Logs.Query, hidden: table<string, boolean>, newest?: number): boolean, boolean
+---@field scan fun(ring: Logs.Ring, query: Logs.Query, hidden: table<string, boolean>, limit: integer, newest?: number): Logs.Scan
+---@field merge fun(lists: Logs.Line[][]): Logs.Line[]
+---@field newest fun(ring: Logs.Ring): number?
+---@field has_time fun(query: Logs.Query): boolean
 ---@field split_lines fun(text: string): string[]
 ---@field trim fun(text: string): string
 ---@field sentence fun(text: string): string
 ---@field group fun(n: number): string
----@field follow_command fun(path: string, os_name: string): string, string[]
+---@field follow_command fun(path: string, os_name: string, whole?: boolean): string, string[]
 ---@field shell_command fun(line: string, os_name: string): string, string[]
 ---@field source_name fun(spec: Logs.SourceSpec): string
 ---@field source_title fun(spec: Logs.SourceSpec): string
@@ -608,13 +631,26 @@ local function level_named (name)
   return nil
 end
 
+-- The names `after:` and `before:` go by, and whether each keeps what comes before.
+---@type table<string, boolean>
+local TIME_WORDS =
+  { after = false, since = false, before = true, ['until'] = true }
+
 ---Takes a filter apart. Words must all appear, `-word` hides lines, `"two words"` is one
----phrase, `level:error` keeps one level and `-level:error` hides one.
+---phrase, `/a|b/` is a regular expression, `level:error` keeps one level and
+---`-level:error` hides one, and `after:` and `before:` keep a span of time.
 ---@param text string
 ---@return Logs.Query
 local function parse_query (text)
   ---@type Logs.Query
-  local query = { terms = {}, phrases = {}, exclude = {}, skip = {} }
+  local query = {
+    terms = {},
+    phrases = {},
+    exclude = {},
+    skip = {},
+    regexes = {},
+    exclude_regexes = {},
+  }
   local i, len = 1, #text
   while i <= len do
     local c = text:sub (i, i)
@@ -635,16 +671,54 @@ local function parse_query (text)
           local into = negate and query.exclude or query.phrases
           into[#into + 1] = phrase
         end
+      elseif c == '/' then
+        -- A regular expression runs to the next / that has no \ before it, spaces and all.
+        local j = i + 1
+        while j <= len and text:sub (j, j) ~= '/' do
+          if text:sub (j, j) == '\\' then
+            j = j + 1
+          end
+          j = j + 1
+        end
+        local pattern = text:sub (i + 1, j - 1):gsub ('\\/', '/')
+        i = j + 1
+        if pattern ~= '' then
+          local prog, err = re.compile (pattern, { fold = true })
+          if prog then
+            local into = negate and query.exclude_regexes or query.regexes
+            into[#into + 1] = prog
+          else
+            query.problem = 'The regular expression /'
+              .. pattern
+              .. '/ is not valid: '
+              .. tostring (err)
+              .. '.'
+          end
+        end
       else
         local stop = text:find ('%s', i) or len + 1
         local word = text:sub (i, stop - 1):lower ()
         i = stop
         local name = word:match ('^level:(.*)$')
         local level = name and name ~= '' and level_named (name) or nil
+        local time_word, time_value = word:match ('^(%a+):(.+)$')
+        local keeps_before = time_word and TIME_WORDS[time_word]
         if level and negate then
           query.skip[level] = true
         elseif level then
           query.level = level
+        elseif keeps_before ~= nil and not negate then
+          -- The value was lowered with the word, and a time reads the same in lower case.
+          local when = lt.parse_when (time_value --[[@as string]])
+          if not when then
+            query.problem = 'The time in '
+              .. time_word
+              .. ': is not one it reads. Write 2024-03-01T12:00, 12:00 or -15m.'
+          elseif keeps_before then
+            query.before = when
+          else
+            query.after = when
+          end
         elseif negate then
           query.exclude[#query.exclude + 1] = word
         elseif name ~= '' then
@@ -660,7 +734,18 @@ end
 ---@param query Logs.Query
 ---@return boolean
 local function has_words (query)
-  return #query.terms > 0 or #query.phrases > 0 or #query.exclude > 0
+  return #query.terms > 0
+    or #query.phrases > 0
+    or #query.exclude > 0
+    or #query.regexes > 0
+    or #query.exclude_regexes > 0
+end
+
+---True when the query keeps a span of time.
+---@param query Logs.Query
+---@return boolean
+local function has_time (query)
+  return query.after ~= nil or query.before ~= nil
 end
 
 ---@param query Logs.Query
@@ -669,9 +754,45 @@ local function is_empty (query)
   return query.level == nil
     and next (query.skip) == nil
     and not has_words (query)
+    and not has_time (query)
+end
+
+---True when lower-case text has every word, phrase and regular expression, and none that
+---hides it.
+---@param lower string
+---@param query Logs.Query
+---@return boolean
+local function words_match (lower, query)
+  for _, term in ipairs (query.terms) do
+    if not lower:find (term, 1, true) then
+      return false
+    end
+  end
+  for _, phrase in ipairs (query.phrases) do
+    if not lower:find (phrase, 1, true) then
+      return false
+    end
+  end
+  for _, prog in ipairs (query.regexes) do
+    if not prog.find (lower) then
+      return false
+    end
+  end
+  for _, word in ipairs (query.exclude) do
+    if lower:find (word, 1, true) then
+      return false
+    end
+  end
+  for _, prog in ipairs (query.exclude_regexes) do
+    if prog.find (lower) then
+      return false
+    end
+  end
+  return true
 end
 
 ---True when a line passes the filter. Pass the level when it is known, to save finding it.
+---A query with a span of time needs the line itself, so see `matches_line`.
 ---@param line string
 ---@param query Logs.Query
 ---@param level? Logs.Level
@@ -686,23 +807,41 @@ local function matches (line, query, level)
   if not has_words (query) then
     return true
   end
-  local lower = strip_ansi (line):lower ()
-  for _, term in ipairs (query.terms) do
-    if not lower:find (term, 1, true) then
+  return words_match (strip_ansi (line):lower (), query)
+end
+
+---True when a line passes the filter, its time included. A line with no time passes no span
+---of time. `newest` is the time of the newest line, for a time such as `-15m`. The line keeps
+---its text in lower case, so the next filter does not make it again.
+---@param line Logs.Line
+---@param query Logs.Query
+---@param newest? number
+---@return boolean
+local function matches_line (line, query, newest)
+  if query.level and line.level ~= query.level or query.skip[line.level] then
+    return false
+  end
+  if query.after or query.before then
+    local t = line.time
+    if not t then
+      return false
+    end
+    if query.after and not lt.passes (t, query.after, newest, false) then
+      return false
+    end
+    if query.before and not lt.passes (t, query.before, newest, true) then
       return false
     end
   end
-  for _, phrase in ipairs (query.phrases) do
-    if not lower:find (phrase, 1, true) then
-      return false
-    end
+  if not has_words (query) then
+    return true
   end
-  for _, word in ipairs (query.exclude) do
-    if lower:find (word, 1, true) then
-      return false
-    end
+  local lower = line.lower
+  if not lower then
+    lower = line.plain:lower ()
+    line.lower = lower
   end
-  return true
+  return words_match (lower, query)
 end
 
 ---Where the filter's words and phrases appear in the plain text of a line, in order, with
@@ -721,10 +860,23 @@ local function highlight (line, query)
   for _, phrase in ipairs (query.phrases) do
     needles[#needles + 1] = phrase
   end
-  if #needles == 0 then
+  if #needles == 0 and #query.regexes == 0 then
     return found
   end
   local lower = strip_ansi (line):lower ()
+  for _, prog in ipairs (query.regexes) do
+    local from = 1
+    while from <= #lower do
+      local s, e = prog.find (lower, from)
+      if not s or not e then
+        break
+      end
+      if e >= s then
+        found[#found + 1] = { from = s, to = e }
+      end
+      from = math.max (e + 1, s + 1)
+    end
+  end
   for _, needle in ipairs (needles) do
     local from = 1
     while needle ~= '' do
@@ -805,11 +957,14 @@ local function render_line (line, query)
   return table.concat (out)
 end
 
----The HTML for one row of the list. The row carries its line number in `data-item`.
+---The HTML for one row of the list. The row carries the line's id in `data-item`, or its
+---number when it has no id. In the merged view, `tag` names the source the line came from,
+---and `n` picks its colour.
 ---@param line Logs.Line
 ---@param query Logs.Query
+---@param tag? { name: string, n: integer }
 ---@return string
-local function row_html (line, query)
+local function row_html (line, query, tag)
   local text = line.text
   local more = ''
   if #text > MAX_ROW then
@@ -821,10 +976,16 @@ local function row_html (line, query)
     line.level,
     line.err and ' logs-stderr' or '',
     '" data-item="',
-    line.n,
+    line.id or line.n,
     '"><span class="logs-n">',
     line.n,
-    '</span><span class="logs-t">',
+    '</span>',
+    tag
+        and ('<span class="logs-tag logs-tag-' .. (tag.n % 6) .. '">' .. escape (
+          tag.name
+        ) .. '</span>')
+      or '',
+    '<span class="logs-t">',
     render_line (text, query),
     more,
     '</span></div>',
@@ -1032,18 +1193,24 @@ end
 -- Lines and the ring
 ---------------------------------------------------------------------------------------------
 
+---A line as the source keeps it. `prev_time` is the time of the line before, which a line
+---that says no time of its own takes, such as a line of a stack trace.
 ---@param n integer
 ---@param text string
 ---@param err? boolean
+---@param prev_time? number
 ---@return Logs.Line
-local function make_line (n, text, err)
+local function make_line (n, text, err, prev_time)
   local plain = strip_ansi (text)
+  local time = lt.line_time (plain, YEAR)
   return {
     n = n,
     text = text,
     plain = plain,
     level = detect_level (plain),
     err = err == true,
+    time = time or prev_time,
+    stamped = time ~= nil,
   }
 end
 
@@ -1138,66 +1305,116 @@ local function index_of (sorted, n)
   return nil
 end
 
----Whether a line passes the filter, and whether it also passes the level chips.
+---Whether a line passes the filter, and whether it also passes the level chips. `newest` is
+---the time of the newest line, for a time such as `after:-15m`.
 ---@param line Logs.Line
 ---@param query Logs.Query
 ---@param hidden table<string, boolean>
+---@param newest? number
 ---@return boolean counted
 ---@return boolean visible
-local function classify (line, query, hidden)
-  if not matches (line.plain, query, line.level) then
+local function classify (line, query, hidden, newest)
+  if not matches_line (line, query, newest) then
     return false, false
   end
   return true, not hidden[line.level]
 end
 
----Goes over every line of a source once. Counts what passes, and keeps the last `limit`
----lines that pass both the filter and the level chips.
+---Goes over every line of a source once. Counts what passes, keeps every line that passes
+---both the filter and the level chips, and the last `limit` of them on their own.
 ---@param lines Logs.Ring
 ---@param query Logs.Query
 ---@param hidden table<string, boolean>
 ---@param limit integer
+---@param newest? number
 ---@return Logs.Scan
-local function scan (lines, query, hidden, limit)
+local function scan (lines, query, hidden, limit, newest)
   local levels = zero_levels ()
   ---@type Logs.Line[]
-  local picked = {}
-  local count = 0
-  local matched = 0
-  for i = lines:count (), 1, -1 do
+  local all = {}
+  for i = 1, lines:count () do
     local line = lines:get (i)
     if line then
-      local counted, visible = classify (line, query, hidden)
+      local counted, visible = classify (line, query, hidden, newest)
       if counted then
         levels[line.level] = levels[line.level] + 1
       end
       if visible then
-        matched = matched + 1
-        if count < limit then
-          count = count + 1
-          picked[count] = line
-        end
+        all[#all + 1] = line
       end
     end
   end
   ---@type Logs.Line[]
   local shown = {}
-  for i = count, 1, -1 do
-    shown[#shown + 1] = picked[i]
+  for i = math.max (1, #all - limit + 1), #all do
+    shown[#shown + 1] = all[i]
   end
-  return { shown = shown, matched = matched, levels = levels }
+  return { shown = shown, all = all, matched = #all, levels = levels }
+end
+
+---The time of the newest line that has one.
+---@param lines Logs.Ring
+---@return number?
+local function newest (lines)
+  for i = lines:count (), 1, -1 do
+    local line = lines:get (i)
+    if line and line.time then
+      return line.time
+    end
+  end
+  return nil
+end
+
+---True when line `a` goes before line `b` in the merged view: the earlier time first, and
+---lines with the same time, or with none, in the order they arrived.
+---@param a Logs.Line
+---@param b Logs.Line
+---@return boolean
+local function earlier (a, b)
+  if a.time and b.time and a.time ~= b.time then
+    return a.time < b.time
+  end
+  return (a.id or a.n) < (b.id or b.n)
+end
+
+---Merges lists that are each in order into one, by time. Each list keeps its own order.
+---@param lists Logs.Line[][]
+---@return Logs.Line[]
+local function merge (lists)
+  ---@type Logs.Line[]
+  local out = {}
+  local at = {} ---@type integer[]
+  for i = 1, #lists do
+    at[i] = 1
+  end
+  while true do
+    local best = nil ---@type integer?
+    for i, list in ipairs (lists) do
+      local line = list[at[i]]
+      if line and (not best or earlier (line, lists[best][at[best]])) then
+        best = i
+      end
+    end
+    if not best then
+      return out
+    end
+    out[#out + 1] = lists[best][at[best]]
+    at[best] = at[best] + 1
+  end
 end
 
 ---------------------------------------------------------------------------------------------
 -- Sources
 ---------------------------------------------------------------------------------------------
 
----The program and arguments that follow a file: the last thousand lines, then each new one.
+---The program and arguments that follow a file: the last thousand lines, or with `whole`
+---every line from the first, then each new one.
 ---@param path string
 ---@param os_name string
+---@param whole? boolean
 ---@return string program
 ---@return string[] args
-local function follow_command (path, os_name)
+local function follow_command (path, os_name, whole)
   if os_name == 'windows' then
     -- PowerShell ends a quoted string at any of its four single quotes, so each is doubled.
     -- It also writes in the console code page unless told to use UTF-8.
@@ -1209,10 +1426,12 @@ local function follow_command (path, os_name)
         '[Console]::OutputEncoding = [Text.Encoding]::UTF8; '
           .. "Get-Content -LiteralPath '"
           .. quoted
-          .. "' -Tail 1000 -Wait -Encoding UTF8",
+          .. "'"
+          .. (whole and '' or ' -Tail 1000')
+          .. ' -Wait -Encoding UTF8',
       }
   end
-  return 'tail', { '-n', '1000', '-F', path }
+  return 'tail', { '-n', whole and '+1' or '1000', '-F', path }
 end
 
 ---The program and arguments that run a command line through the shell.
@@ -1249,7 +1468,7 @@ end
 ---@return string
 local function source_title (spec)
   if spec.kind == 'file' then
-    return spec.path or ''
+    return (spec.path or '') .. (spec.whole and '\nthe whole file' or '')
   end
   if spec.kind == 'command' then
     local cwd = spec.cwd
@@ -1282,6 +1501,7 @@ local function spec_key (spec)
     spec.kind,
     spec.path or spec.command or spec.name or '',
     spec.cwd or '',
+    spec.whole and 'whole' or '',
   }, '\n')
 end
 
@@ -1294,6 +1514,7 @@ local function copy_spec (spec)
     path = spec.path,
     command = spec.command,
     cwd = spec.cwd,
+    whole = spec.whole,
   }
 end
 
@@ -1332,7 +1553,8 @@ local function clean_specs (value)
     if type (v) == 'table' then
       local path, command, cwd = v.path, v.command, v.cwd
       if v.kind == 'file' and type (path) == 'string' and path ~= '' then
-        out[#out + 1] = { kind = 'file', path = path }
+        out[#out + 1] =
+          { kind = 'file', path = path, whole = v.whole == true or nil }
       elseif
         v.kind == 'command'
         and type (command) == 'string'
@@ -1387,12 +1609,16 @@ local M = {
   find_json = find_json,
   pretty_json = pretty_json,
   make_line = make_line,
+  matches_line = matches_line,
   ring = ring,
   find_line = find_line,
   index_of = index_of,
   zero_levels = zero_levels,
   classify = classify,
   scan = scan,
+  merge = merge,
+  newest = newest,
+  has_time = has_time,
   split_lines = split_lines,
   trim = trim,
   sentence = sentence,

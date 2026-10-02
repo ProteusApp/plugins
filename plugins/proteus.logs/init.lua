@@ -5,11 +5,17 @@
 -- Lines can arrive by the thousand, so the list is drawn from HTML strings instead of one
 -- element per row. Rows go into chunks of a few hundred, and each chunk is one element. New
 -- rows join the last chunk, and whole chunks drop off the top once the list passes its cap.
+--
+-- The list shows a window of up to 5,000 of the lines that match. Bars above and below it move
+-- the window, so every line that matches can be reached. The merged view shows the lines of
+-- every source in one list, in order of time.
 
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 
 local MAX_LINES = 50000 -- kept per source
+local MAX_WHOLE = 250000 -- kept for a whole file
 local MAX_SHOWN = 5000 -- drawn at once
+local PAGE_STEP = 2500 -- how far the window moves
 local CHUNK_ROWS = 250
 local FLUSH_MS = 100
 local FILTER_MS = 150
@@ -384,6 +390,54 @@ local CSS = [[
 .logs-dot-pasted {
   background: var(--accent);
 }
+.logs-batch {
+  display: contents;
+}
+.logs-tag {
+  flex: none;
+  max-width: 12em;
+  margin-right: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--bg-active);
+  color: var(--fg-muted);
+}
+.logs-tag-1 {
+  color: var(--accent);
+}
+.logs-tag-2 {
+  color: var(--success);
+}
+.logs-tag-3 {
+  color: var(--warning);
+}
+.logs-tag-4 {
+  color: var(--syn-keyword);
+}
+.logs-tag-5 {
+  color: var(--syn-function);
+}
+.logs-page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+}
+.logs-filter.bad {
+  border-color: var(--danger);
+}
+.logs-problem {
+  flex: 1 1 100%;
+  color: var(--danger);
+  font-size: 12px;
+}
+.logs-src.merged .logs-src-name {
+  font-style: italic;
+}
 .logs-src-close {
   display: inline-flex;
   padding: 2px;
@@ -423,17 +477,18 @@ local CSS = [[
 ---@field run integer Goes up with each start and stop, so output from an old run is ignored.
 ---@field count_el? Proteus.El The line count in the Sources view.
 ---@field counted integer The line count shown there now.
+---@field last_time? number The time of the newest line that has one, for a line that says none.
 
 ---Rows drawn as one element.
 ---@class Logs.Chunk
 ---@field el Proteus.El
----@field ns integer[] The line numbers of its rows, in order.
+---@field ns integer[] The ids of the lines in its rows, in order.
 
 ---@type Proteus.Plugin
 return {
   name = 'Logs',
   description = 'Follow a log file or a program, filter the lines, and spot errors.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the programs the user names, and follows a log file anywhere on disk with one. Paste
   -- Log reads the clipboard.
@@ -468,6 +523,17 @@ return {
 
     local sources = {} ---@type Logs.Source[]
     local shown = nil ---@type Logs.Source?
+    -- True while the list shows every source, merged by time. Then `shown` is nil.
+    local merged = false
+    local next_line_id = 1
+    -- Every line of the view that passes the filter and the chips, and the window of them drawn.
+    local view_all = {} ---@type Logs.Line[]
+    local win_from = 1
+    -- The drawn lines by id, and the chunk each sits in.
+    local by_id = {} ---@type table<integer, Logs.Line>
+    local where = {} ---@type table<integer, Logs.Chunk>
+    -- The time of the view's newest line, for a filter such as after:-15m.
+    local view_newest = nil ---@type number?
     local next_id = 1
     local query = lf.parse_query ('')
     local hidden = {} ---@type table<string, boolean>
@@ -535,12 +601,16 @@ return {
 
     -- Screen parts ---------------------------------------------------------------------------
 
+    local FILTER_TIP =
+      'Every word must appear. -word hides lines with it. /a|b/ is a regular expression. level:warn keeps one level. after:12:00 and before:2024-03-01T13:00 keep a span of time, and after:-15m the last 15 minutes.'
     local filter_box = ui.input ({
       class = 'logs-filter',
-      placeholder = 'Filter: words, -word, "a phrase", level:error',
-      title = 'Every word must appear. -word hides lines with it. level:warn keeps one level.',
+      placeholder = 'Filter: words, -word, "a phrase", /regex/, level:error, after:12:00',
+      title = FILTER_TIP,
       spellcheck = false,
     })
+    local problem_el = ui.span ({ class = 'logs-problem' })
+    problem_el:show (false)
     local chips = ui.div ({ class = 'logs-chips' })
     local chip_buttons = {} ---@type table<string, Proteus.El>
     local chip_counts = {} ---@type table<string, Proteus.El>
@@ -577,7 +647,57 @@ return {
       ui.icon ('eraser', 14),
       'Clear',
     })
-    local list = ui.div ({ class = 'logs-list', attrs = { tabindex = '0' } })
+    -- The window of matching lines sits between two bars that move it.
+    local earlier_text = ui.span ({})
+    local earlier_bar = ui.div ({
+      class = 'logs-page',
+      earlier_text,
+      ui.button ({
+        variant = 'ghost',
+        class = 'ui-small',
+        ui.icon ('chevrons-up', 14),
+        'Show Earlier',
+        onclick = function ()
+          commands.run ('logs.earlier')
+          return nil
+        end,
+      }),
+    })
+    local later_text = ui.span ({})
+    local later_bar = ui.div ({
+      class = 'logs-page',
+      later_text,
+      ui.button ({
+        variant = 'ghost',
+        class = 'ui-small',
+        ui.icon ('chevrons-down', 14),
+        'Show Later',
+        onclick = function ()
+          commands.run ('logs.later')
+          return nil
+        end,
+      }),
+      ui.button ({
+        variant = 'ghost',
+        class = 'ui-small',
+        ui.icon ('arrow-down-to-line', 14),
+        'Newest',
+        onclick = function ()
+          commands.run ('logs.follow_newest')
+          return nil
+        end,
+      }),
+    })
+    earlier_bar:show (false)
+    later_bar:show (false)
+    local rows_el = ui.div ({ class = 'logs-rows' })
+    local list = ui.div ({
+      class = 'logs-list',
+      attrs = { tabindex = '0' },
+      earlier_bar,
+      rows_el,
+      later_bar,
+    })
     list:class ('logs-wrap', wrap)
     local empty = ui.div ({ class = 'logs-empty' })
     local detail_title = ui.span ({ class = 'logs-detail-title' })
@@ -617,6 +737,7 @@ return {
         follow_btn,
         wrap_btn,
         clear_btn,
+        problem_el,
       }),
       ui.div ({ class = 'logs-body', list, empty }),
       detail,
@@ -720,23 +841,37 @@ return {
       end
     end
 
+    ---How many lines the view holds, before the filter.
+    ---@return integer
+    local function view_total ()
+      if merged then
+        local n = 0
+        for _, src in ipairs (sources) do
+          n = n + src.lines:count ()
+        end
+        return n
+      end
+      return shown and shown.lines:count () or 0
+    end
+
     local function update_status ()
       if not st_state or not st_lines then
         return
       end
-      if not shown then
+      if merged then
+        st_state.set ('All sources, by time')
+      elseif not shown then
         st_state.set ('')
         st_lines.set ('')
         return
-      end
-      if shown.state == 'pasted' then
+      elseif shown.state == 'pasted' then
         st_state.set (shown.name)
       else
         st_state.set (
           shown.name .. ': ' .. lf.state_label (shown.state, shown.code)
         )
       end
-      local total = shown.lines:count ()
+      local total = view_total ()
       if lf.is_empty (query) and next (hidden) == nil then
         st_lines.set (lf.group (total) .. (total == 1 and ' line' or ' lines'))
       else
@@ -787,7 +922,10 @@ return {
     local function render_empty ()
       local key = nil ---@type string?
       local src = shown
-      if not src then
+      if merged then
+        key = view_total () == 0 and 'blank:merged'
+          or (matched == 0 and 'nomatch' or nil)
+      elseif not src then
         key = 'none'
       elseif src.lines:count () == 0 then
         key = table.concat ({ 'blank', src.id, src.state, src.code or '' }, ':')
@@ -805,7 +943,10 @@ return {
       end
       local title, text = '', ''
       local actions = {} ---@type Proteus.El[]
-      if not src then
+      if key == 'blank:merged' then
+        title = 'No lines yet'
+        text = 'The lines of every source show here, in order of time.'
+      elseif not src and key ~= 'nomatch' then
         title = 'No logs open'
         if desktop then
           text =
@@ -834,12 +975,12 @@ return {
         text = 'Change the filter, or show the levels that are hidden.'
         actions =
           { empty_button ('Show All Lines', 'eye', reset_filter, 'primary') }
-      elseif src.state == 'running' then
+      elseif src and src.state == 'running' then
         title = 'Waiting for lines'
         text = src.spec.kind == 'file'
             and 'New lines show here as the file grows.'
           or 'Lines show here as the program prints them.'
-      else
+      elseif src then
         title = 'No lines'
         text = lf.state_label (src.state, src.code)
           .. (src.detail and ('. ' .. src.detail) or '.')
@@ -853,10 +994,46 @@ return {
 
     -- The line list -----------------------------------------------------------------------------
 
+    -- Where the lines still held start in view_all. Lines a source let go are dropped from the
+    -- front without moving the rest, and the list is packed now and then.
+    local view_first = 1
+
     local function clear_list ()
-      list:clear ()
+      rows_el:clear ()
       chunks = {}
       drawn = 0
+      by_id = {}
+      where = {}
+    end
+
+    ---Shows how many matching lines lie before and after the window.
+    local function render_bars ()
+      local before = math.max (0, win_from - view_first)
+      local after = math.max (0, #view_all - (win_from + drawn - 1))
+      earlier_bar:show (before > 0)
+      later_bar:show (after > 0)
+      earlier_text:text (
+        lf.group (before)
+          .. (before == 1 and ' earlier line' or ' earlier lines')
+      )
+      later_text:text (
+        lf.group (after) .. (after == 1 and ' later line' or ' later lines')
+      )
+    end
+
+    ---The tag a row carries in the merged view.
+    ---@param line Logs.Line
+    ---@return { name: string, n: integer }?
+    local function tag_of (line)
+      if not merged then
+        return nil
+      end
+      for i, src in ipairs (sources) do
+        if src.id == line.src then
+          return { name = src.name, n = i }
+        end
+      end
+      return nil
     end
 
     ---Draws lines at the end of the list, then drops chunks off the top past the cap.
@@ -867,17 +1044,23 @@ return {
         local chunk = chunks[#chunks]
         if not chunk or #chunk.ns >= CHUNK_ROWS then
           chunk = { el = ui.div ({ class = 'logs-chunk' }), ns = {} }
-          list:append (chunk.el)
+          rows_el:append (chunk.el)
           chunks[#chunks + 1] = chunk
         end
         local last = math.min (#lines, i + CHUNK_ROWS - #chunk.ns - 1) ---@type integer
         local parts = {} ---@type string[]
         for k = i, last do
           local line = lines[k]
-          parts[#parts + 1] = lf.row_html (line, query)
-          chunk.ns[#chunk.ns + 1] = line.n
+          local id = line.id or line.n
+          parts[#parts + 1] = lf.row_html (line, query, tag_of (line))
+          chunk.ns[#chunk.ns + 1] = id
+          by_id[id] = line
+          where[id] = chunk
         end
-        chunk.el:call ('insertAdjacentHTML', 'beforeend', table.concat (parts))
+        -- Each batch of rows is an element of its own, which shows only its rows.
+        chunk.el:append (
+          ui.div ({ class = 'logs-batch', html = table.concat (parts) })
+        )
         drawn = drawn + (last - i + 1)
         i = last + 1
       end
@@ -886,6 +1069,11 @@ return {
       while #chunks > 1 and drawn - #chunks[1].ns >= MAX_SHOWN do
         local first = table.remove (chunks, 1)
         drawn = drawn - #first.ns
+        win_from = win_from + #first.ns
+        for _, id in ipairs (first.ns) do
+          by_id[id] = nil
+          where[id] = nil
+        end
         if not follow then
           lost = lost + (tonumber (first.el:get ('offsetHeight')) or 0)
         end
@@ -895,17 +1083,38 @@ return {
         local top = tonumber (list:get ('scrollTop')) or 0
         list:set ('scrollTop', math.max (0, top - lost))
       end
+      render_bars ()
+    end
+
+    ---Draws the window of matching lines that starts at `from`.
+    ---@param from integer
+    local function show_window (from)
+      clear_list ()
+      win_from =
+        math.max (view_first, math.min (from, #view_all - MAX_SHOWN + 1))
+      local lines = {} ---@type Logs.Line[]
+      for k = win_from, math.min (#view_all, win_from + MAX_SHOWN - 1) do
+        lines[#lines + 1] = view_all[k]
+      end
+      draw_rows (lines)
     end
 
     ---Where a line's row is: the chunk, and the row inside it.
-    ---@param n integer
+    ---@param id integer
     ---@return integer? chunk
     ---@return integer? row
-    local function locate (n)
-      for ci, chunk in ipairs (chunks) do
-        local ns = chunk.ns
-        if #ns > 0 and n >= ns[1] and n <= ns[#ns] then
-          return ci, lf.index_of (ns, n)
+    local function locate (id)
+      local chunk = where[id]
+      if not chunk then
+        return nil, nil
+      end
+      for ci, c in ipairs (chunks) do
+        if c == chunk then
+          for ri, other in ipairs (c.ns) do
+            if other == id then
+              return ci, ri
+            end
+          end
         end
       end
       return nil, nil
@@ -914,9 +1123,9 @@ return {
     ---Scrolls the list so a line's row shows. Rows have no elements of their own, so the
     ---row's place is worked out from its chunk. With wrapped lines of different heights,
     ---this is close rather than exact.
-    ---@param n integer
-    local function reveal (n)
-      local ci, ri = locate (n)
+    ---@param id integer
+    local function reveal (id)
+      local ci, ri = locate (id)
       if not ci or not ri then
         return
       end
@@ -935,24 +1144,105 @@ return {
       end
     end
 
+    ---The sources the view shows.
+    ---@return Logs.Source[]
+    local function view_sources ()
+      if merged then
+        return sources
+      end
+      return shown and { shown } or {}
+    end
+
+    ---@param line Logs.Line
+    ---@return integer
+    local function id_of (line)
+      return line.id or line.n
+    end
+
     redraw_list = function ()
       pending = {}
-      clear_list ()
       matched = 0
       levels = lf.zero_levels ()
-      if shown then
-        local result = lf.scan (shown.lines, query, hidden, MAX_SHOWN)
-        matched = result.matched
-        levels = result.levels
-        draw_rows (result.shown)
+      problem_el:text (query.problem or '')
+      problem_el:show (query.problem ~= nil)
+      filter_box:class ('bad', query.problem ~= nil)
+      view_newest = nil
+      for _, src in ipairs (view_sources ()) do
+        local t = lf.newest (src.lines)
+        if t and (not view_newest or t > view_newest) then
+          view_newest = t
+        end
       end
+      local lists = {} ---@type Logs.Line[][]
+      for _, src in ipairs (view_sources ()) do
+        local result = lf.scan (src.lines, query, hidden, 0, view_newest)
+        lists[#lists + 1] = result.all
+        for level, n in pairs (result.levels) do
+          levels[level] = levels[level] + n
+        end
+      end
+      view_all = #lists == 1 and lists[1] or lf.merge (lists)
+      view_first = 1
+      matched = #view_all
+      -- Following shows the newest lines. Otherwise the window keeps the selected line.
+      local from = #view_all - MAX_SHOWN + 1
+      if not follow and selected then
+        local want = id_of (selected)
+        for k, line in ipairs (view_all) do
+          if id_of (line) == want then
+            from = k - math.floor (MAX_SHOWN / 2)
+            break
+          end
+        end
+      end
+      show_window (from)
       render_chip_counts ()
       render_empty ()
       update_status ()
       if follow then
         scroll_bottom ()
       elseif selected then
-        reveal (selected.n)
+        reveal (id_of (selected))
+      end
+    end
+
+    ---Moves the window by `step` lines, earlier when it is below 0.
+    ---@param step integer
+    local function page (step)
+      if follow then
+        follow = false
+        render_toggles ()
+      end
+      local top_id = chunks[1] and chunks[1].ns[1]
+      show_window (win_from + step)
+      if step < 0 and top_id then
+        -- The line that was at the top stays in sight, below the new ones.
+        reveal (top_id)
+      elseif step > 0 then
+        list:set ('scrollTop', 0)
+      end
+    end
+
+    ---A line the source let go. The single view drops it from the front of its lines.
+    ---@param line Logs.Line
+    local function forget_line (line)
+      if merged then
+        return
+      end
+      if view_all[view_first] == line then
+        view_first = view_first + 1
+        matched = matched - 1
+      end
+      -- Pack the list now and then, so the lines let go do not pile up.
+      if view_first > 20000 then
+        local shift = view_first - 1
+        local packed = {} ---@type Logs.Line[]
+        for k = view_first, #view_all do
+          packed[#packed + 1] = view_all[k]
+        end
+        view_all = packed
+        view_first = 1
+        win_from = win_from - shift
       end
     end
 
@@ -960,28 +1250,30 @@ return {
       flush_cancel = nil
       local batch = pending
       pending = {}
-      if shown and #batch > 0 then
+      if (shown or merged) and #batch > 0 then
+        -- New lines show when the window has reached the end. Otherwise only the count of
+        -- later lines grows.
+        local at_end = win_from + drawn - 1 >= #view_all
         local fresh = {} ---@type Logs.Line[]
         for _, line in ipairs (batch) do
-          local counted, visible = lf.classify (line, query, hidden)
+          local counted, visible =
+            lf.classify (line, query, hidden, view_newest)
           if counted then
             levels[line.level] = levels[line.level] + 1
           end
           if visible then
+            view_all[#view_all + 1] = line
             matched = matched + 1
             fresh[#fresh + 1] = line
           end
         end
-        if #fresh > MAX_SHOWN then
+        if at_end and #fresh > MAX_SHOWN then
           -- More new rows than the list holds, so the list starts again with the newest.
-          local tail = {} ---@type Logs.Line[]
-          for k = #fresh - MAX_SHOWN + 1, #fresh do
-            tail[#tail + 1] = fresh[k]
-          end
-          clear_list ()
-          draw_rows (tail)
-        elseif #fresh > 0 then
+          show_window (#view_all - MAX_SHOWN + 1)
+        elseif at_end and #fresh > 0 then
           draw_rows (fresh)
+        else
+          render_bars ()
         end
         render_chip_counts ()
         render_empty ()
@@ -1012,15 +1304,29 @@ return {
       selected = line
       selection_css:set (
         '.logs-list .logs-row[data-item="'
-          .. line.n
+          .. id_of (line)
           .. '"] { background: var(--selection); }'
       )
+      local from = nil ---@type string?
+      if merged then
+        local tag = tag_of (line)
+        from = tag and tag.name or nil
+      end
       detail_title:text (
-        'Line '
+        (from and (from .. '  ·  ') or '')
+          .. 'Line '
           .. line.n
           .. '  ·  '
           .. LEVEL_NAMES[line.level]
           .. (line.err and '  ·  stderr' or '')
+          .. (
+            line.time
+              and ('  ·  ' .. os.date (
+                '!%Y-%m-%d %H:%M:%S',
+                math.floor (line.time / 1000)
+              ) .. (line.stamped and '' or ' (from the line above)'))
+            or ''
+          )
       )
       detail_text:text (line.plain)
       local pretty = nil ---@type string?
@@ -1047,9 +1353,9 @@ return {
       end
     end
 
-    ---@param n integer
-    local function select_line (n)
-      local line = shown and lf.find_line (shown.lines, n)
+    ---@param id integer
+    local function select_line (id)
+      local line = by_id[id]
       if not line then
         return
       end
@@ -1057,7 +1363,7 @@ return {
         set_follow (false)
       end
       open_detail (line)
-      reveal (n)
+      reveal (id)
     end
 
     ---@param step integer 1 moves down and -1 moves up.
@@ -1068,7 +1374,7 @@ return {
       local target = nil ---@type integer?
       local ci, ri = nil, nil ---@type integer?, integer?
       if selected then
-        ci, ri = locate (selected.n)
+        ci, ri = locate (id_of (selected))
       end
       if ci and ri then
         local ns = chunks[ci].ns
@@ -1125,6 +1431,15 @@ return {
 
     render_sources = function ()
       local rows = {} ---@type Proteus.El[]
+      if #sources >= 2 then
+        rows[1] = ui.div ({
+          class = 'logs-src merged' .. (merged and ' active' or ''),
+          title = 'Every source in one list, in order of time',
+          attrs = { ['data-item'] = 'merged' },
+          ui.span ({ class = 'logs-src-icon', html = icon_svg ('git-merge') }),
+          ui.span ({ class = 'logs-src-name', 'All sources, by time' }),
+        })
+      end
       for _, src in ipairs (sources) do
         local label = lf.state_label (src.state, src.code)
         local count = ui.span ({
@@ -1134,7 +1449,8 @@ return {
         src.count_el = count
         src.counted = src.lines:count ()
         rows[#rows + 1] = ui.div ({
-          class = 'logs-src' .. (src == shown and ' active' or ''),
+          class = 'logs-src'
+            .. ((src == shown and not merged) and ' active' or ''),
           title = lf.source_title (src.spec)
             .. '\n'
             .. label
@@ -1167,7 +1483,7 @@ return {
     ---@param src Logs.Source
     local function source_changed (src)
       render_sources ()
-      if src == shown then
+      if src == shown or merged then
         render_empty ()
         update_status ()
       end
@@ -1177,19 +1493,21 @@ return {
     ---@param text string
     ---@param err boolean
     local function add_line (src, text, err)
-      local line = lf.make_line (src.next_n, text, err)
+      local line = lf.make_line (src.next_n, text, err, src.last_time)
+      line.src = src.id
+      line.id = next_line_id
+      next_line_id = next_line_id + 1
+      src.last_time = line.time
       src.next_n = src.next_n + 1
       local dropped = src.lines:push (line)
-      if src == shown then
+      if src == shown or merged then
         pending[#pending + 1] = line
         if dropped then
-          local counted, visible = lf.classify (dropped, query, hidden)
+          local counted = lf.classify (dropped, query, hidden, view_newest)
           if counted then
             levels[dropped.level] = levels[dropped.level] - 1
           end
-          if visible then
-            matched = matched - 1
-          end
+          forget_line (dropped)
         end
       end
       schedule ()
@@ -1203,7 +1521,7 @@ return {
         id = next_id,
         spec = spec,
         name = lf.source_name (spec),
-        lines = lf.ring (MAX_LINES),
+        lines = lf.ring (spec.whole and MAX_WHOLE or MAX_LINES),
         next_n = 1,
         state = 'stopped',
         run = 0,
@@ -1228,7 +1546,7 @@ return {
       local spec = src.spec
       local program, args ---@type string, string[]
       if spec.kind == 'file' then
-        program, args = lf.follow_command (spec.path or '', app.os)
+        program, args = lf.follow_command (spec.path or '', app.os, spec.whole)
       else
         program, args = lf.shell_command (spec.command or '', app.os)
       end
@@ -1304,7 +1622,8 @@ return {
     local function restart (src)
       halt (src)
       src.lines:clear ()
-      if src == shown then
+      src.last_time = nil
+      if src == shown or merged then
         close_detail ()
         redraw_list ()
       end
@@ -1312,12 +1631,31 @@ return {
     end
 
     show_source = function (src)
-      if shown ~= src then
+      if shown ~= src or merged then
         close_detail ()
         shown = src
+        merged = false
         follow = true
         render_toggles ()
         app.store.set ('shown', src and lf.spec_key (src.spec) or nil)
+      end
+      redraw_list ()
+      render_sources ()
+    end
+
+    ---Shows every source in one list, in order of time.
+    local function show_merged ()
+      if #sources < 2 then
+        say ('The merged view needs two sources or more.')
+        return
+      end
+      if not merged then
+        close_detail ()
+        shown = nil
+        merged = true
+        follow = true
+        render_toggles ()
+        app.store.set ('shown', 'merged')
       end
       redraw_list ()
       render_sources ()
@@ -1335,7 +1673,12 @@ return {
         end
       end
       save_open ()
-      if shown == src then
+      if merged and #sources < 2 then
+        show_source (sources[1])
+      elseif merged then
+        redraw_list ()
+        render_sources ()
+      elseif shown == src then
         show_source (sources[index] or sources[index - 1])
       else
         render_sources ()
@@ -1384,23 +1727,26 @@ return {
 
     -- Actions ---------------------------------------------------------------------------------
 
-    local function open_file ()
+    ---Asks for log files and follows them. A whole file is read from its first line, and
+    ---keeps up to 250,000 lines.
+    ---@param whole boolean
+    local function open_file (whole)
       if not desktop then
         say (DESKTOP_ONLY)
         return
       end
-      app.fs.pick_open (
-        { title = 'Open Log File', multiple = true },
-        function (paths, err)
-          if err then
-            say_error ('Could not show the file picker. ' .. err)
-            return
-          end
-          for _, path in ipairs (paths or {}) do
-            open_spec ({ kind = 'file', path = path })
-          end
+      app.fs.pick_open ({
+        title = whole and 'Open Whole Log File' or 'Open Log File',
+        multiple = true,
+      }, function (paths, err)
+        if err then
+          say_error ('Could not show the file picker. ' .. err)
+          return
         end
-      )
+        for _, path in ipairs (paths or {}) do
+          open_spec ({ kind = 'file', path = path, whole = whole or nil })
+        end
+      end)
     end
 
     local function run_command ()
@@ -1461,8 +1807,13 @@ return {
           name = 'Pasted at ' .. tostring (os.date ('%H:%M')),
         })
         src.state = 'pasted'
-        for _, line in ipairs (lf.split_lines (body)) do
-          src.lines:push (lf.make_line (src.next_n, line, false))
+        for _, raw in ipairs (lf.split_lines (body)) do
+          local line = lf.make_line (src.next_n, raw, false, src.last_time)
+          line.src = src.id
+          line.id = next_line_id
+          next_line_id = next_line_id + 1
+          src.last_time = line.time
+          src.lines:push (line)
           src.next_n = src.next_n + 1
         end
         show_source (src)
@@ -1477,7 +1828,8 @@ return {
       local items = {} ---@type Proteus.PickItem[]
       for _, spec in ipairs (recent) do
         items[#items + 1] = {
-          label = lf.source_name (spec),
+          label = lf.source_name (spec)
+            .. (spec.whole and ' (whole file)' or ''),
           detail = spec.kind == 'file' and spec.path or spec.cwd,
           icon = KIND_ICONS[spec.kind],
           value = spec,
@@ -1494,25 +1846,25 @@ return {
     end
 
     local function clear_lines ()
-      local src = shown
-      if not src then
+      if not shown and not merged then
         return
       end
-      src.lines:clear ()
+      -- The merged view clears every source.
+      for _, src in ipairs (view_sources ()) do
+        src.lines:clear ()
+      end
       close_detail ()
       redraw_list ()
       update_counts ()
     end
 
     local function copy_matching ()
-      local src = shown
-      if not src then
+      if not shown and not merged then
         return
       end
-      local result = lf.scan (src.lines, query, hidden, MAX_LINES)
       local texts = {} ---@type string[]
-      for i, line in ipairs (result.shown) do
-        texts[i] = line.plain
+      for k = view_first, #view_all do
+        texts[#texts + 1] = view_all[k].plain
       end
       app.system.clipboard (table.concat (texts, '\n'))
       say (
@@ -1676,6 +2028,10 @@ return {
       if not item then
         return nil
       end
+      if item == 'merged' then
+        show_merged ()
+        return nil
+      end
       local close_id = item:match ('^close:(%d+)$')
       local src = find_source (tonumber (close_id or item))
       if src and close_id then
@@ -1693,8 +2049,8 @@ return {
         local items = {} ---@type Proteus.MenuItem[]
         local picked = nil ---@type Logs.Line?
         local n = tonumber (ev.item or '')
-        if n and shown then
-          picked = lf.find_line (shown.lines, math.floor (n))
+        if n then
+          picked = by_id[math.floor (n)]
         end
         local selection = ev.selection or ''
         if selection ~= '' then
@@ -1720,7 +2076,7 @@ return {
             label = 'Show Details',
             icon = 'panel-bottom',
             run = function ()
-              select_line (line.n)
+              select_line (id_of (line))
             end,
           }
           items[#items + 1] = {
@@ -1742,7 +2098,7 @@ return {
           label = 'Clear',
           icon = 'eraser',
           key = 'Ctrl+K',
-          disabled = shown == nil,
+          disabled = shown == nil and not merged,
           run = clear_lines,
         }
         return items
@@ -1756,7 +2112,22 @@ return {
             {
               label = 'Open Log File',
               icon = 'file-text',
-              run = open_file,
+              run = function ()
+                open_file (false)
+              end,
+            },
+            {
+              label = 'Open Whole Log File',
+              icon = 'file-search',
+              run = function ()
+                open_file (true)
+              end,
+            },
+            {
+              label = 'All Sources, by Time',
+              icon = 'git-merge',
+              disabled = #sources < 2,
+              run = show_merged,
             },
             {
               label = 'Run Command',
@@ -1833,7 +2204,7 @@ return {
 
     ---@return boolean
     local function has_source ()
-      return here () and shown ~= nil
+      return here () and (shown ~= nil or merged)
     end
 
     ---@return boolean
@@ -1856,7 +2227,68 @@ return {
       icon = 'file-text',
       toolbar = 1,
       when = here,
-      run = open_file,
+      run = function ()
+        open_file (false)
+      end,
+    })
+    commands.register ({
+      id = 'logs.open_whole',
+      category = 'Logs',
+      title = 'Open Whole Log File',
+      key = 'ctrl+shift+o',
+      icon = 'file-search',
+      when = here,
+      run = function ()
+        open_file (true)
+      end,
+    })
+    commands.register ({
+      id = 'logs.merged',
+      category = 'Logs',
+      title = 'Show All Sources by Time',
+      icon = 'git-merge',
+      when = function ()
+        return here () and #sources >= 2
+      end,
+      run = show_merged,
+    })
+    commands.register ({
+      id = 'logs.earlier',
+      category = 'Logs',
+      title = 'Show Earlier Lines',
+      key = 'ctrl+pageup',
+      icon = 'chevrons-up',
+      when = function ()
+        return has_source () and win_from > view_first
+      end,
+      run = function ()
+        page (-PAGE_STEP)
+      end,
+    })
+    commands.register ({
+      id = 'logs.later',
+      category = 'Logs',
+      title = 'Show Later Lines',
+      key = 'ctrl+pagedown',
+      icon = 'chevrons-down',
+      when = function ()
+        return has_source () and win_from + drawn - 1 < #view_all
+      end,
+      run = function ()
+        page (PAGE_STEP)
+      end,
+    })
+    commands.register ({
+      id = 'logs.follow_newest',
+      category = 'Logs',
+      title = 'Go to the Newest Line',
+      key = 'ctrl+end',
+      icon = 'arrow-down-to-line',
+      when = has_source,
+      run = function ()
+        show_window (#view_all - MAX_SHOWN + 1)
+        set_follow (true)
+      end,
     })
     commands.register ({
       id = 'logs.run',
@@ -2049,6 +2481,10 @@ return {
         first = src
       end
     end
-    show_source (first)
+    if last_shown == 'merged' and #sources >= 2 then
+      show_merged ()
+    else
+      show_source (first)
+    end
   end,
 }
