@@ -2,20 +2,13 @@
 return {
   name = 'Logs',
   description = 'Follow a log file or a program, filter the lines, and spot errors.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.3.0' },
+  version = '1.1.0',
+  requires = { proteus = '>=0.3.0', features = { 'profile-extends' } },
+  -- The themes, keys, menus, status bar, side panels, palette, messages, Settings and
+  -- Profiles come from the app's shell, profiles/base/shell.lua.
+  extends = 'shell',
   plugins = {
-    'proteus.theme.daylight',
-    'proteus.theme.midnight',
-    'proteus.theme.retro',
-    'proteus.core.keys',
-    'proteus.ui.menus',
     'proteus.ui.toolbar',
-    'proteus.ui.statusbar',
-    'proteus.ui.views',
-    'proteus.ui.palette',
-    'proteus.ui.notify',
-    'proteus.core.profiles',
     'proteus.logs',
     'proteus.discord.rpc',
   },
