@@ -33,4 +33,4 @@ Git on the PATH. In a browser it shows that it needs the desktop app.
 | Permission | Why |
 |------------|-----|
 | `process` | It runs the `git` program for every action. |
-| `files` | It works on a repository anywhere on disk: it reads the changed files for their diffs, opens a file or its folder, and asks for a folder in the system's dialog. It also uses the Code Editor's `project` and `editor` services. |
+| `files` | It works on a repository anywhere on disk: it reads the changed files for their diffs, lists its `.git` folder to find a merge or rebase that stopped part way, opens a file or its folder, and asks for a folder or a file in the system's dialog. It also uses the Code Editor's `project` and `editor` services. |
