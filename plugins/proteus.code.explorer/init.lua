@@ -4,7 +4,8 @@
 -- New files, new folders, renames and copies are typed into the tree itself, and a name is
 -- relative to its folder. Dragging items onto a folder moves them there. Delete moves items
 -- to the Recycle Bin. A letter after a name shows what Git sees: M changed, U new, A added,
--- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits.
+-- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits. Open in
+-- Terminal on a folder opens a terminal there, through proteus.terminal.
 --
 -- With the tree focused:
 --   Up, Down, Home, End   move the selection, and Shift stretches it
@@ -208,7 +209,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.0.1',
+  version = '1.1.0',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -224,6 +225,8 @@ return {
     'proteus.ui.notify',
     'proteus.ui.tabs',
     'proteus.editor.core',
+    -- Open in Terminal on a folder opens a terminal there.
+    'proteus.terminal',
   },
   conflicts = { 'proteus.ws.explorer' },
   -- `files` to read and change the folder on disk, and for the `project` and `editor` services.
@@ -1344,6 +1347,16 @@ return {
           icon = 'search',
           run = function ()
             app.emit ('code:search_folder', abs (dir))
+          end,
+        })
+      end
+      local terminal = app.try_use ('terminal') --[[@as Proteus.Terminal?]]
+      if terminal and (not entry or entry.dir) then
+        add ({
+          label = 'Open in Terminal',
+          icon = 'square-terminal',
+          run = function ()
+            terminal.open ({ cwd = abs (dir) })
           end,
         })
       end

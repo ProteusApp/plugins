@@ -1292,6 +1292,33 @@ function Project.trusted () end
 function Project.ask_trust (reason) end
 
 ---------------------------------------------------------------------------------------------
+-- terminal (proteus.terminal)
+---------------------------------------------------------------------------------------------
+
+---What a new terminal runs and where.
+---@class Proteus.TerminalOpenOptions
+---@field cwd? string The folder it starts in, a full path. The profile's folder, the open folder or the workspace folder when nil.
+---@field profile? string The name of a profile in the `terminal.profiles` setting. The default profile when nil or unknown.
+---@field name? string The name on its tab. It keeps it, whatever the program calls itself.
+---@field split? boolean Opens it beside the active terminal, in the same tab.
+
+---The terminals in the bottom dock, from `proteus.terminal`. The service needs the `files`
+---permission, as it takes full paths.
+---@class Proteus.Terminal
+local Terminal = {}
+
+---Shows the Terminal panel and opens a terminal in it. Returns false where there are no
+---terminals, as in a browser.
+---@param opts? Proteus.TerminalOpenOptions
+---@return boolean
+function Terminal.open (opts) end
+
+---The names of the profiles a terminal can run: `''` for the default shell, then those of the
+---`terminal.profiles` setting.
+---@return string[]
+function Terminal.profiles () end
+
+---------------------------------------------------------------------------------------------
 -- app.process (the kernel)
 ---------------------------------------------------------------------------------------------
 
