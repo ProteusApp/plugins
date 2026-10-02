@@ -30,10 +30,11 @@ local server_module = require ('lib.server') --[[@as LangToml.ServerModule]]
 return {
   name = 'TOML',
   description = 'TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.',
-  version = '1.0.2',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
-  -- Taplo is a program it runs and downloads, on files anywhere on disk.
-  permissions = { 'files', 'process' },
+  -- Taplo is a program it runs and downloads, on files anywhere on disk. SchemaStore's
+  -- catalog comes from schemastore.org.
+  permissions = { 'files', 'process', 'net' },
   depends = {
     'core.settings',
     'core.commands',
@@ -68,24 +69,6 @@ return {
 
     local workspace = disk.normalize (app.kernel.launch.workspace or '')
 
-    ---@type LangToml.Context
-    local ctx = {
-      app = app,
-      settings = settings,
-      editor = editor,
-      schemas = schemas_module.install (settings, app.use ('files')),
-      to_disk = function (doc)
-        return doc.external and disk.normalize (doc.path)
-          or disk.join (workspace, doc.path)
-      end,
-      notify = function (text)
-        local n = app.try_use ('notify')
-        if n then
-          n.warn (text)
-        end
-      end,
-    }
-
     local server ---@type LangToml.Server
     local tool = app.use ('tools').register ({
       id = 'taplo',
@@ -109,6 +92,31 @@ return {
         server.start (nil)
       end,
     })
+
+    ---@type LangToml.Context
+    local ctx = {
+      app = app,
+      settings = settings,
+      editor = editor,
+      schemas = schemas_module.install (
+        app,
+        settings,
+        app.use ('files'),
+        workspace,
+        tool.log
+      ),
+      to_disk = function (doc)
+        return doc.external and disk.normalize (doc.path)
+          or disk.join (workspace, doc.path)
+      end,
+      notify = function (text)
+        local n = app.try_use ('notify')
+        if n then
+          n.warn (text)
+        end
+      end,
+    }
+
     server = server_module.install (ctx, tool)
     format_module.install (ctx, tool)
 

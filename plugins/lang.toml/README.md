@@ -32,5 +32,5 @@ List `core.files` in the plugin's `depends`. `lang.rust` does this for `Cargo.to
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `toml.enabled` | `true` | Runs the TOML language server. |
-| `toml.schema_catalog` | `true` | Fetches schemas for common files from schemastore.org. |
+| `toml.schema_catalog` | `true` | Fetches SchemaStore's catalog of schemas for common files, and keeps a copy in `data/lang.toml/` for when the network is down. |
 | `toml.format` | `true` | Formats TOML files with Taplo. |
