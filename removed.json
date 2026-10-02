@@ -1,0 +1,102 @@
+{
+  "plugins": {
+    "chiptune": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.arrange": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.browser": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.channels": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.core": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.devices": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.effects": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.engine": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.instruments": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.keyboard": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.midi": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.mixer": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.native": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.pianoroll": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.rack": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.session": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.transport": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "daw.windows": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "handbook": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "proteus.kanban.classic": {
+      "login": "ProteusApp",
+      "id": 335861301
+    },
+    "proteus.notes.classic": {
+      "login": "ProteusApp",
+      "id": 335861301
+    },
+    "sample.plugin": {
+      "login": "nanoqoi",
+      "id": 29748817
+    },
+    "wam.basics": {
+      "login": "nanoqoi",
+      "id": 29748817
+    }
+  },
+  "profiles": {
+    "daw": {
+      "login": "nanoqoi",
+      "id": 29748817
+    }
+  }
+}

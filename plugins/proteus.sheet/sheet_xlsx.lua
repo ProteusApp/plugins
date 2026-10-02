@@ -79,6 +79,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field values? Sheet.XlsxValues
 ---@field warnings string[]
 ---@field typed table<string, Sheet.XlsxTyped>
+---@field spills? Sheet.XlsxSpills
+---@field dynamic? boolean True once a formula writes a spilled block, which needs the metadata part.
 
 ---What typing a text stores, kept so that text which repeats is parsed once.
 ---@class Sheet.XlsxTyped
@@ -86,6 +88,9 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field code? string
 
 ---@alias Sheet.XlsxValues fun(sheet_index: integer, row: integer, col: integer): Sheet.Value
+
+---The height and width of the block a formula cell spills, or nil when it spills none.
+---@alias Sheet.XlsxSpills fun(sheet_index: integer, row: integer, col: integer): integer?, integer?
 
 ---@class Sheet.XlsxModule
 local M = {}
@@ -102,7 +107,9 @@ local EXCEL_WIDTH = 64
 local CHAR_PX = 7
 local MAX_ROWS = 1048576
 local MAX_COLS = 16384
--- A `<col>` range that reaches this far means the rest of the sheet.
+-- A `<col>` range that reaches this far means the rest of the sheet. A row past this that
+-- holds only a height, a hidden flag or a style counts only up to the last row with cells, so
+-- one styled row at the bottom of the sheet does not make a sheet of a million rows.
 local REST_OF_SHEET = 1000
 -- Excel counts dates in a 1904 workbook from 1904-01-01, 1462 days after this app's day 0.
 local DAYS_1904 = 1462
@@ -299,6 +306,21 @@ do
 end
 NEWER_FUNCTIONS.FILTER = '_xlfn._xlws.FILTER'
 NEWER_FUNCTIONS.SORT = '_xlfn._xlws.SORT'
+for name in string.gmatch ('MAP REDUCE SCAN BYROW BYCOL MAKEARRAY', '%S+') do
+  NEWER_FUNCTIONS[name] = '_xlfn.' .. name
+end
+
+-- Excel's part that marks a formula as one that spills, as Excel itself writes it.
+local METADATA = '<metadata xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+  .. ' xmlns:xda="http://schemas.microsoft.com/office/spreadsheetml/2017/dynamicarray">'
+  .. '<metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000"'
+  .. ' copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1"'
+  .. ' clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/>'
+  .. '</metadataTypes><futureMetadata name="XLDAPR" count="1"><bk><extLst>'
+  .. '<ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}">'
+  .. '<xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk>'
+  .. '</futureMetadata><cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata>'
+  .. '</metadata>'
 
 ---------------------------------------------------------------------------------------------
 -- Reading XML
@@ -327,6 +349,10 @@ local function entity (name)
     or (code >= 0xD800 and code <= 0xDFFF)
   then
     return nil
+  end
+  -- XML has no NUL character, and a cell never holds one.
+  if code == 0 then
+    return ''
   end
   return utf8.char (code)
 end
@@ -599,7 +625,11 @@ local function drop_prefixes (part)
   if not string.find (part, '_xl', 1, true) then
     return part
   end
-  return (string.gsub (string.gsub (part, '_xlfn%.', ''), '_xlws%.', ''))
+  local out = string.gsub (part, '_xlfn%.', '')
+  out = string.gsub (out, '_xlws%.', '')
+  -- The names LET and LAMBDA give carry `_xlpm.`.
+  out = string.gsub (out, '_xlpm%.', '')
+  return out
 end
 
 ---@param part string
@@ -617,14 +647,77 @@ end
 ---@param text string
 ---@return string
 local function from_excel (text)
-  return outside_quotes (text, drop_prefixes)
+  local out = outside_quotes (text, drop_prefixes)
+  -- Excel writes the block a formula spills, A1#, as ANCHORARRAY(A1).
+  if string.find (out, 'ANCHORARRAY(', 1, true) then
+    out = string.gsub (out, 'ANCHORARRAY%(([^()"]-)%)', '%1#')
+  end
+  return out
+end
+
+---The names in a formula that LET and LAMBDA give, which Excel marks with `_xlpm.`, and the
+---blocks a formula spills, A1#, which Excel writes as ANCHORARRAY(A1).
+---@param text string Formula text without its "=".
+---@return string
+local function excel_names (text)
+  if
+    not string.find (text, '#', 1, true)
+    and not string.find (string.upper (text), 'L[EA][TM]')
+  then
+    return text
+  end
+  local tokens = formula.tokenize ('=' .. text, 2)
+  if not tokens then
+    return text
+  end
+  local known = {} ---@type table<string, boolean>
+  for _, name in ipairs (formula.functions) do
+    known[name] = true
+  end
+  local parts = {} ---@type string[]
+  local pos = 1
+  for i, t in ipairs (tokens) do
+    local new = nil ---@type string?
+    if t.kind == 'name' then
+      local up = string.upper (t.text)
+      local after = tokens[i + 1]
+      local call = after and after.kind == 'open'
+      if up ~= 'TRUE' and up ~= 'FALSE' and not (call and known[up]) then
+        new = '_xlpm.' .. t.text
+      end
+    elseif t.kind == 'ref' and t.spill then
+      new = '_xlfn.ANCHORARRAY(' .. string.sub (t.text, 1, -2) .. ')'
+    end
+    if new then
+      -- Tokens count bytes of the text with its "=", one more than here.
+      parts[#parts + 1] = string.sub (text, pos, t.from - 2)
+      parts[#parts + 1] = new
+      pos = t.to
+    end
+  end
+  parts[#parts + 1] = string.sub (text, pos)
+  return table.concat (parts)
 end
 
 ---Turns formula text as this app writes it into formula text as Excel stores it.
 ---@param text string
 ---@return string
 local function to_excel (text)
-  return outside_quotes (text, add_prefixes)
+  return outside_quotes (excel_names (text), add_prefixes)
+end
+
+---True when formula text as Excel stores it reads another workbook, as `[1]Sheet1!A1` does.
+---@param text string
+---@return boolean
+local function external (text)
+  local found = false
+  outside_quotes (string.gsub (text, "'", ''), function (part)
+    if string.find (part, '%[%d+%]') then
+      found = true
+    end
+    return part
+  end)
+  return found
 end
 
 ---------------------------------------------------------------------------------------------
@@ -994,6 +1087,9 @@ local function string_of (node)
       if code >= 0xD800 and code <= 0xDFFF then
         return nil
       end
+      if code == 0 then
+        return ''
+      end
       return utf8.char (code)
     end)
   end
@@ -1172,6 +1268,14 @@ local LEFT_OUT = {
   { 'sparklines', 'Sparklines in %s were left out.' },
   { 'protection', 'Protection in %s was left out.' },
   { 'rich', 'Mixed text formatting inside cells in %s was left out.' },
+  {
+    'external',
+    'Formulas in %s that read other workbooks were left out. Their last values are kept.',
+  },
+  {
+    'outside',
+    'Cells in %s past row 1048576 or column XFD were left out.',
+  },
 }
 
 -- Worksheet elements that mean a feature is there.
@@ -1291,117 +1395,166 @@ local function read_sheet (src, path, name, book, warnings)
 
   local shared = {} ---@type table<string, { row: integer, col: integer, text: string }>
   local waiting = {} ---@type Sheet.XlsxShared[]
+  -- Array formulas and the blocks they cover, whose other cells hold the last values.
+  local arrays = {} ---@type { row: integer, col: integer, ref: string }[]
   local last_row = 0 ---@type integer
+  local styled_rows = {} ---@type integer[]
   for _, row in ipairs (children (child (root, 'sheetData'), 'row')) do
     local a = row.attrs
     local r = int (a.r) or last_row + 1 ---@type integer
     last_row = r
-    local key = string.format ('%d', r)
-    local ht = tonumber (a.ht)
-    local touched = false
-    if ht and a.customHeight and flag (a.customHeight) then
-      heights[key] = round (ht * 4 / 3)
-      touched = true
-    end
-    if a.hidden and flag (a.hidden) then
-      hidden_rows[#hidden_rows + 1] = r
-      touched = true
-    end
-    local row_style = nil ---@type Sheet.Style?
-    local rs = int (a.s)
-    if rs and a.customFormat and flag (a.customFormat) then
-      row_style = book.xf_styles[rs]
-      if row_style and not is_empty (row_style) then
-        row_styles[key] = own_style (row_style, nil)
+    -- A row past the last row of a sheet is left out.
+    if r >= 1 and r <= MAX_ROWS then
+      local key = string.format ('%d', r)
+      local ht = tonumber (a.ht)
+      local touched = false
+      if ht and a.customHeight and flag (a.customHeight) then
+        heights[key] = round (ht * 4 / 3)
         touched = true
-      else
-        row_style = nil
       end
-    end
-    if touched then
-      max_row = math.max (max_row, r)
-    end
-    local last_col = 0 ---@type integer
-    for _, c in ipairs (row.children) do
-      if bare (c.name) == 'c' then
-        local cr, cc = nil, nil ---@type integer?, integer?
-        if c.attrs.r then
-          cr, cc = formula.parse_address (c.attrs.r)
+      if a.hidden and flag (a.hidden) then
+        hidden_rows[#hidden_rows + 1] = r
+        touched = true
+      end
+      local row_style = nil ---@type Sheet.Style?
+      local rs = int (a.s)
+      if rs and a.customFormat and flag (a.customFormat) then
+        row_style = book.xf_styles[rs]
+        if row_style and not is_empty (row_style) then
+          row_styles[key] = own_style (row_style, nil)
+          touched = true
+        else
+          row_style = nil
         end
-        if not cr or not cc then
-          cr, cc = r, last_col + 1
-        end
-        ---@cast cc integer
-        last_col = cc
-        local addr = formula.address (cr, cc)
-        local t = c.attrs.t or 'n'
-        local v = child (c, 'v')
-        local f = child (c, 'f')
-        local s = int (c.attrs.s) or 0
-        local value = nil ---@type string?
-        if t == 's' and v then
-          local i = int (v.text)
-          local text = i and book.strings[i + 1]
-          if text and text ~= '' then
-            value = typed_text (text, book.typed)
-            found.rich = found.rich or book.rich[i + 1] == true
+      end
+      if touched then
+        styled_rows[#styled_rows + 1] = r
+      end
+      local last_col = 0 ---@type integer
+      for _, c in ipairs (row.children) do
+        if bare (c.name) == 'c' then
+          local cr, cc = nil, nil ---@type integer?, integer?
+          if c.attrs.r then
+            cr, cc = formula.parse_address (c.attrs.r)
           end
-        elseif t == 'inlineStr' then
-          local is = child (c, 'is')
-          if is then
-            local text, rich = string_of (is)
-            if text ~= '' then
+          if not cr or not cc then
+            cr, cc = r, last_col + 1
+          end
+          ---@cast cc integer
+          last_col = cc
+          -- A cell past the last row or column of a sheet is left out.
+          local outside = cr > MAX_ROWS or cc > MAX_COLS
+          local addr = formula.address (cr, cc)
+          local t = c.attrs.t or 'n'
+          local v = child (c, 'v')
+          local f = child (c, 'f')
+          local s = int (c.attrs.s) or 0
+          local value = nil ---@type string?
+          if t == 's' and v then
+            local i = int (v.text)
+            local text = i and book.strings[i + 1]
+            if text and text ~= '' then
               value = typed_text (text, book.typed)
-              found.rich = found.rich or rich
+              found.rich = found.rich or book.rich[i + 1] == true
+            end
+          elseif t == 'inlineStr' then
+            local is = child (c, 'is')
+            if is then
+              local text, rich = string_of (is)
+              if text ~= '' then
+                value = typed_text (text, book.typed)
+                found.rich = found.rich or rich
+              end
+            end
+          elseif t == 'b' and v then
+            value = v.text == '1' and 'TRUE' or 'FALSE'
+          elseif t == 'e' and v and v.text ~= '' then
+            value = v.text
+          elseif t == 'str' and v and v.text ~= '' then
+            value = typed_text (v.text, book.typed)
+          elseif t == 'd' and v then
+            local n = iso_date (v.text)
+            value = n and read_number (n)
+          elseif v and v.text ~= '' then
+            local n = tonumber (v.text)
+            if n and book.date1904 and book.xf_dates[s] then
+              n = n + DAYS_1904
+            end
+            value = n and read_number (n)
+          end
+          local text = value
+          local kind = f and f.attrs.t
+          if f and external (f.text) then
+            -- This app cannot read another workbook, so the last value stays.
+            found.external = true
+            f = nil
+          elseif f and kind == 'shared' and f.attrs.si then
+            local body = f.text
+            if string.find (body, '%S') then
+              body = from_excel (body)
+              shared[f.attrs.si] = { row = cr, col = cc, text = body }
+              text = '=' .. body
+            else
+              waiting[#waiting + 1] = {
+                addr = addr,
+                row = cr,
+                col = cc,
+                si = f.attrs.si,
+                value = value,
+              }
+            end
+          elseif f and kind ~= 'dataTable' and string.find (f.text, '%S') then
+            text = '=' .. from_excel (f.text)
+            if kind == 'array' and f.attrs.ref and not outside then
+              arrays[#arrays + 1] = { row = cr, col = cc, ref = f.attrs.ref }
             end
           end
-        elseif t == 'b' and v then
-          value = v.text == '1' and 'TRUE' or 'FALSE'
-        elseif t == 'e' and v and v.text ~= '' then
-          value = v.text
-        elseif t == 'str' and v and v.text ~= '' then
-          value = typed_text (v.text, book.typed)
-        elseif t == 'd' and v then
-          local n = iso_date (v.text)
-          value = n and read_number (n)
-        elseif v and v.text ~= '' then
-          local n = tonumber (v.text)
-          if n and book.date1904 and book.xf_dates[s] then
-            n = n + DAYS_1904
+          local style =
+            own_style (book.xf_styles[s], overlay (col_style (cc), row_style))
+          if outside then
+            found.outside = true
+          elseif text or style or f then
+            cells[addr] = text
+            styles[addr] = style
+            max_row = math.max (max_row, cr)
+            max_col = math.max (max_col, cc)
           end
-          value = n and read_number (n)
         end
-        local text = value
-        local kind = f and f.attrs.t
-        if f and kind == 'shared' and f.attrs.si then
-          local body = f.text
-          if string.find (body, '%S') then
-            body = from_excel (body)
-            shared[f.attrs.si] = { row = cr, col = cc, text = body }
-            text = '=' .. body
-          else
-            waiting[#waiting + 1] = {
-              addr = addr,
-              row = cr,
-              col = cc,
-              si = f.attrs.si,
-              value = value,
-            }
+      end
+    end
+  end
+  -- Rows that hold only a height, a hidden flag or a style count only up to the last row with
+  -- cells, or up to REST_OF_SHEET.
+  local last_styled = math.max (max_row, REST_OF_SHEET)
+  for _, r in ipairs (styled_rows) do
+    if r <= last_styled then
+      max_row = math.max (max_row, r)
+    else
+      local key = string.format ('%d', r)
+      heights[key], row_styles[key] = nil, nil
+    end
+  end
+  for i = #hidden_rows, 1, -1 do
+    if hidden_rows[i] > last_styled then
+      table.remove (hidden_rows, i)
+    end
+  end
+  -- The formula spills its block again, so the values Excel kept for the block's other cells
+  -- are left out.
+  for _, array in ipairs (arrays) do
+    local from, to = string.match (array.ref, '^([^:]+):([^:]+)$')
+    local r1, c1 = formula.parse_address (from or '')
+    local r2, c2 = formula.parse_address (to or '')
+    if r1 and c1 and r2 and c2 then
+      for r = math.min (r1, r2), math.min (math.max (r1, r2), MAX_ROWS) do
+        for c = math.min (c1, c2), math.min (math.max (c1, c2), MAX_COLS) do
+          if r ~= array.row or c ~= array.col then
+            local addr = formula.address (r, c)
+            local text = cells[addr]
+            if text and not formula.is_formula (text) then
+              cells[addr] = nil
+            end
           end
-        elseif f and kind ~= 'dataTable' and string.find (f.text, '%S') then
-          text = '=' .. from_excel (f.text)
-        end
-        if text then
-          cells[addr] = text
-        end
-        local style =
-          own_style (book.xf_styles[s], overlay (col_style (cc), row_style))
-        if style then
-          styles[addr] = style
-        end
-        if text or style or f then
-          max_row = math.max (max_row, cr)
-          max_col = math.max (max_col, cc)
         end
       end
     end
@@ -1425,7 +1578,15 @@ local function read_sheet (src, path, name, book, warnings)
     local from, to = string.match (ref, '^([^:]+):([^:]+)$')
     local r1, c1 = formula.parse_address (from or '')
     local r2, c2 = formula.parse_address (to or '')
-    if r1 and c1 and r2 and c2 and (r1 ~= r2 or c1 ~= c2) then
+    if
+      r1
+      and c1
+      and r2
+      and c2
+      and (r1 ~= r2 or c1 ~= c2)
+      and math.max (r1, r2) <= MAX_ROWS
+      and math.max (c1, c2) <= MAX_COLS
+    then
       merges[#merges + 1] = string.upper (ref)
       max_row = math.max (max_row, r1, r2)
       max_col = math.max (max_col, c1, c2)
@@ -1587,7 +1748,7 @@ function M.read (files)
   local view = child (child (wb, 'bookViews'), 'workbookView')
   local active_tab = view and int (view.attrs.activeTab) or 0
   ---@type Sheet.BookData
-  local book = { version = 2, active = 1, sheets = {} }
+  local book = { version = 3, active = 1, sheets = {} }
   for i, node in ipairs (children (child (wb, 'sheets'), 'sheet')) do
     local name = node.attrs.name or ('Sheet' .. i)
     local id = prefixed (node, 'id')
@@ -1623,11 +1784,35 @@ function M.read (files)
   if #book.sheets == 0 then
     return nil, 'The workbook has no sheets that can be opened.'
   end
+  -- Names for the whole workbook come over. Excel's own, such as the print area, and names
+  -- that belong to one sheet or read another workbook are left out.
+  local names, taken = {}, {} ---@type Sheet.DefinedName[], table<string, boolean>
   for _, node in ipairs (children (child (wb, 'definedNames'), 'definedName')) do
     local name = node.attrs.name or ''
+    local text = node.text or ''
     if string.sub (name, 1, 6) ~= '_xlnm.' then
-      warn_once (warnings, seen, 'names', 'Named ranges were left out.')
+      local up = string.upper (name)
+      if
+        node.attrs.localSheetId
+        or formula.name_problem (name)
+        or taken[up]
+        or external (text)
+        or not formula.parse ('=' .. from_excel (text))
+      then
+        warn_once (
+          warnings,
+          seen,
+          'names',
+          'Names that belong to one sheet, or that this app cannot read, were left out.'
+        )
+      else
+        taken[up] = true
+        names[#names + 1] = { name = name, formula = '=' .. from_excel (text) }
+      end
     end
+  end
+  if #names > 0 then
+    book.names = names
   end
   return book, warnings
 end
@@ -2113,6 +2298,26 @@ local function result_code (text)
   return nil
 end
 
+---The type and the text a value writes as a formula's last value.
+---@param value Sheet.Value
+---@return string? t
+---@return string? v
+local function value_parts (value)
+  if type (value) == 'number' then
+    if value == value and value ~= math.huge and value ~= -math.huge then
+      return nil, number_text (value)
+    end
+    return 'e', '#NUM!'
+  elseif type (value) == 'string' then
+    return 'str', value
+  elseif type (value) == 'boolean' then
+    return 'b', value and '1' or '0'
+  elseif type (value) == 'table' and EXCEL_ERRORS[value.code] then
+    return 'e', value.code
+  end
+  return nil, nil
+end
+
 ---What a cell writes: its type, its value and its formula. The last value is a format code
 ---the text implies, such as `$#,##0` for `$1,200`.
 ---@param text string
@@ -2125,20 +2330,8 @@ end
 local function cell_parts (text, cached, cache)
   if formula.is_formula (text) then
     local f = to_excel (string.sub (text, 2))
-    local value = cached ()
-    if type (value) == 'number' then
-      if value == value and value ~= math.huge and value ~= -math.huge then
-        return nil, number_text (value), f
-      end
-      return 'e', '#NUM!', f
-    elseif type (value) == 'string' then
-      return 'str', value, f
-    elseif type (value) == 'boolean' then
-      return 'b', value and '1' or '0', f
-    elseif type (value) == 'table' and EXCEL_ERRORS[value.code] then
-      return 'e', value.code, f
-    end
-    return nil, nil, f
+    local t, v = value_parts (cached ())
+    return t, v, f
   end
   if string.sub (text, 1, 1) == "'" then
     local rest = string.sub (text, 2)
@@ -2168,6 +2361,8 @@ end
 ---@field col integer
 ---@field text? string
 ---@field style? Sheet.Style
+---@field spill? Sheet.Rect The block a formula spills, written as an array formula.
+---@field spilled? boolean True for a cell a block spills into, which writes its value only.
 
 ---@class Sheet.XlsxRow
 ---@field height? number
@@ -2224,6 +2419,38 @@ local function sheet_xml (w, data, index, name, active)
         local cell = cell_at (addr)
         if cell then
           cell.style = style
+        end
+      end
+    end
+  end
+  -- A formula that spills writes as an array formula over its block, and the block's other
+  -- cells write their values, so a program that does not work formulas out still shows them.
+  if w.spills then
+    local anchors = {} ---@type Sheet.XlsxCell[]
+    for _, cell in pairs (cells) do
+      if cell.text and formula.is_formula (cell.text) then
+        anchors[#anchors + 1] = cell
+      end
+    end
+    for _, cell in ipairs (anchors) do
+      local h, wide = w.spills (index, cell.row, cell.col)
+      if h and wide and (h > 1 or wide > 1) then
+        local area = {
+          r1 = cell.row,
+          c1 = cell.col,
+          r2 = math.min (cell.row + h - 1, MAX_ROWS),
+          c2 = math.min (cell.col + wide - 1, MAX_COLS),
+        }
+        cell.spill = area
+        for r = area.r1, area.r2 do
+          for c = area.c1, area.c2 do
+            if r ~= cell.row or c ~= cell.col then
+              local covered = cell_at (formula.address (r, c))
+              if covered and not covered.text then
+                covered.spilled = true
+              end
+            end
+          end
         end
       end
     end
@@ -2439,6 +2666,8 @@ local function sheet_xml (w, data, index, name, active)
         t, v, f, implied = cell_parts (cell.text, function ()
           return values and values (index, cell.row, cell.col)
         end, w.typed)
+      elseif cell.spilled and values then
+        t, v = value_parts (values (index, cell.row, cell.col))
       end
       local full = tidy (style)
       if f and not (full and full.format) then
@@ -2452,6 +2681,11 @@ local function sheet_xml (w, data, index, name, active)
       if s ~= 0 then
         parts[#parts + 1] = ' s="' .. s .. '"'
       end
+      local spill = f and cell.spill
+      if spill then
+        parts[#parts + 1] = ' cm="1"'
+        w.dynamic = true
+      end
       if t == 's' then
         ---@cast v string
         parts[#parts + 1] = ' t="s"><v>'
@@ -2463,7 +2697,15 @@ local function sheet_xml (w, data, index, name, active)
           parts[#parts + 1] = ' t="' .. t .. '"'
         end
         parts[#parts + 1] = '>'
-        if f then
+        if spill then
+          parts[#parts + 1] = '<f t="array" ref="'
+            .. formula.address (spill.r1, spill.c1)
+            .. ':'
+            .. formula.address (spill.r2, spill.c2)
+            .. '">'
+            .. formula_text (f --[[@as string]])
+            .. '</f>'
+        elseif f then
           parts[#parts + 1] = '<f>' .. formula_text (f) .. '</f>'
         end
         if v then
@@ -2549,12 +2791,14 @@ local NOT_WRITTEN = {
 
 ---Makes the files of an `.xlsx` file from workbook data, as a map of path to text. `values`,
 ---when given, supplies the value of each formula cell, so other programs can show values
----without working them out. Returns the files and a list of warnings.
+---without working them out. `spills`, when given, says which formulas spill a block, which
+---write as array formulas over their blocks. Returns the files and a list of warnings.
 ---@param book Sheet.BookData
 ---@param values? Sheet.XlsxValues
+---@param spills? Sheet.XlsxSpills
 ---@return table<string, string>
 ---@return string[]
-function M.write (book, values)
+function M.write (book, values, spills)
   local warnings = {} ---@type string[]
   local sheets = {} ---@type Sheet.SheetData[]
   for _, data in ipairs (type (book.sheets) == 'table' and book.sheets or {}) do
@@ -2625,6 +2869,7 @@ function M.write (book, values)
     values = values,
     warnings = warnings,
     typed = {},
+    spills = spills,
   }
   xf_of (w.styles, nil)
   local files = {} ---@type table<string, string>
@@ -2687,6 +2932,18 @@ function M.write (book, values)
     .. NS_REL
     .. '/sharedStrings" Target="sharedStrings.xml"/>'
 
+  if w.dynamic then
+    rel_entries[#rel_entries + 1] = '<Relationship Id="rId'
+      .. (n + 3)
+      .. '" Type="'
+      .. NS_REL
+      .. '/sheetMetadata" Target="metadata.xml"/>'
+    type_entries[#type_entries + 1] = '<Override PartName="/xl/metadata.xml" ContentType="'
+      .. SHEET_TYPE
+      .. 'sheetMetadata+xml"/>'
+    files['xl/metadata.xml'] = XML_HEAD .. METADATA
+  end
+
   files['[Content_Types].xml'] = table.concat ({
     XML_HEAD,
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
@@ -2732,6 +2989,24 @@ function M.write (book, values)
     .. '<dc:creator>Proteus</dc:creator></cp:coreProperties>'
   -- The file asks Excel to work out every formula again on opening, since the cached values
   -- came from this app.
+  local defined = {} ---@type string[]
+  for _, entry in ipairs (type (book.names) == 'table' and book.names or {}) do
+    if
+      type (entry) == 'table'
+      and type (entry.name) == 'string'
+      and formula.is_formula (entry.formula)
+    then
+      local text = entry.formula
+      for _, pair in ipairs (renames) do
+        text = formula.rename_sheet (text, pair[1], pair[2])
+      end
+      defined[#defined + 1] = '<definedName name="'
+        .. attr (entry.name)
+        .. '">'
+        .. formula_text (to_excel (string.sub (text, 2)))
+        .. '</definedName>'
+    end
+  end
   files['xl/workbook.xml'] = table.concat ({
     XML_HEAD,
     '<workbook xmlns="' .. NS_MAIN .. '" xmlns:r="' .. NS_REL .. '">',
@@ -2739,6 +3014,9 @@ function M.write (book, values)
     '<sheets>',
     table.concat (sheet_entries),
     '</sheets>',
+    #defined > 0
+        and '<definedNames>' .. table.concat (defined) .. '</definedNames>'
+      or '',
     '<calcPr fullCalcOnLoad="1"/>',
     '</workbook>',
   })

@@ -302,6 +302,14 @@ M.CONDITIONS = {
   },
   { id = 'scale', label = 'Colour scale', type = 'scale', input = 'none' },
   { id = 'bar', label = 'Data bar', type = 'bar', input = 'none' },
+  { id = 'icons', label = 'Icon set', type = 'icons', input = 'none' },
+}
+
+-- The icon sets a rule can show, by id.
+M.ICON_SETS = {
+  { value = 'arrows', label = 'Arrows ▲ ▶ ▼' },
+  { value = 'lights', label = 'Traffic lights ● ● ●' },
+  { value = 'flags', label = 'Flags ⚑ ⚑ ⚑' },
 }
 
 ---@type table<string, Sheet.Condition>
@@ -375,10 +383,10 @@ local function quoted (text)
   return '"' .. (text or '') .. '"'
 end
 
----A rule as one short line, such as `Greater than 100` or `Text contains "late"`.
+---A rule's condition as one short line.
 ---@param rule Sheet.Rule
 ---@return string
-function M.describe_rule (rule)
+local function describe (rule)
   local id = M.condition_of (rule)
   local c = CONDITION[id]
   if not c then
@@ -402,6 +410,18 @@ function M.describe_rule (rule)
     return 'Formula ' .. (rule.formula or '')
   end
   return c.label
+end
+
+---A rule as one short line, such as `Greater than 100` or `Text contains "late"`, with
+---`, then stop` for a rule that keeps the rules below it from applying.
+---@param rule Sheet.Rule
+---@return string
+function M.describe_rule (rule)
+  local line = describe (rule)
+  if rule.stop then
+    return line .. ', then stop'
+  end
+  return line
 end
 
 local VALIDATION_OPS = {
@@ -433,9 +453,19 @@ M.VALIDATION_OPS = {
 ---@return string
 function M.describe_validation (v)
   if v.type == 'list' then
+    if type (v.formula) == 'string' then
+      return 'List from ' .. (string.gsub (v.formula, '^=', ''))
+    end
     return 'List: ' .. table.concat (v.values or {}, ', ')
+  elseif v.type == 'formula' then
+    return 'Formula ' .. (v.formula or '')
   end
   local what = v.integer and 'Whole number' or 'Number'
+  if v.type == 'date' then
+    what = 'Date'
+  elseif v.type == 'length' then
+    what = 'Text length'
+  end
   local op = v.op and VALIDATION_OPS[v.op]
   if not op then
     return 'Any ' .. string.lower (what)

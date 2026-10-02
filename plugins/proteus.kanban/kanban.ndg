@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "settings": {
     "locale": "en-US",
     "currency": "USD"
@@ -1063,7 +1063,7 @@
       "name": "Picked card",
       "position": {
         "x": 0,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -1074,7 +1074,7 @@
       "name": "When another card is picked",
       "position": {
         "x": 0,
-        "y": 3048
+        "y": 3080
       },
       "config": {},
       "literals": {}
@@ -1085,7 +1085,7 @@
       "name": "Show the card",
       "position": {
         "x": 330,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -1096,7 +1096,7 @@
       "name": "Its title",
       "position": {
         "x": 330,
-        "y": 3314
+        "y": 3346
       },
       "config": {},
       "literals": {
@@ -1109,7 +1109,7 @@
       "name": "Card title",
       "position": {
         "x": 660,
-        "y": 3314
+        "y": 3346
       },
       "config": {
         "label": "Title",
@@ -1125,7 +1125,7 @@
       "name": "Board with its new title",
       "position": {
         "x": 990,
-        "y": 3314
+        "y": 3346
       },
       "config": {},
       "literals": {
@@ -1138,7 +1138,7 @@
       "name": "Keep its title",
       "position": {
         "x": 1320,
-        "y": 3314
+        "y": 3346
       },
       "config": {
         "limit": 0,
@@ -1153,7 +1153,7 @@
       "name": "Column titles",
       "position": {
         "x": 0,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {
@@ -1166,7 +1166,7 @@
       "name": "Its column",
       "position": {
         "x": 330,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {}
@@ -1177,7 +1177,7 @@
       "name": "Column",
       "position": {
         "x": 660,
-        "y": 3804
+        "y": 3836
       },
       "config": {
         "label": "Column"
@@ -1190,7 +1190,7 @@
       "name": "Board without the card",
       "position": {
         "x": 990,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {}
@@ -1201,7 +1201,7 @@
       "name": "Where its cards are",
       "position": {
         "x": 990,
-        "y": 3982
+        "y": 4014
       },
       "config": {},
       "literals": {
@@ -1214,7 +1214,7 @@
       "name": "Cards in that column",
       "position": {
         "x": 1320,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {}
@@ -1225,7 +1225,7 @@
       "name": "With the card at the end",
       "position": {
         "x": 1650,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {}
@@ -1236,7 +1236,7 @@
       "name": "Board with the card moved",
       "position": {
         "x": 1980,
-        "y": 3804
+        "y": 3836
       },
       "config": {},
       "literals": {}
@@ -1247,7 +1247,7 @@
       "name": "Move the card",
       "position": {
         "x": 2310,
-        "y": 3804
+        "y": 3836
       },
       "config": {
         "limit": 0,
@@ -1262,7 +1262,7 @@
       "name": "Its labels",
       "position": {
         "x": 330,
-        "y": 4312
+        "y": 4344
       },
       "config": {},
       "literals": {
@@ -1275,7 +1275,7 @@
       "name": "Label picker",
       "position": {
         "x": 660,
-        "y": 4312
+        "y": 4344
       },
       "config": {
         "label": "Labels",
@@ -1289,7 +1289,7 @@
       "name": "Board with its labels",
       "position": {
         "x": 990,
-        "y": 4312
+        "y": 4344
       },
       "config": {},
       "literals": {
@@ -1302,7 +1302,7 @@
       "name": "Board with the edited labels",
       "position": {
         "x": 990,
-        "y": 4554
+        "y": 4586
       },
       "config": {},
       "literals": {
@@ -1315,7 +1315,7 @@
       "name": "Keep its labels",
       "position": {
         "x": 1320,
-        "y": 4312
+        "y": 4344
       },
       "config": {
         "limit": 0,
@@ -1330,7 +1330,7 @@
       "name": "Keep the edited labels",
       "position": {
         "x": 1320,
-        "y": 4490
+        "y": 4522
       },
       "config": {
         "limit": 0,
@@ -1345,7 +1345,7 @@
       "name": "Its due date",
       "position": {
         "x": 330,
-        "y": 4852
+        "y": 4884
       },
       "config": {},
       "literals": {
@@ -1358,7 +1358,7 @@
       "name": "Due date",
       "position": {
         "x": 660,
-        "y": 4852
+        "y": 4884
       },
       "config": {
         "label": "Due date"
@@ -1371,7 +1371,7 @@
       "name": "Board with its due date",
       "position": {
         "x": 990,
-        "y": 4852
+        "y": 4884
       },
       "config": {},
       "literals": {
@@ -1384,7 +1384,7 @@
       "name": "Keep its due date",
       "position": {
         "x": 1320,
-        "y": 4852
+        "y": 4884
       },
       "config": {
         "limit": 0,
@@ -1399,7 +1399,7 @@
       "name": "Priorities",
       "position": {
         "x": 0,
-        "y": 5214
+        "y": 5246
       },
       "config": {
         "items": "none\nlow\nmedium\nhigh"
@@ -1412,7 +1412,7 @@
       "name": "Its priority",
       "position": {
         "x": 0,
-        "y": 5392
+        "y": 5424
       },
       "config": {},
       "literals": {
@@ -1425,7 +1425,7 @@
       "name": "It has a priority",
       "position": {
         "x": 330,
-        "y": 5214
+        "y": 5246
       },
       "config": {},
       "literals": {}
@@ -1436,7 +1436,7 @@
       "name": "Priority to show",
       "position": {
         "x": 660,
-        "y": 5214
+        "y": 5246
       },
       "config": {},
       "literals": {
@@ -1449,7 +1449,7 @@
       "name": "Priority",
       "position": {
         "x": 990,
-        "y": 5214
+        "y": 5246
       },
       "config": {
         "label": "Priority"
@@ -1462,7 +1462,7 @@
       "name": "Board with its priority",
       "position": {
         "x": 1320,
-        "y": 5214
+        "y": 5246
       },
       "config": {},
       "literals": {
@@ -1475,7 +1475,7 @@
       "name": "Keep its priority",
       "position": {
         "x": 1650,
-        "y": 5214
+        "y": 5246
       },
       "config": {
         "limit": 0,
@@ -1490,7 +1490,7 @@
       "name": "Its checklist",
       "position": {
         "x": 330,
-        "y": 5658
+        "y": 5690
       },
       "config": {},
       "literals": {
@@ -1503,7 +1503,7 @@
       "name": "Checklist",
       "position": {
         "x": 660,
-        "y": 5658
+        "y": 5690
       },
       "config": {
         "label": "Checklist"
@@ -1516,7 +1516,7 @@
       "name": "Board with its checklist",
       "position": {
         "x": 990,
-        "y": 5658
+        "y": 5690
       },
       "config": {},
       "literals": {
@@ -1529,7 +1529,7 @@
       "name": "Keep its checklist",
       "position": {
         "x": 1320,
-        "y": 5658
+        "y": 5690
       },
       "config": {
         "limit": 0,
@@ -1544,7 +1544,7 @@
       "name": "Its notes",
       "position": {
         "x": 330,
-        "y": 6052
+        "y": 6084
       },
       "config": {},
       "literals": {
@@ -1557,7 +1557,7 @@
       "name": "Notes",
       "position": {
         "x": 660,
-        "y": 6052
+        "y": 6084
       },
       "config": {
         "label": "Notes",
@@ -1575,7 +1575,7 @@
       "name": "Board with its notes",
       "position": {
         "x": 990,
-        "y": 6052
+        "y": 6084
       },
       "config": {},
       "literals": {
@@ -1588,7 +1588,7 @@
       "name": "Keep its notes",
       "position": {
         "x": 1320,
-        "y": 6052
+        "y": 6084
       },
       "config": {
         "limit": 0,
@@ -1603,7 +1603,7 @@
       "name": "Archive",
       "position": {
         "x": 0,
-        "y": 6542
+        "y": 6574
       },
       "config": {
         "label": "",
@@ -1620,7 +1620,7 @@
       "name": "Delete",
       "position": {
         "x": 0,
-        "y": 6752
+        "y": 6784
       },
       "config": {
         "label": "",
@@ -1637,7 +1637,7 @@
       "name": "Close",
       "position": {
         "x": 0,
-        "y": 6962
+        "y": 6994
       },
       "config": {
         "label": "",
@@ -1654,7 +1654,7 @@
       "name": "Board with it archived",
       "position": {
         "x": 330,
-        "y": 6542
+        "y": 6574
       },
       "config": {},
       "literals": {
@@ -1668,7 +1668,7 @@
       "name": "Ask before deleting it",
       "position": {
         "x": 330,
-        "y": 6784
+        "y": 6816
       },
       "config": {
         "danger": true,
@@ -1684,7 +1684,7 @@
       "name": "Archive it",
       "position": {
         "x": 660,
-        "y": 6542
+        "y": 6574
       },
       "config": {
         "limit": 0,
@@ -1699,7 +1699,7 @@
       "name": "Delete it",
       "position": {
         "x": 660,
-        "y": 6720
+        "y": 6752
       },
       "config": {
         "limit": 0,
@@ -1900,7 +1900,7 @@
       "name": "New board",
       "position": {
         "x": 3240,
-        "y": 2806
+        "y": 2838
       },
       "config": {
         "label": "",
@@ -1917,7 +1917,7 @@
       "name": "New Board",
       "position": {
         "x": 3240,
-        "y": 3016
+        "y": 3048
       },
       "config": {
         "key": "",
@@ -1933,7 +1933,7 @@
       "name": "Make a new board",
       "position": {
         "x": 3570,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -1944,7 +1944,7 @@
       "name": "Ask for a board name",
       "position": {
         "x": 3900,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {
@@ -1957,7 +1957,7 @@
       "name": "New board name",
       "position": {
         "x": 4230,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -1968,7 +1968,7 @@
       "name": "Names in use",
       "position": {
         "x": 4230,
-        "y": 2920
+        "y": 2952
       },
       "config": {},
       "literals": {
@@ -1981,7 +1981,7 @@
       "name": "Boards with that name",
       "position": {
         "x": 4560,
-        "y": 2806
+        "y": 2838
       },
       "config": {
         "test": "equals"
@@ -1996,7 +1996,7 @@
       "name": "Name as JSON",
       "position": {
         "x": 4560,
-        "y": 3016
+        "y": 3048
       },
       "config": {},
       "literals": {}
@@ -2007,7 +2007,7 @@
       "name": "How many have it",
       "position": {
         "x": 4890,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -2018,7 +2018,7 @@
       "name": "New board as JSON",
       "position": {
         "x": 4890,
-        "y": 2920
+        "y": 2952
       },
       "config": {},
       "literals": {
@@ -2031,7 +2031,7 @@
       "name": "New board file",
       "position": {
         "x": 4890,
-        "y": 3130
+        "y": 3162
       },
       "config": {},
       "literals": {
@@ -2044,7 +2044,7 @@
       "name": "Name is free",
       "position": {
         "x": 5220,
-        "y": 2806
+        "y": 2838
       },
       "config": {
         "operator": "==="
@@ -2059,7 +2059,7 @@
       "name": "Only when the name is free",
       "position": {
         "x": 5550,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -2070,7 +2070,7 @@
       "name": "Write the new board",
       "position": {
         "x": 5880,
-        "y": 2806
+        "y": 2838
       },
       "config": {},
       "literals": {}
@@ -2081,7 +2081,7 @@
       "name": "Want the new board",
       "position": {
         "x": 5880,
-        "y": 3048
+        "y": 3080
       },
       "config": {
         "limit": 0,
@@ -2096,7 +2096,7 @@
       "name": "Say to pick another name",
       "position": {
         "x": 5880,
-        "y": 3226
+        "y": 3258
       },
       "config": {
         "kind": "warn"
@@ -2111,7 +2111,7 @@
       "name": "Rename Board",
       "position": {
         "x": 3240,
-        "y": 3524
+        "y": 4014
       },
       "config": {
         "key": "",
@@ -2127,7 +2127,7 @@
       "name": "Ask for its new name",
       "position": {
         "x": 3570,
-        "y": 3524
+        "y": 4014
       },
       "config": {},
       "literals": {
@@ -2140,7 +2140,7 @@
       "name": "Its new name",
       "position": {
         "x": 3900,
-        "y": 3524
+        "y": 4014
       },
       "config": {},
       "literals": {}
@@ -2151,7 +2151,7 @@
       "name": "Has a name",
       "position": {
         "x": 4230,
-        "y": 3524
+        "y": 4014
       },
       "config": {
         "operator": "!=="
@@ -2166,7 +2166,7 @@
       "name": "Its new file",
       "position": {
         "x": 4230,
-        "y": 3702
+        "y": 4192
       },
       "config": {},
       "literals": {
@@ -2179,7 +2179,7 @@
       "name": "Only when it has a name",
       "position": {
         "x": 4560,
-        "y": 3524
+        "y": 4014
       },
       "config": {},
       "literals": {}
@@ -2190,7 +2190,7 @@
       "name": "Rename its file",
       "position": {
         "x": 4890,
-        "y": 3524
+        "y": 4014
       },
       "config": {},
       "literals": {}
@@ -2201,7 +2201,7 @@
       "name": "Only when that worked",
       "position": {
         "x": 5220,
-        "y": 3524
+        "y": 4014
       },
       "config": {},
       "literals": {}
@@ -2212,7 +2212,7 @@
       "name": "Board with the new name",
       "position": {
         "x": 5220,
-        "y": 3734
+        "y": 4224
       },
       "config": {},
       "literals": {
@@ -2225,7 +2225,7 @@
       "name": "Want it by its new name",
       "position": {
         "x": 5550,
-        "y": 3524
+        "y": 4014
       },
       "config": {
         "limit": 0,
@@ -2240,7 +2240,7 @@
       "name": "Remember its new file",
       "position": {
         "x": 5550,
-        "y": 3702
+        "y": 4192
       },
       "config": {
         "limit": 0,
@@ -2255,7 +2255,7 @@
       "name": "Keep the new name",
       "position": {
         "x": 5550,
-        "y": 3880
+        "y": 4370
       },
       "config": {
         "limit": 0,
@@ -2270,7 +2270,7 @@
       "name": "Say the name is taken",
       "position": {
         "x": 5550,
-        "y": 4058
+        "y": 4548
       },
       "config": {
         "kind": "warn"
@@ -2285,7 +2285,7 @@
       "name": "Delete Board",
       "position": {
         "x": 3240,
-        "y": 4356
+        "y": 5564
       },
       "config": {
         "key": "",
@@ -2301,7 +2301,7 @@
       "name": "Question",
       "position": {
         "x": 3240,
-        "y": 4470
+        "y": 5678
       },
       "config": {},
       "literals": {
@@ -2314,7 +2314,7 @@
       "name": "Ask before deleting the board",
       "position": {
         "x": 3570,
-        "y": 4356
+        "y": 5564
       },
       "config": {
         "danger": true,
@@ -2328,7 +2328,7 @@
       "name": "Delete its file",
       "position": {
         "x": 3900,
-        "y": 4356
+        "y": 5564
       },
       "config": {},
       "literals": {}
@@ -2339,7 +2339,7 @@
       "name": "Forget its changes",
       "position": {
         "x": 3900,
-        "y": 4566
+        "y": 5774
       },
       "config": {
         "limit": 0,
@@ -2354,7 +2354,7 @@
       "name": "Today",
       "position": {
         "x": 3240,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {}
@@ -2365,7 +2365,7 @@
       "name": "Tomorrow",
       "position": {
         "x": 3570,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {
@@ -2378,7 +2378,7 @@
       "name": "Yesterday",
       "position": {
         "x": 3570,
-        "y": 5010
+        "y": 6218
       },
       "config": {},
       "literals": {
@@ -2391,7 +2391,7 @@
       "name": "Next week",
       "position": {
         "x": 3570,
-        "y": 5156
+        "y": 6364
       },
       "config": {},
       "literals": {
@@ -2404,7 +2404,7 @@
       "name": "Getting started file",
       "position": {
         "x": 3570,
-        "y": 5302
+        "y": 6510
       },
       "config": {},
       "literals": {
@@ -2417,7 +2417,7 @@
       "name": "Getting started labels",
       "position": {
         "x": 3570,
-        "y": 5512
+        "y": 6720
       },
       "config": {
         "value": "[\n  { \"id\": \"red\", \"name\": \"Bug\", \"color\": \"red\" },\n  { \"id\": \"orange\", \"name\": \"Urgent\", \"color\": \"orange\" },\n  { \"id\": \"yellow\", \"name\": \"Idea\", \"color\": \"yellow\" },\n  { \"id\": \"green\", \"name\": \"Ready\", \"color\": \"green\" },\n  { \"id\": \"blue\", \"name\": \"Design\", \"color\": \"blue\" },\n  { \"id\": \"purple\", \"name\": \"Research\", \"color\": \"purple\" }\n]\n"
@@ -2430,7 +2430,7 @@
       "name": "Getting started To do",
       "position": {
         "x": 3900,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {
@@ -2443,7 +2443,7 @@
       "name": "Getting started Doing",
       "position": {
         "x": 3900,
-        "y": 5074
+        "y": 6282
       },
       "config": {},
       "literals": {
@@ -2456,7 +2456,7 @@
       "name": "Getting started board",
       "position": {
         "x": 4230,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {
@@ -2469,7 +2469,7 @@
       "name": "Write the Getting started board",
       "position": {
         "x": 4560,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {}
@@ -2480,2089 +2480,2564 @@
       "name": "Only when it was written",
       "position": {
         "x": 4890,
-        "y": 4864
+        "y": 6072
       },
       "config": {},
       "literals": {}
+    },
+    {
+      "id": "n187",
+      "block": "app.command",
+      "name": "Open Board",
+      "position": {
+        "x": 3240,
+        "y": 3556
+      },
+      "config": {
+        "key": "",
+        "title": "Open Board",
+        "icon": "folder-open",
+        "menu": "File"
+      },
+      "literals": {}
+    },
+    {
+      "id": "n188",
+      "block": "app.pick",
+      "name": "Pick a board",
+      "position": {
+        "x": 3570,
+        "y": 3556
+      },
+      "config": {},
+      "literals": {
+        "prompt": "Open a board"
+      }
+    },
+    {
+      "id": "n189",
+      "block": "state.set",
+      "name": "Want the board picked",
+      "position": {
+        "x": 3900,
+        "y": 3556
+      },
+      "config": {
+        "limit": 0,
+        "mode": "replace",
+        "variable": "n7"
+      },
+      "literals": {}
+    },
+    {
+      "id": "n190",
+      "block": "app.command",
+      "name": "Duplicate Board",
+      "position": {
+        "x": 3240,
+        "y": 4846
+      },
+      "config": {
+        "key": "",
+        "title": "Duplicate Board",
+        "icon": "copy",
+        "menu": "File"
+      },
+      "literals": {}
+    },
+    {
+      "id": "n191",
+      "block": "text.format",
+      "name": "Name for a copy",
+      "position": {
+        "x": 3240,
+        "y": 4960
+      },
+      "config": {},
+      "literals": {
+        "template": "{a} copy"
+      }
+    },
+    {
+      "id": "n192",
+      "block": "app.ask",
+      "name": "Ask for the copy name",
+      "position": {
+        "x": 3570,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {
+        "prompt": "A name for the copy"
+      }
+    },
+    {
+      "id": "n193",
+      "block": "text.trim",
+      "name": "Copy name",
+      "position": {
+        "x": 3900,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n194",
+      "block": "list.prepend",
+      "name": "Names in use for the copy",
+      "position": {
+        "x": 3900,
+        "y": 4960
+      },
+      "config": {},
+      "literals": {
+        "item": ""
+      }
+    },
+    {
+      "id": "n195",
+      "block": "list.where",
+      "name": "Boards with the copy name",
+      "position": {
+        "x": 4230,
+        "y": 4846
+      },
+      "config": {
+        "test": "equals"
+      },
+      "literals": {
+        "field": ""
+      }
+    },
+    {
+      "id": "n196",
+      "block": "list.length",
+      "name": "How many have the copy name",
+      "position": {
+        "x": 4560,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n197",
+      "block": "logic.compare",
+      "name": "Copy name is free",
+      "position": {
+        "x": 4890,
+        "y": 4846
+      },
+      "config": {
+        "operator": "==="
+      },
+      "literals": {
+        "b": 0
+      }
+    },
+    {
+      "id": "n198",
+      "block": "data.set",
+      "name": "Board with the copy name",
+      "position": {
+        "x": 4890,
+        "y": 5024
+      },
+      "config": {},
+      "literals": {
+        "key": "title"
+      }
+    },
+    {
+      "id": "n199",
+      "block": "data.to_json",
+      "name": "Copy as JSON",
+      "position": {
+        "x": 5220,
+        "y": 5056
+      },
+      "config": {},
+      "literals": {
+        "pretty": true
+      }
+    },
+    {
+      "id": "n200",
+      "block": "text.format",
+      "name": "Copy file",
+      "position": {
+        "x": 5220,
+        "y": 5202
+      },
+      "config": {},
+      "literals": {
+        "template": "{a}/{b}.json"
+      }
+    },
+    {
+      "id": "n201",
+      "block": "flow.when",
+      "name": "Only when the copy name is free",
+      "position": {
+        "x": 5220,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n202",
+      "block": "file.write",
+      "name": "Write the copy",
+      "position": {
+        "x": 5550,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n203",
+      "block": "state.set",
+      "name": "Want the copy",
+      "position": {
+        "x": 5550,
+        "y": 5088
+      },
+      "config": {
+        "limit": 0,
+        "mode": "replace",
+        "variable": "n7"
+      },
+      "literals": {}
+    },
+    {
+      "id": "n204",
+      "block": "app.notify",
+      "name": "Say to pick another copy name",
+      "position": {
+        "x": 5550,
+        "y": 5266
+      },
+      "config": {
+        "kind": "warn"
+      },
+      "literals": {
+        "message": "Type a name that no other board has"
+      }
+    },
+    {
+      "id": "n205",
+      "block": "flow.any",
+      "name": "After a copy or the first board",
+      "position": {
+        "x": 5880,
+        "y": 4846
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n206",
+      "block": "logic.not",
+      "name": "No card is picked",
+      "position": {
+        "x": 0,
+        "y": 7204
+      },
+      "config": {},
+      "literals": {}
+    },
+    {
+      "id": "n207",
+      "block": "ui.text",
+      "name": "Card hint",
+      "position": {
+        "x": 330,
+        "y": 7058
+      },
+      "config": {
+        "label": "",
+        "style": "muted"
+      },
+      "literals": {
+        "text": "Pick a card on the board to change it here."
+      }
     }
   ],
   "edges": [
     {
-      "id": "e187",
+      "id": "e208",
       "from": "n1",
       "to": "n3",
       "input": "a"
     },
     {
-      "id": "e188",
+      "id": "e209",
       "from": "n2",
       "to": "n4",
       "input": "when"
     },
     {
-      "id": "e189",
+      "id": "e210",
       "from": "n3",
       "to": "n4",
       "input": "path"
     },
     {
-      "id": "e190",
+      "id": "e211",
       "from": "n4",
       "output": "text",
       "to": "n5",
       "input": "text"
     },
     {
-      "id": "e191",
+      "id": "e212",
       "from": "n4",
       "output": "done",
       "to": "n8",
       "input": "when"
     },
     {
-      "id": "e192",
+      "id": "e213",
       "from": "n5",
       "to": "n8",
       "input": "to"
     },
     {
-      "id": "e193",
+      "id": "e214",
       "from": "n4",
       "output": "done",
       "to": "n9",
       "input": "a"
     },
     {
-      "id": "e194",
+      "id": "e215",
       "from": "n6",
       "output": "then",
       "to": "n9",
       "input": "b"
     },
     {
-      "id": "e195",
+      "id": "e216",
       "from": "n9",
       "output": "then",
       "to": "n10",
       "input": "when"
     },
     {
-      "id": "e196",
+      "id": "e217",
       "from": "n1",
       "to": "n10",
       "input": "path"
     },
     {
-      "id": "e197",
+      "id": "e218",
       "from": "n10",
       "output": "names",
       "to": "n11",
       "input": "list"
     },
     {
-      "id": "e198",
+      "id": "e219",
       "from": "n10",
       "output": "done",
       "to": "n12",
       "input": "when"
     },
     {
-      "id": "e199",
+      "id": "e220",
       "from": "n11",
       "to": "n12",
       "input": "to"
     },
     {
-      "id": "e200",
+      "id": "e221",
       "from": "n13",
       "to": "n21",
       "input": "items"
     },
     {
-      "id": "e201",
+      "id": "e222",
       "from": "n11",
       "to": "n14",
       "input": "list"
     },
     {
-      "id": "e202",
+      "id": "e223",
       "from": "n14",
       "to": "n17",
       "input": "a"
     },
     {
-      "id": "e203",
+      "id": "e224",
       "from": "n10",
       "output": "done",
       "to": "n19",
       "input": "when"
     },
     {
-      "id": "e204",
+      "id": "e225",
       "from": "n17",
       "to": "n19",
       "input": "test"
     },
     {
-      "id": "e205",
+      "id": "e226",
       "from": "n11",
       "to": "n15",
       "input": "list"
     },
     {
-      "id": "e206",
+      "id": "e227",
       "from": "n7",
       "to": "n15",
       "input": "item"
     },
     {
-      "id": "e207",
+      "id": "e228",
       "from": "n11",
       "to": "n16",
       "input": "list"
     },
     {
-      "id": "e208",
+      "id": "e229",
       "from": "n15",
       "to": "n18",
       "input": "when"
     },
     {
-      "id": "e209",
+      "id": "e230",
       "from": "n7",
       "to": "n18",
       "input": "then"
     },
     {
-      "id": "e210",
+      "id": "e231",
       "from": "n16",
       "to": "n18",
       "input": "otherwise"
     },
     {
-      "id": "e211",
+      "id": "e232",
       "from": "n19",
       "output": "no",
       "to": "n20",
       "input": "when"
     },
     {
-      "id": "e212",
+      "id": "e233",
       "from": "n18",
       "to": "n20",
       "input": "to"
     },
     {
-      "id": "e213",
+      "id": "e234",
       "from": "n19",
       "output": "no",
       "to": "n23",
       "input": "a"
     },
     {
-      "id": "e214",
+      "id": "e235",
       "from": "n21",
       "output": "picked",
       "to": "n22",
       "input": "when"
     },
     {
-      "id": "e215",
+      "id": "e236",
       "from": "n21",
       "to": "n22",
       "input": "to"
     },
     {
-      "id": "e216",
+      "id": "e237",
       "from": "n21",
       "output": "picked",
       "to": "n23",
       "input": "b"
     },
     {
-      "id": "e217",
+      "id": "e238",
       "from": "n23",
       "output": "then",
       "to": "n21",
       "input": "set"
     },
     {
-      "id": "e218",
+      "id": "e239",
       "from": "n23",
       "output": "then",
       "to": "n27",
       "input": "when"
     },
     {
-      "id": "e219",
+      "id": "e240",
       "from": "n7",
       "to": "n21",
       "input": "to"
     },
     {
-      "id": "e220",
+      "id": "e241",
       "from": "n1",
       "to": "n24",
       "input": "a"
     },
     {
-      "id": "e221",
+      "id": "e242",
       "from": "n7",
       "to": "n24",
       "input": "b"
     },
     {
-      "id": "e222",
+      "id": "e243",
       "from": "n24",
       "to": "n26",
       "input": "a"
     },
     {
-      "id": "e223",
+      "id": "e244",
       "from": "n25",
       "to": "n26",
       "input": "b"
     },
     {
-      "id": "e224",
+      "id": "e245",
       "from": "n23",
       "output": "then",
       "to": "n28",
       "input": "when"
     },
     {
-      "id": "e225",
+      "id": "e246",
       "from": "n26",
       "to": "n28",
       "input": "test"
     },
     {
-      "id": "e226",
+      "id": "e247",
       "from": "n28",
       "output": "yes",
       "to": "n29",
       "input": "when"
     },
     {
-      "id": "e227",
+      "id": "e248",
       "from": "n24",
       "to": "n29",
       "input": "path"
     },
     {
-      "id": "e228",
+      "id": "e249",
       "from": "n29",
       "output": "text",
       "to": "n30",
       "input": "text"
     },
     {
-      "id": "e229",
+      "id": "e250",
       "from": "n29",
       "output": "done",
       "to": "n31",
       "input": "when"
     },
     {
-      "id": "e230",
+      "id": "e251",
       "from": "n30",
       "output": "ok",
       "to": "n31",
       "input": "test"
     },
     {
-      "id": "e231",
+      "id": "e252",
       "from": "n31",
       "output": "no",
       "to": "n33",
       "input": "when"
     },
     {
-      "id": "e232",
+      "id": "e253",
       "from": "n31",
       "output": "yes",
       "to": "n32",
       "input": "when"
     },
     {
-      "id": "e233",
+      "id": "e254",
       "from": "n32",
       "output": "first",
       "to": "n42",
       "input": "b"
     },
     {
-      "id": "e234",
+      "id": "e255",
       "from": "n32",
       "output": "second",
       "to": "n34",
       "input": "when"
     },
     {
-      "id": "e235",
+      "id": "e256",
       "from": "n30",
       "to": "n34",
       "input": "to"
     },
     {
-      "id": "e236",
+      "id": "e257",
       "from": "n32",
       "output": "second",
       "to": "n35",
       "input": "when"
     },
     {
-      "id": "e237",
+      "id": "e258",
       "from": "n24",
       "to": "n35",
       "input": "to"
     },
     {
-      "id": "e238",
+      "id": "e259",
       "from": "n3",
       "to": "n27",
       "input": "path"
     },
     {
-      "id": "e239",
+      "id": "e260",
       "from": "n7",
       "to": "n27",
       "input": "text"
     },
     {
-      "id": "e240",
+      "id": "e261",
       "from": "n32",
       "output": "third",
       "to": "n36",
       "input": "when"
     },
     {
-      "id": "e241",
+      "id": "e262",
       "from": "n39",
       "to": "n36",
       "input": "to"
     },
     {
-      "id": "e242",
+      "id": "e263",
       "from": "n32",
       "output": "third",
       "to": "n135",
       "input": "clear"
     },
     {
-      "id": "e243",
+      "id": "e264",
       "from": "n32",
       "output": "third",
       "to": "n48",
       "input": "a"
     },
     {
-      "id": "e244",
+      "id": "e265",
       "from": "n32",
       "output": "third",
       "to": "n38",
       "input": "a"
     },
     {
-      "id": "e245",
+      "id": "e266",
       "from": "n32",
       "output": "third",
       "to": "n59",
       "input": "set"
     },
     {
-      "id": "e246",
+      "id": "e267",
       "from": "n37",
       "to": "n39",
       "input": "value"
     },
     {
-      "id": "e247",
+      "id": "e268",
       "from": "n39",
       "to": "n40",
       "input": "value"
     },
     {
-      "id": "e248",
+      "id": "e269",
       "from": "n40",
       "output": "changed",
       "to": "n41",
       "input": "when"
     },
     {
-      "id": "e249",
+      "id": "e270",
       "from": "n41",
       "output": "then",
       "to": "n42",
       "input": "a"
     },
     {
-      "id": "e250",
+      "id": "e271",
       "from": "n39",
       "to": "n44",
       "input": "a"
     },
     {
-      "id": "e251",
+      "id": "e272",
       "from": "n43",
       "to": "n44",
       "input": "b"
     },
     {
-      "id": "e252",
+      "id": "e273",
       "from": "n42",
       "output": "then",
       "to": "n45",
       "input": "when"
     },
     {
-      "id": "e253",
+      "id": "e274",
       "from": "n44",
       "to": "n45",
       "input": "test"
     },
     {
-      "id": "e254",
+      "id": "e275",
       "from": "n45",
       "output": "yes",
       "to": "n46",
       "input": "when"
     },
     {
-      "id": "e255",
+      "id": "e276",
       "from": "n25",
       "to": "n46",
       "input": "path"
     },
     {
-      "id": "e256",
+      "id": "e277",
       "from": "n39",
       "to": "n46",
       "input": "text"
     },
     {
-      "id": "e257",
+      "id": "e278",
       "from": "n45",
       "output": "yes",
       "to": "n47",
       "input": "when"
     },
     {
-      "id": "e258",
+      "id": "e279",
       "from": "n39",
       "to": "n47",
       "input": "to"
     },
     {
-      "id": "e259",
+      "id": "e280",
       "from": "n37",
       "to": "n49",
       "input": "value"
     },
     {
-      "id": "e260",
+      "id": "e281",
       "from": "n48",
       "output": "then",
       "to": "n50",
       "input": "set"
     },
     {
-      "id": "e261",
+      "id": "e282",
       "from": "n49",
       "to": "n50",
       "input": "to"
     },
     {
-      "id": "e262",
+      "id": "e283",
       "from": "n37",
       "to": "n51",
       "input": "record"
     },
     {
-      "id": "e263",
+      "id": "e284",
       "from": "n50",
       "to": "n51",
       "input": "value"
     },
     {
-      "id": "e264",
+      "id": "e285",
       "from": "n50",
       "output": "changed",
       "to": "n52",
       "input": "when"
     },
     {
-      "id": "e265",
+      "id": "e286",
       "from": "n51",
       "to": "n52",
       "input": "to"
     },
     {
-      "id": "e266",
+      "id": "e287",
       "from": "n55",
       "to": "n74",
       "input": "filter"
     },
     {
-      "id": "e267",
+      "id": "e288",
       "from": "n71",
       "to": "n54",
       "input": "list"
     },
     {
-      "id": "e268",
+      "id": "e289",
       "from": "n54",
       "to": "n56",
       "input": "list"
     },
     {
-      "id": "e269",
+      "id": "e290",
       "from": "n56",
       "to": "n58",
       "input": "list"
     },
     {
-      "id": "e270",
+      "id": "e291",
       "from": "n58",
       "to": "n59",
       "input": "options"
     },
     {
-      "id": "e271",
+      "id": "e292",
       "from": "n54",
       "to": "n57",
       "input": "list"
     },
     {
-      "id": "e272",
+      "id": "e293",
       "from": "n59",
       "output": "position",
       "to": "n60",
       "input": "a"
     },
     {
-      "id": "e273",
+      "id": "e294",
       "from": "n57",
       "to": "n61",
       "input": "list"
     },
     {
-      "id": "e274",
+      "id": "e295",
       "from": "n60",
       "to": "n61",
       "input": "position"
     },
     {
-      "id": "e275",
+      "id": "e296",
       "from": "n61",
       "to": "n74",
       "input": "only_tag"
     },
     {
-      "id": "e276",
+      "id": "e297",
       "from": "n62",
       "to": "n63",
       "input": "when"
     },
     {
-      "id": "e277",
+      "id": "e298",
       "from": "n63",
       "output": "answered",
       "to": "n64",
       "input": "when"
     },
     {
-      "id": "e278",
+      "id": "e299",
       "from": "n64",
       "output": "ms",
       "to": "n65",
       "input": "a"
     },
     {
-      "id": "e279",
+      "id": "e300",
       "from": "n65",
       "to": "n66",
       "input": "v1"
     },
     {
-      "id": "e280",
+      "id": "e301",
       "from": "n63",
       "output": "text",
       "to": "n66",
       "input": "v2"
     },
     {
-      "id": "e281",
+      "id": "e302",
       "from": "n70",
       "to": "n67",
       "input": "list"
     },
     {
-      "id": "e282",
+      "id": "e303",
       "from": "n66",
       "to": "n67",
       "input": "item"
     },
     {
-      "id": "e283",
+      "id": "e304",
       "from": "n37",
       "to": "n68",
       "input": "record"
     },
     {
-      "id": "e284",
+      "id": "e305",
       "from": "n67",
       "to": "n68",
       "input": "value"
     },
     {
-      "id": "e285",
+      "id": "e306",
       "from": "n64",
       "output": "then",
       "to": "n69",
       "input": "when"
     },
     {
-      "id": "e286",
+      "id": "e307",
       "from": "n68",
       "to": "n69",
       "input": "to"
     },
     {
-      "id": "e287",
+      "id": "e308",
       "from": "n37",
       "to": "n70",
       "input": "value"
     },
     {
-      "id": "e288",
+      "id": "e309",
       "from": "n37",
       "to": "n71",
       "input": "value"
     },
     {
-      "id": "e289",
+      "id": "e310",
       "from": "n70",
       "to": "n74",
       "input": "lanes"
     },
     {
-      "id": "e290",
+      "id": "e311",
       "from": "n71",
       "to": "n74",
       "input": "tags"
     },
     {
-      "id": "e291",
+      "id": "e312",
       "from": "n37",
       "to": "n75",
       "input": "record"
     },
     {
-      "id": "e292",
+      "id": "e313",
       "from": "n74",
       "to": "n75",
       "input": "value"
     },
     {
-      "id": "e293",
+      "id": "e314",
       "from": "n74",
       "output": "changed",
       "to": "n76",
       "input": "when"
     },
     {
-      "id": "e294",
+      "id": "e315",
       "from": "n75",
       "to": "n76",
       "input": "to"
     },
     {
-      "id": "e295",
+      "id": "e316",
       "from": "n72",
       "to": "n74",
       "input": "add"
     },
     {
-      "id": "e296",
+      "id": "e317",
       "from": "n74",
       "output": "lane",
       "to": "n73",
       "input": "a"
     },
     {
-      "id": "e297",
+      "id": "e318",
       "from": "n73",
       "to": "n74",
       "input": "lane"
     },
     {
-      "id": "e298",
+      "id": "e319",
       "from": "n74",
       "output": "count",
       "to": "n77",
       "input": "a"
     },
     {
-      "id": "e299",
+      "id": "e320",
       "from": "n77",
       "to": "n78",
       "input": "when"
     },
     {
-      "id": "e300",
+      "id": "e321",
       "from": "n74",
       "output": "count",
       "to": "n79",
       "input": "a"
     },
     {
-      "id": "e301",
+      "id": "e322",
       "from": "n74",
       "output": "overdue",
       "to": "n79",
       "input": "b"
     },
     {
-      "id": "e302",
+      "id": "e323",
       "from": "n78",
       "to": "n79",
       "input": "c"
     },
     {
-      "id": "e303",
+      "id": "e324",
       "from": "n79",
       "to": "n80",
       "input": "text"
     },
     {
-      "id": "e304",
-      "from": "n37",
-      "to": "n81",
-      "input": "data"
-    },
-    {
-      "id": "e305",
-      "from": "n74",
-      "output": "item_id",
-      "to": "n81",
-      "input": "value"
-    },
-    {
-      "id": "e306",
-      "from": "n74",
-      "output": "item_id",
-      "to": "n82",
-      "input": "value"
-    },
-    {
-      "id": "e307",
-      "from": "n82",
-      "output": "changed",
-      "to": "n83",
-      "input": "a"
-    },
-    {
-      "id": "e308",
-      "from": "n48",
-      "output": "then",
-      "to": "n83",
-      "input": "b"
-    },
-    {
-      "id": "e309",
-      "from": "n81",
-      "to": "n84",
-      "input": "value"
-    },
-    {
-      "id": "e310",
-      "from": "n83",
-      "output": "then",
-      "to": "n85",
-      "input": "set"
-    },
-    {
-      "id": "e311",
-      "from": "n84",
-      "to": "n85",
-      "input": "to"
-    },
-    {
-      "id": "e312",
-      "from": "n81",
-      "output": "found",
-      "to": "n85",
-      "input": "visible"
-    },
-    {
-      "id": "e313",
-      "from": "n37",
-      "to": "n86",
-      "input": "data"
-    },
-    {
-      "id": "e314",
-      "from": "n74",
-      "output": "item_id",
-      "to": "n86",
-      "input": "match"
-    },
-    {
-      "id": "e315",
-      "from": "n85",
-      "to": "n86",
-      "input": "value"
-    },
-    {
-      "id": "e316",
-      "from": "n85",
-      "output": "changed",
-      "to": "n87",
-      "input": "when"
-    },
-    {
-      "id": "e317",
-      "from": "n86",
-      "to": "n87",
-      "input": "to"
-    },
-    {
-      "id": "e318",
-      "from": "n70",
-      "to": "n88",
-      "input": "list"
-    },
-    {
-      "id": "e319",
-      "from": "n88",
-      "to": "n89",
-      "input": "list"
-    },
-    {
-      "id": "e320",
-      "from": "n74",
-      "output": "lane",
-      "to": "n89",
-      "input": "position"
-    },
-    {
-      "id": "e321",
-      "from": "n88",
-      "to": "n90",
-      "input": "options"
-    },
-    {
-      "id": "e322",
-      "from": "n83",
-      "output": "then",
-      "to": "n90",
-      "input": "set"
-    },
-    {
-      "id": "e323",
-      "from": "n89",
-      "to": "n90",
-      "input": "to"
-    },
-    {
-      "id": "e324",
-      "from": "n81",
-      "output": "found",
-      "to": "n90",
-      "input": "visible"
-    },
-    {
       "id": "e325",
       "from": "n37",
-      "to": "n91",
+      "to": "n81",
       "input": "data"
     },
     {
       "id": "e326",
       "from": "n74",
       "output": "item_id",
+      "to": "n81",
+      "input": "value"
+    },
+    {
+      "id": "e327",
+      "from": "n74",
+      "output": "item_id",
+      "to": "n82",
+      "input": "value"
+    },
+    {
+      "id": "e328",
+      "from": "n82",
+      "output": "changed",
+      "to": "n83",
+      "input": "a"
+    },
+    {
+      "id": "e329",
+      "from": "n48",
+      "output": "then",
+      "to": "n83",
+      "input": "b"
+    },
+    {
+      "id": "e330",
+      "from": "n81",
+      "to": "n84",
+      "input": "value"
+    },
+    {
+      "id": "e331",
+      "from": "n83",
+      "output": "then",
+      "to": "n85",
+      "input": "set"
+    },
+    {
+      "id": "e332",
+      "from": "n84",
+      "to": "n85",
+      "input": "to"
+    },
+    {
+      "id": "e333",
+      "from": "n81",
+      "output": "found",
+      "to": "n85",
+      "input": "visible"
+    },
+    {
+      "id": "e334",
+      "from": "n37",
+      "to": "n86",
+      "input": "data"
+    },
+    {
+      "id": "e335",
+      "from": "n74",
+      "output": "item_id",
+      "to": "n86",
+      "input": "match"
+    },
+    {
+      "id": "e336",
+      "from": "n85",
+      "to": "n86",
+      "input": "value"
+    },
+    {
+      "id": "e337",
+      "from": "n85",
+      "output": "changed",
+      "to": "n87",
+      "input": "when"
+    },
+    {
+      "id": "e338",
+      "from": "n86",
+      "to": "n87",
+      "input": "to"
+    },
+    {
+      "id": "e339",
+      "from": "n70",
+      "to": "n88",
+      "input": "list"
+    },
+    {
+      "id": "e340",
+      "from": "n88",
+      "to": "n89",
+      "input": "list"
+    },
+    {
+      "id": "e341",
+      "from": "n74",
+      "output": "lane",
+      "to": "n89",
+      "input": "position"
+    },
+    {
+      "id": "e342",
+      "from": "n88",
+      "to": "n90",
+      "input": "options"
+    },
+    {
+      "id": "e343",
+      "from": "n83",
+      "output": "then",
+      "to": "n90",
+      "input": "set"
+    },
+    {
+      "id": "e344",
+      "from": "n89",
+      "to": "n90",
+      "input": "to"
+    },
+    {
+      "id": "e345",
+      "from": "n81",
+      "output": "found",
+      "to": "n90",
+      "input": "visible"
+    },
+    {
+      "id": "e346",
+      "from": "n37",
+      "to": "n91",
+      "input": "data"
+    },
+    {
+      "id": "e347",
+      "from": "n74",
+      "output": "item_id",
       "to": "n91",
       "input": "match"
     },
     {
-      "id": "e327",
+      "id": "e348",
       "from": "n90",
       "output": "position",
       "to": "n92",
       "input": "a"
     },
     {
-      "id": "e328",
+      "id": "e349",
       "from": "n91",
       "to": "n93",
       "input": "value"
     },
     {
-      "id": "e329",
+      "id": "e350",
       "from": "n92",
       "to": "n93",
       "input": "path"
     },
     {
-      "id": "e330",
+      "id": "e351",
       "from": "n93",
       "to": "n94",
       "input": "list"
     },
     {
-      "id": "e331",
+      "id": "e352",
       "from": "n81",
       "to": "n94",
       "input": "item"
     },
     {
-      "id": "e332",
+      "id": "e353",
       "from": "n91",
       "to": "n95",
       "input": "data"
     },
     {
-      "id": "e333",
+      "id": "e354",
       "from": "n92",
       "to": "n95",
       "input": "path"
     },
     {
-      "id": "e334",
+      "id": "e355",
       "from": "n94",
       "to": "n95",
       "input": "value"
     },
     {
-      "id": "e335",
+      "id": "e356",
       "from": "n90",
       "output": "changed",
       "to": "n96",
       "input": "when"
     },
     {
-      "id": "e336",
+      "id": "e357",
       "from": "n95",
       "to": "n96",
       "input": "to"
     },
     {
-      "id": "e337",
+      "id": "e358",
       "from": "n81",
       "to": "n97",
       "input": "value"
     },
     {
-      "id": "e338",
+      "id": "e359",
       "from": "n71",
       "to": "n98",
       "input": "options"
     },
     {
-      "id": "e339",
+      "id": "e360",
       "from": "n97",
       "to": "n98",
       "input": "selected"
     },
     {
-      "id": "e340",
+      "id": "e361",
       "from": "n81",
       "output": "found",
       "to": "n98",
       "input": "visible"
     },
     {
-      "id": "e341",
+      "id": "e362",
       "from": "n37",
       "to": "n99",
       "input": "data"
     },
     {
-      "id": "e342",
+      "id": "e363",
       "from": "n74",
       "output": "item_id",
       "to": "n99",
       "input": "match"
     },
     {
-      "id": "e343",
+      "id": "e364",
       "from": "n98",
       "to": "n99",
       "input": "value"
     },
     {
-      "id": "e344",
+      "id": "e365",
       "from": "n98",
       "output": "changed",
       "to": "n101",
       "input": "when"
     },
     {
-      "id": "e345",
+      "id": "e366",
       "from": "n99",
       "to": "n101",
       "input": "to"
     },
     {
-      "id": "e346",
+      "id": "e367",
       "from": "n37",
       "to": "n100",
       "input": "record"
     },
     {
-      "id": "e347",
+      "id": "e368",
       "from": "n98",
       "output": "options_value",
       "to": "n100",
       "input": "value"
     },
     {
-      "id": "e348",
+      "id": "e369",
       "from": "n98",
       "output": "options_changed",
       "to": "n102",
       "input": "when"
     },
     {
-      "id": "e349",
+      "id": "e370",
       "from": "n100",
       "to": "n102",
       "input": "to"
     },
     {
-      "id": "e350",
+      "id": "e371",
       "from": "n81",
       "to": "n103",
       "input": "value"
     },
     {
-      "id": "e351",
+      "id": "e372",
       "from": "n83",
       "output": "then",
       "to": "n104",
       "input": "set"
     },
     {
-      "id": "e352",
+      "id": "e373",
       "from": "n103",
       "to": "n104",
       "input": "to"
     },
     {
-      "id": "e353",
+      "id": "e374",
       "from": "n81",
       "output": "found",
       "to": "n104",
       "input": "visible"
     },
     {
-      "id": "e354",
+      "id": "e375",
       "from": "n37",
       "to": "n105",
       "input": "data"
     },
     {
-      "id": "e355",
+      "id": "e376",
       "from": "n74",
       "output": "item_id",
       "to": "n105",
       "input": "match"
     },
     {
-      "id": "e356",
+      "id": "e377",
       "from": "n104",
       "to": "n105",
       "input": "value"
     },
     {
-      "id": "e357",
+      "id": "e378",
       "from": "n104",
       "output": "changed",
       "to": "n106",
       "input": "when"
     },
     {
-      "id": "e358",
+      "id": "e379",
       "from": "n105",
       "to": "n106",
       "input": "to"
     },
     {
-      "id": "e359",
+      "id": "e380",
       "from": "n81",
       "to": "n108",
       "input": "value"
     },
     {
-      "id": "e360",
+      "id": "e381",
       "from": "n107",
       "to": "n109",
       "input": "list"
     },
     {
-      "id": "e361",
+      "id": "e382",
       "from": "n108",
       "to": "n109",
       "input": "item"
     },
     {
-      "id": "e362",
+      "id": "e383",
       "from": "n109",
       "to": "n110",
       "input": "when"
     },
     {
-      "id": "e363",
+      "id": "e384",
       "from": "n108",
       "to": "n110",
       "input": "then"
     },
     {
-      "id": "e364",
+      "id": "e385",
       "from": "n107",
       "to": "n111",
       "input": "options"
     },
     {
-      "id": "e365",
+      "id": "e386",
       "from": "n83",
       "output": "then",
       "to": "n111",
       "input": "set"
     },
     {
-      "id": "e366",
+      "id": "e387",
       "from": "n110",
       "to": "n111",
       "input": "to"
     },
     {
-      "id": "e367",
+      "id": "e388",
       "from": "n81",
       "output": "found",
       "to": "n111",
       "input": "visible"
     },
     {
-      "id": "e368",
+      "id": "e389",
       "from": "n37",
       "to": "n112",
       "input": "data"
     },
     {
-      "id": "e369",
+      "id": "e390",
       "from": "n74",
       "output": "item_id",
       "to": "n112",
       "input": "match"
     },
     {
-      "id": "e370",
+      "id": "e391",
       "from": "n111",
       "to": "n112",
       "input": "value"
     },
     {
-      "id": "e371",
+      "id": "e392",
       "from": "n111",
       "output": "changed",
       "to": "n113",
       "input": "when"
     },
     {
-      "id": "e372",
+      "id": "e393",
       "from": "n112",
       "to": "n113",
       "input": "to"
     },
     {
-      "id": "e373",
+      "id": "e394",
       "from": "n81",
       "to": "n114",
       "input": "value"
     },
     {
-      "id": "e374",
+      "id": "e395",
       "from": "n114",
       "to": "n115",
       "input": "items"
     },
     {
-      "id": "e375",
+      "id": "e396",
       "from": "n81",
       "output": "found",
       "to": "n115",
       "input": "visible"
     },
     {
-      "id": "e376",
+      "id": "e397",
       "from": "n37",
       "to": "n116",
       "input": "data"
     },
     {
-      "id": "e377",
+      "id": "e398",
       "from": "n74",
       "output": "item_id",
       "to": "n116",
       "input": "match"
     },
     {
-      "id": "e378",
+      "id": "e399",
       "from": "n115",
       "to": "n116",
       "input": "value"
     },
     {
-      "id": "e379",
+      "id": "e400",
       "from": "n115",
       "output": "changed",
       "to": "n117",
       "input": "when"
     },
     {
-      "id": "e380",
+      "id": "e401",
       "from": "n116",
       "to": "n117",
       "input": "to"
     },
     {
-      "id": "e381",
+      "id": "e402",
       "from": "n81",
       "to": "n118",
       "input": "value"
     },
     {
-      "id": "e382",
+      "id": "e403",
       "from": "n83",
       "output": "then",
       "to": "n119",
       "input": "set"
     },
     {
-      "id": "e383",
+      "id": "e404",
       "from": "n118",
       "to": "n119",
       "input": "to"
     },
     {
-      "id": "e384",
+      "id": "e405",
       "from": "n81",
       "output": "found",
       "to": "n119",
       "input": "visible"
     },
     {
-      "id": "e385",
+      "id": "e406",
       "from": "n37",
       "to": "n120",
       "input": "data"
     },
     {
-      "id": "e386",
+      "id": "e407",
       "from": "n74",
       "output": "item_id",
       "to": "n120",
       "input": "match"
     },
     {
-      "id": "e387",
+      "id": "e408",
       "from": "n119",
       "to": "n120",
       "input": "value"
     },
     {
-      "id": "e388",
+      "id": "e409",
       "from": "n119",
       "output": "changed",
       "to": "n121",
       "input": "when"
     },
     {
-      "id": "e389",
+      "id": "e410",
       "from": "n120",
       "to": "n121",
       "input": "to"
     },
     {
-      "id": "e390",
+      "id": "e411",
       "from": "n81",
       "output": "found",
       "to": "n122",
       "input": "visible"
     },
     {
-      "id": "e391",
+      "id": "e412",
       "from": "n37",
       "to": "n125",
       "input": "data"
     },
     {
-      "id": "e392",
+      "id": "e413",
       "from": "n74",
       "output": "item_id",
       "to": "n125",
       "input": "match"
     },
     {
-      "id": "e393",
+      "id": "e414",
       "from": "n122",
       "to": "n127",
       "input": "when"
     },
     {
-      "id": "e394",
+      "id": "e415",
       "from": "n125",
       "to": "n127",
       "input": "to"
     },
     {
-      "id": "e395",
+      "id": "e416",
       "from": "n81",
       "output": "found",
       "to": "n123",
       "input": "visible"
     },
     {
-      "id": "e396",
+      "id": "e417",
       "from": "n123",
       "to": "n126",
       "input": "when"
     },
     {
-      "id": "e397",
+      "id": "e418",
       "from": "n126",
       "output": "yes",
       "to": "n128",
       "input": "when"
     },
     {
-      "id": "e398",
+      "id": "e419",
       "from": "n91",
       "to": "n128",
       "input": "to"
     },
     {
-      "id": "e399",
+      "id": "e420",
       "from": "n81",
       "output": "found",
       "to": "n124",
       "input": "visible"
     },
     {
-      "id": "e400",
+      "id": "e421",
       "from": "n124",
       "to": "n38",
       "input": "b"
     },
     {
-      "id": "e401",
+      "id": "e422",
       "from": "n38",
       "output": "then",
       "to": "n74",
       "input": "select"
     },
     {
-      "id": "e402",
+      "id": "e423",
       "from": "n129",
       "to": "n133",
       "input": "a"
     },
     {
-      "id": "e403",
+      "id": "e424",
       "from": "n130",
       "to": "n133",
       "input": "b"
     },
     {
-      "id": "e404",
+      "id": "e425",
       "from": "n131",
       "to": "n134",
       "input": "a"
     },
     {
-      "id": "e405",
+      "id": "e426",
       "from": "n132",
       "to": "n134",
       "input": "b"
     },
     {
-      "id": "e406",
+      "id": "e427",
       "from": "n133",
       "output": "then",
       "to": "n135",
       "input": "undo"
     },
     {
-      "id": "e407",
+      "id": "e428",
       "from": "n134",
       "output": "then",
       "to": "n135",
       "input": "redo"
     },
     {
-      "id": "e408",
+      "id": "e429",
       "from": "n135",
       "output": "can_undo",
       "to": "n129",
       "input": "enabled"
     },
     {
-      "id": "e409",
+      "id": "e430",
       "from": "n135",
       "output": "can_redo",
       "to": "n131",
       "input": "enabled"
     },
     {
-      "id": "e410",
+      "id": "e431",
       "from": "n135",
       "output": "changed",
       "to": "n48",
       "input": "b"
     },
     {
-      "id": "e411",
+      "id": "e432",
       "from": "n37",
       "to": "n136",
       "input": "data"
     },
     {
-      "id": "e412",
+      "id": "e433",
       "from": "n136",
       "to": "n137",
       "input": "items"
     },
     {
-      "id": "e413",
+      "id": "e434",
       "from": "n137",
       "to": "n139",
       "input": "value"
     },
     {
-      "id": "e414",
+      "id": "e435",
       "from": "n37",
       "to": "n140",
       "input": "data"
     },
     {
-      "id": "e415",
+      "id": "e436",
       "from": "n139",
       "to": "n140",
       "input": "match"
     },
     {
-      "id": "e416",
+      "id": "e437",
       "from": "n137",
       "output": "picked",
       "to": "n138",
       "input": "when"
     },
     {
-      "id": "e417",
+      "id": "e438",
       "from": "n138",
       "output": "first",
       "to": "n141",
       "input": "when"
     },
     {
-      "id": "e418",
+      "id": "e439",
       "from": "n140",
       "to": "n141",
       "input": "to"
     },
     {
-      "id": "e419",
+      "id": "e440",
       "from": "n138",
       "output": "second",
       "to": "n137",
       "input": "set"
     },
     {
-      "id": "e420",
+      "id": "e441",
       "from": "n53",
       "to": "n55",
       "input": "focus"
     },
     {
-      "id": "e421",
+      "id": "e442",
       "from": "n142",
       "to": "n144",
       "input": "a"
     },
     {
-      "id": "e422",
+      "id": "e443",
       "from": "n143",
       "to": "n144",
       "input": "b"
     },
     {
-      "id": "e423",
+      "id": "e444",
       "from": "n144",
       "output": "then",
       "to": "n145",
       "input": "when"
     },
     {
-      "id": "e424",
+      "id": "e445",
       "from": "n145",
       "output": "text",
       "to": "n146",
       "input": "text"
     },
     {
-      "id": "e425",
+      "id": "e446",
       "from": "n13",
       "to": "n147",
       "input": "list"
     },
     {
-      "id": "e426",
+      "id": "e447",
       "from": "n147",
       "to": "n148",
       "input": "list"
     },
     {
-      "id": "e427",
+      "id": "e448",
       "from": "n146",
       "to": "n148",
       "input": "value"
     },
     {
-      "id": "e428",
+      "id": "e449",
       "from": "n148",
       "to": "n150",
       "input": "list"
     },
     {
-      "id": "e429",
+      "id": "e450",
       "from": "n150",
       "to": "n153",
       "input": "a"
     },
     {
-      "id": "e430",
+      "id": "e451",
       "from": "n145",
       "output": "answered",
       "to": "n154",
       "input": "when"
     },
     {
-      "id": "e431",
+      "id": "e452",
       "from": "n153",
       "to": "n154",
       "input": "test"
     },
     {
-      "id": "e432",
+      "id": "e453",
       "from": "n154",
       "output": "no",
       "to": "n157",
       "input": "when"
     },
     {
-      "id": "e433",
+      "id": "e454",
       "from": "n146",
       "to": "n149",
       "input": "value"
     },
     {
-      "id": "e434",
+      "id": "e455",
       "from": "n149",
       "to": "n151",
       "input": "a"
     },
     {
-      "id": "e435",
+      "id": "e456",
       "from": "n1",
       "to": "n152",
       "input": "a"
     },
     {
-      "id": "e436",
+      "id": "e457",
       "from": "n146",
       "to": "n152",
       "input": "b"
     },
     {
-      "id": "e437",
+      "id": "e458",
       "from": "n154",
       "output": "yes",
       "to": "n155",
       "input": "when"
     },
     {
-      "id": "e438",
+      "id": "e459",
       "from": "n152",
       "to": "n155",
       "input": "path"
     },
     {
-      "id": "e439",
+      "id": "e460",
       "from": "n151",
       "to": "n155",
       "input": "text"
     },
     {
-      "id": "e440",
+      "id": "e461",
       "from": "n154",
       "output": "yes",
       "to": "n156",
       "input": "when"
     },
     {
-      "id": "e441",
+      "id": "e462",
       "from": "n146",
       "to": "n156",
       "input": "to"
     },
     {
-      "id": "e442",
+      "id": "e463",
       "from": "n155",
       "output": "done",
       "to": "n6",
       "input": "a"
     },
     {
-      "id": "e443",
+      "id": "e464",
       "from": "n158",
       "to": "n159",
       "input": "when"
     },
     {
-      "id": "e444",
+      "id": "e465",
       "from": "n7",
       "to": "n159",
       "input": "value"
     },
     {
-      "id": "e445",
+      "id": "e466",
       "from": "n159",
       "output": "text",
       "to": "n160",
       "input": "text"
     },
     {
-      "id": "e446",
+      "id": "e467",
       "from": "n160",
       "to": "n161",
       "input": "a"
     },
     {
-      "id": "e447",
+      "id": "e468",
       "from": "n159",
       "output": "answered",
       "to": "n163",
       "input": "when"
     },
     {
-      "id": "e448",
+      "id": "e469",
       "from": "n161",
       "to": "n163",
       "input": "test"
     },
     {
-      "id": "e449",
+      "id": "e470",
       "from": "n1",
       "to": "n162",
       "input": "a"
     },
     {
-      "id": "e450",
+      "id": "e471",
       "from": "n160",
       "to": "n162",
       "input": "b"
     },
     {
-      "id": "e451",
+      "id": "e472",
       "from": "n163",
       "output": "yes",
       "to": "n164",
       "input": "when"
     },
     {
-      "id": "e452",
+      "id": "e473",
       "from": "n25",
       "to": "n164",
       "input": "from"
     },
     {
-      "id": "e453",
+      "id": "e474",
       "from": "n162",
       "to": "n164",
       "input": "to"
     },
     {
-      "id": "e454",
+      "id": "e475",
       "from": "n164",
       "output": "done",
       "to": "n165",
       "input": "when"
     },
     {
-      "id": "e455",
+      "id": "e476",
       "from": "n164",
       "output": "ok",
       "to": "n165",
       "input": "test"
     },
     {
-      "id": "e456",
+      "id": "e477",
       "from": "n165",
       "output": "no",
       "to": "n170",
       "input": "when"
     },
     {
-      "id": "e457",
+      "id": "e478",
       "from": "n165",
       "output": "yes",
       "to": "n167",
       "input": "when"
     },
     {
-      "id": "e458",
+      "id": "e479",
       "from": "n160",
       "to": "n167",
       "input": "to"
     },
     {
-      "id": "e459",
+      "id": "e480",
       "from": "n165",
       "output": "yes",
       "to": "n168",
       "input": "when"
     },
     {
-      "id": "e460",
+      "id": "e481",
       "from": "n162",
       "to": "n168",
       "input": "to"
     },
     {
-      "id": "e461",
+      "id": "e482",
       "from": "n37",
       "to": "n166",
       "input": "record"
     },
     {
-      "id": "e462",
+      "id": "e483",
       "from": "n160",
       "to": "n166",
       "input": "value"
     },
     {
-      "id": "e463",
+      "id": "e484",
       "from": "n165",
       "output": "yes",
       "to": "n169",
       "input": "when"
     },
     {
-      "id": "e464",
+      "id": "e485",
       "from": "n166",
       "to": "n169",
       "input": "to"
     },
     {
-      "id": "e465",
+      "id": "e486",
       "from": "n165",
       "output": "yes",
       "to": "n6",
       "input": "b"
     },
     {
-      "id": "e466",
+      "id": "e487",
       "from": "n165",
       "output": "yes",
       "to": "n48",
       "input": "c"
     },
     {
-      "id": "e467",
+      "id": "e488",
+      "from": "n187",
+      "to": "n188",
+      "input": "when"
+    },
+    {
+      "id": "e489",
+      "from": "n13",
+      "to": "n188",
+      "input": "items"
+    },
+    {
+      "id": "e490",
+      "from": "n188",
+      "output": "picked",
+      "to": "n189",
+      "input": "when"
+    },
+    {
+      "id": "e491",
+      "from": "n188",
+      "output": "item",
+      "to": "n189",
+      "input": "to"
+    },
+    {
+      "id": "e492",
+      "from": "n188",
+      "output": "picked",
+      "to": "n23",
+      "input": "c"
+    },
+    {
+      "id": "e493",
+      "from": "n7",
+      "to": "n191",
+      "input": "a"
+    },
+    {
+      "id": "e494",
+      "from": "n190",
+      "to": "n192",
+      "input": "when"
+    },
+    {
+      "id": "e495",
+      "from": "n191",
+      "to": "n192",
+      "input": "value"
+    },
+    {
+      "id": "e496",
+      "from": "n192",
+      "output": "text",
+      "to": "n193",
+      "input": "text"
+    },
+    {
+      "id": "e497",
+      "from": "n13",
+      "to": "n194",
+      "input": "list"
+    },
+    {
+      "id": "e498",
+      "from": "n194",
+      "to": "n195",
+      "input": "list"
+    },
+    {
+      "id": "e499",
+      "from": "n193",
+      "to": "n195",
+      "input": "value"
+    },
+    {
+      "id": "e500",
+      "from": "n195",
+      "to": "n196",
+      "input": "list"
+    },
+    {
+      "id": "e501",
+      "from": "n196",
+      "to": "n197",
+      "input": "a"
+    },
+    {
+      "id": "e502",
+      "from": "n192",
+      "output": "answered",
+      "to": "n201",
+      "input": "when"
+    },
+    {
+      "id": "e503",
+      "from": "n197",
+      "to": "n201",
+      "input": "test"
+    },
+    {
+      "id": "e504",
+      "from": "n201",
+      "output": "no",
+      "to": "n204",
+      "input": "when"
+    },
+    {
+      "id": "e505",
+      "from": "n37",
+      "to": "n198",
+      "input": "record"
+    },
+    {
+      "id": "e506",
+      "from": "n193",
+      "to": "n198",
+      "input": "value"
+    },
+    {
+      "id": "e507",
+      "from": "n198",
+      "to": "n199",
+      "input": "value"
+    },
+    {
+      "id": "e508",
+      "from": "n1",
+      "to": "n200",
+      "input": "a"
+    },
+    {
+      "id": "e509",
+      "from": "n193",
+      "to": "n200",
+      "input": "b"
+    },
+    {
+      "id": "e510",
+      "from": "n201",
+      "output": "yes",
+      "to": "n202",
+      "input": "when"
+    },
+    {
+      "id": "e511",
+      "from": "n200",
+      "to": "n202",
+      "input": "path"
+    },
+    {
+      "id": "e512",
+      "from": "n199",
+      "to": "n202",
+      "input": "text"
+    },
+    {
+      "id": "e513",
+      "from": "n201",
+      "output": "yes",
+      "to": "n203",
+      "input": "when"
+    },
+    {
+      "id": "e514",
+      "from": "n193",
+      "to": "n203",
+      "input": "to"
+    },
+    {
+      "id": "e515",
+      "from": "n202",
+      "output": "done",
+      "to": "n205",
+      "input": "a"
+    },
+    {
+      "id": "e516",
+      "from": "n205",
+      "output": "then",
+      "to": "n6",
+      "input": "c"
+    },
+    {
+      "id": "e517",
       "from": "n7",
       "to": "n172",
       "input": "a"
     },
     {
-      "id": "e468",
+      "id": "e518",
       "from": "n171",
       "to": "n173",
       "input": "when"
     },
     {
-      "id": "e469",
+      "id": "e519",
       "from": "n172",
       "to": "n173",
       "input": "message"
     },
     {
-      "id": "e470",
+      "id": "e520",
       "from": "n173",
       "output": "yes",
       "to": "n174",
       "input": "when"
     },
     {
-      "id": "e471",
+      "id": "e521",
       "from": "n25",
       "to": "n174",
       "input": "path"
     },
     {
-      "id": "e472",
+      "id": "e522",
       "from": "n173",
       "output": "yes",
       "to": "n175",
       "input": "when"
     },
     {
-      "id": "e473",
+      "id": "e523",
       "from": "n39",
       "to": "n175",
       "input": "to"
     },
     {
-      "id": "e474",
+      "id": "e524",
       "from": "n174",
       "output": "done",
       "to": "n9",
       "input": "c"
     },
     {
-      "id": "e475",
+      "id": "e525",
       "from": "n19",
       "output": "yes",
       "to": "n176",
       "input": "when"
     },
     {
-      "id": "e476",
+      "id": "e526",
       "from": "n176",
       "output": "date",
       "to": "n177",
       "input": "date"
     },
     {
-      "id": "e477",
+      "id": "e527",
       "from": "n176",
       "output": "date",
       "to": "n178",
       "input": "date"
     },
     {
-      "id": "e478",
+      "id": "e528",
       "from": "n176",
       "output": "date",
       "to": "n179",
       "input": "date"
     },
     {
-      "id": "e479",
+      "id": "e529",
       "from": "n177",
       "to": "n182",
       "input": "a"
     },
     {
-      "id": "e480",
+      "id": "e530",
       "from": "n179",
       "to": "n182",
       "input": "c"
     },
     {
-      "id": "e481",
+      "id": "e531",
       "from": "n178",
       "to": "n183",
       "input": "b"
     },
     {
-      "id": "e482",
+      "id": "e532",
       "from": "n181",
       "to": "n184",
       "input": "a"
     },
     {
-      "id": "e483",
+      "id": "e533",
       "from": "n182",
       "to": "n184",
       "input": "b"
     },
     {
-      "id": "e484",
+      "id": "e534",
       "from": "n183",
       "to": "n184",
       "input": "c"
     },
     {
-      "id": "e485",
+      "id": "e535",
       "from": "n1",
       "to": "n180",
       "input": "a"
     },
     {
-      "id": "e486",
+      "id": "e536",
       "from": "n176",
       "output": "then",
       "to": "n185",
       "input": "when"
     },
     {
-      "id": "e487",
+      "id": "e537",
       "from": "n180",
       "to": "n185",
       "input": "path"
     },
     {
-      "id": "e488",
+      "id": "e538",
       "from": "n184",
       "to": "n185",
       "input": "text"
     },
     {
-      "id": "e489",
+      "id": "e539",
       "from": "n185",
       "output": "done",
       "to": "n186",
       "input": "when"
     },
     {
-      "id": "e490",
+      "id": "e540",
       "from": "n185",
       "output": "ok",
       "to": "n186",
       "input": "test"
     },
     {
-      "id": "e491",
+      "id": "e541",
       "from": "n186",
       "output": "yes",
-      "to": "n6",
-      "input": "c"
+      "to": "n205",
+      "input": "b"
+    },
+    {
+      "id": "e542",
+      "from": "n81",
+      "output": "found",
+      "to": "n206",
+      "input": "value"
+    },
+    {
+      "id": "e543",
+      "from": "n206",
+      "to": "n207",
+      "input": "visible"
     }
   ],
-  "next_id": 492,
+  "next_id": 544,
   "layout": {
     "id": "root",
     "kind": "column",
     "children": [
       {
-        "id": "main",
-        "kind": "row",
+        "id": "side",
+        "title": "Boards",
+        "icon": "layout-dashboard",
+        "kind": "dock",
+        "width": 220,
+        "children": [
+          {
+            "node": "n21",
+            "grow": true
+          },
+          {
+            "node": "n142"
+          },
+          {
+            "node": "n137",
+            "height": 200
+          }
+        ],
+        "side": "left"
+      },
+      {
+        "id": "middle",
+        "kind": "column",
         "grow": true,
         "children": [
           {
-            "id": "side",
-            "kind": "column",
-            "width": 220,
+            "node": "n50"
+          },
+          {
+            "id": "header",
+            "kind": "row",
             "children": [
               {
-                "node": "n21",
+                "node": "n55",
                 "grow": true
               },
               {
-                "node": "n142"
+                "node": "n59",
+                "width": 160
               },
               {
-                "node": "n137",
-                "height": 200
+                "node": "n129"
+              },
+              {
+                "node": "n131"
+              },
+              {
+                "node": "n62"
               }
             ]
           },
           {
-            "id": "middle",
-            "kind": "column",
-            "grow": true,
+            "node": "n74",
+            "grow": true
+          }
+        ]
+      },
+      {
+        "id": "panel",
+        "title": "Card",
+        "icon": "square-pen",
+        "kind": "dock",
+        "width": 320,
+        "children": [
+          {
+            "node": "n207"
+          },
+          {
+            "node": "n85"
+          },
+          {
+            "node": "n90"
+          },
+          {
+            "node": "n98"
+          },
+          {
+            "id": "dates",
+            "kind": "row",
             "children": [
               {
-                "node": "n50"
+                "node": "n104",
+                "grow": true
               },
               {
-                "id": "header",
-                "kind": "row",
-                "children": [
-                  {
-                    "node": "n55",
-                    "grow": true
-                  },
-                  {
-                    "node": "n59",
-                    "width": 160
-                  },
-                  {
-                    "node": "n129"
-                  },
-                  {
-                    "node": "n131"
-                  },
-                  {
-                    "node": "n62"
-                  }
-                ]
-              },
-              {
-                "node": "n74",
+                "node": "n111",
                 "grow": true
               }
             ]
           },
           {
-            "id": "panel",
-            "kind": "column",
+            "node": "n115"
+          },
+          {
+            "node": "n119",
+            "grow": true
+          },
+          {
+            "id": "card_buttons",
+            "kind": "row",
             "children": [
               {
-                "node": "n85",
-                "width": 320
+                "node": "n122"
               },
               {
-                "node": "n90",
-                "width": 320
+                "node": "n123"
               },
               {
-                "node": "n98",
-                "width": 320
-              },
-              {
-                "id": "dates",
-                "kind": "row",
-                "children": [
-                  {
-                    "node": "n104",
-                    "grow": true
-                  },
-                  {
-                    "node": "n111",
-                    "grow": true
-                  }
-                ]
-              },
-              {
-                "node": "n115",
-                "width": 320
-              },
-              {
-                "node": "n119",
-                "grow": true,
-                "width": 320
-              },
-              {
-                "id": "card_buttons",
-                "kind": "row",
-                "children": [
-                  {
-                    "node": "n122"
-                  },
-                  {
-                    "node": "n123"
-                  },
-                  {
-                    "node": "n124"
-                  }
-                ]
+                "node": "n124"
               }
             ]
           }
-        ]
+        ],
+        "side": "right"
       },
       {
         "node": "n80"

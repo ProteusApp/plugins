@@ -10,7 +10,7 @@ A folder can carry its own Proteus setup in a `.proteus` folder. It stays off un
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `project.exclude` | `node_modules`, `target`, `dist` and other build folders | Folder names that search and **Go to File** skip. |
+| `project.exclude` | `.git`, `.DS_Store`, `node_modules` and other folders nobody reads | Glob patterns, such as `node_modules`, `*.min.js` or `docs/build`, that the file tree, Search and **Go to File** leave out. It took over `code.explorer.hide`, and keeps what was set there. |
 | `project.reopen` | `true` | Opens the last folder when the Code Editor starts. |
 
 ## Permissions

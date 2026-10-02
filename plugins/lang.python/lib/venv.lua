@@ -32,6 +32,22 @@ local function parent (path)
   return path:match ('^(.*)/[^/]*$') or path
 end
 
+---True while the Code Editor has a folder open that the user does not trust. A folder's own
+---programs, such as a `.venv` Python or the basedpyright in its node_modules, run nothing
+---until then. Without the `project` service there is no folder to trust.
+---@param project? Proteus.Project
+---@param layer Proteus.ProjectLayer What `app.kernel.project ()` says.
+---@return boolean
+function M.untrusted (project, layer)
+  if not project or not project.root () then
+    return false
+  end
+  if project.trusted then
+    return not project.trusted ()
+  end
+  return layer.trusted ~= true
+end
+
 ---A program inside a virtual environment, such as `.venv/Scripts/python.exe`.
 ---@param env string The environment's folder.
 ---@param name string Such as `'python'`.

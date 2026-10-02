@@ -745,7 +745,9 @@ test ('cut moves cells, styles and notes, even to another sheet', function ()
   eq (text (s, 'B1'), '')
   eq (s:own_style (1, 2), nil)
   eq (s:note (1, 2), nil)
-  eq (other:text (3, 3), '=A1*2')
+  -- The moved formula still reads A1 on the sheet it came from.
+  eq (other:text (3, 3), '=Sheet1!A1*2')
+  eq (other:value (3, 3), 10)
   ok (other:is_bold (3, 3))
   eq (other:note (3, 3), 'Moves.')
   local info = assert (s.book:undo ())
@@ -816,6 +818,10 @@ test ('matches tests values the way filters and rules do', function ()
   ok (not mt (nil, '', '>', '0'))
   ok (mt (nil, '', '<>', '0'))
   ok (mt (f.error ('#N/A'), '#N/A', 'error'))
+  -- Numbers compare at 15 significant digits, as formulas do.
+  ok (mt (0.1 + 0.2, '0.3', '=', '0.3'))
+  ok (not mt (0.1 + 0.2, '0.3', '>', '0.3'))
+  ok (mt (0.1 + 0.2, '0.3', 'between', '0.3', '1'))
 end)
 
 ---------------------------------------------------------------------------------------------

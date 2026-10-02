@@ -1,8 +1,12 @@
 -- shader.preview: runs the shader in front, live. GLSL runs on WebGL 2 and WGSL on WebGPU,
--- in a web view: page/preview.js draws, and this plugin sends it the program as messages.
--- The panel shows the picture, its problems by line or by node, and a control for every
--- uniform: a Parameter node in a graph, or a uniform with notes in a code shader. Moving a
--- control changes the picture at once, without compiling again.
+-- in a web view: page/preview.js draws, and this plugin sends it the passes as messages.
+-- The panel shows the picture, its problems by line or by node, what each channel shows, and
+-- a control for every uniform: a Parameter node in a graph, or a uniform with notes in a code
+-- shader. Moving a control changes the picture at once, without compiling again.
+--
+-- A shader's buffers run before it each frame, and its channels read them, noise, a checker,
+-- or an image the user picks. An image comes through app.grants, so the plugin never sees a
+-- path and needs no permission: the web view gets the file's bytes.
 
 -- lang=css
 local CSS = [[
@@ -49,9 +53,37 @@ local CSS = [[
 .sp-part .num { width: 48px; text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); }
 .sp-part input[type=color] { width: 44px; height: 22px; padding: 0; border: 0.5px solid var(--border); border-radius: 4px; background: none; }
 .sp-empty { color: var(--fg-muted); padding: 2px 6px; }
+.sp-channel { display: grid; grid-template-columns: 92px 1fr; gap: 4px 8px; align-items: center; margin-bottom: 6px; }
+.sp-channel .name { font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-channel .parts { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-width: 0; }
+.sp-channel select {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 4px;
+  max-width: 100%;
+}
+.sp-channel .file { color: var(--fg-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
 ]]
 
 local SCALES = { 0.5, 1, 2 }
+
+-- What a channel can show, as the choices of its menu.
+local SOURCES = {
+  { 'none', 'Nothing' },
+  { 'noise', 'Noise' },
+  { 'checker', 'Checker' },
+  { 'image', 'Image…' },
+  { 'buffer-a', 'Buffer A' },
+  { 'buffer-b', 'Buffer B' },
+  { 'buffer-c', 'Buffer C' },
+  { 'buffer-d', 'Buffer D' },
+}
+
+local IMAGE_TYPES = { 'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif' }
 
 local DIMS =
   { float = 1, int = 1, uint = 1, bool = 1, vec2 = 2, vec3 = 3, vec4 = 4 }
@@ -59,9 +91,12 @@ local DIMS =
 ---@type Proteus.Plugin
 return {
   name = 'Shader preview',
-  description = 'Runs the shader in front live, on WebGL 2 or WebGPU, with its problems and a control for every uniform.',
-  version = '1.0.1',
-  requires = { proteus = '>=0.2.0', features = { 'permissions', 'webview' } },
+  description = 'Runs the shader in front live, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.',
+  version = '1.1.0',
+  requires = {
+    proteus = '>=0.2.0',
+    features = { 'permissions', 'webview', 'grants' },
+  },
   permissions = {},
   depends = {
     'lib.ui',
@@ -72,6 +107,7 @@ return {
   },
   optional = { 'ui.tabs', 'shader.canvas', 'ui.statusbar', 'ui.notify' },
   activate = function (app)
+    local notify = app.try_use ('notify')
     local ui = app.use ('ui')
     local core = app.use ('shader') --[[@as Shader.Core]]
     local docs = app.use ('shader.docs') --[[@as Shader.Docs]]
@@ -101,23 +137,75 @@ return {
       })
 
     local previews = {} ---@type ShaderPreview.Instance[]
+    -- Why an image a channel shows did not arrive, by grant.
+    local file_errors = {} ---@type table<string, string>
+
+    ---@param text string
+    local function warn (text)
+      if notify then
+        notify.error (text)
+      else
+        app.warn (text)
+      end
+    end
+
+    ---Asks the user for an image for a channel, and shows it there.
+    ---@param path string
+    ---@param index integer
+    ---@param src Shader.ChannelSource
+    local function pick_image (path, index, src)
+      if not app.grants then
+        warn ('Picking an image needs a newer version of Proteus.')
+        return
+      end
+      app.grants.open ({
+        title = 'Pick an Image for iChannel' .. index,
+        filters = { { name = 'Images', extensions = IMAGE_TYPES } },
+      }, function (picked, err)
+        local g = picked and picked[1]
+        if not g then
+          if err then
+            warn ('Could not pick an image: ' .. tostring (err))
+          end
+          return
+        end
+        -- Picking a file again sends its bytes again, even one refused earlier.
+        file_errors[g.id] = nil
+        for _, p in ipairs (previews) do
+          p.resend (g.id)
+        end
+        docs.set_channel (path, index, {
+          kind = 'image',
+          grant = g.id,
+          name = g.name,
+          filter = src.filter,
+          wrap = src.wrap,
+        })
+      end)
+    end
 
     ---Builds one preview: the picture and its panels. The dock and the large tab each have one.
     ---@param large boolean
     ---@return ShaderPreview.Instance
     local function make_preview (large)
       local shown_path = nil ---@type string?
+      local shown_pass = 'image' ---@type Shader.PassId
       local last_key = nil ---@type string?
-      local program = nil ---@type Shader.Program?
+      -- The passes that run, by id: each one's file and program.
+      local runs = {} ---@type table<string, { path: string, program: Shader.Program }>
       local lua_errors = {} ---@type Shader.CompileError[]
       local gpu_errors = {} ---@type Shader.GpuError[]
+      -- The images whose bytes went to this preview's page, by grant.
+      local sent = {} ---@type table<string, boolean>
       local playing = true
       local uniform_shape = ''
+      local channel_shape = ''
       local scale = tonumber (app.store.get ('scale', 1)) or 1
       local lang_buttons = {} ---@type table<string, Proteus.El>
       local scale_buttons = {} ---@type table<number, Proteus.El>
       local problems_el = ui.div ({ class = 'sp-section' })
       local uniforms_el = ui.div ({ class = 'sp-section' })
+      local channels_el = ui.div ({ class = 'sp-section' })
       local fps_el = ui.span ({ text = '' })
       local time_el = ui.span ({ text = '' })
       local lang_el = ui.span ({ text = '' })
@@ -130,8 +218,10 @@ return {
         for _, e in ipairs (lua_errors) do
           out[#out + 1] = e
         end
-        local p = program
         for _, e in ipairs (gpu_errors) do
+          local pass = e.pass or shown_pass
+          local run = runs[pass]
+          local p = run and run.program
           local line = e.line
           local node ---@type string?
           if line and p then
@@ -158,6 +248,8 @@ return {
             node = node,
             severity = e.severity,
             stage = e.stage == 'vertex' and 'vertex' or 'fragment',
+            pass = pass ~= shown_pass and pass or nil,
+            path = run and run.path or nil,
           }
         end
         return out
@@ -165,15 +257,20 @@ return {
 
       local function draw_problems ()
         local list = mapped ()
-        if shown_path then
-          local code_list = {} ---@type Shader.CompileError[]
+        if shown_path and not large then
+          -- Each pass's lines go to its own file's editor.
+          local by_path = { [shown_path] = {} } ---@type table<string, Shader.CompileError[]>
+          for _, run in pairs (runs) do
+            by_path[run.path] = by_path[run.path] or {}
+          end
           for _, e in ipairs (list) do
-            if e.line then
-              code_list[#code_list + 1] = e
+            local where = e.path or shown_path
+            if e.line and by_path[where] then
+              table.insert (by_path[where], e)
             end
           end
-          if not large then
-            app.emit ('shader:problems', shown_path, code_list)
+          for path, code_list in pairs (by_path) do
+            app.emit ('shader:problems', path, code_list)
           end
         end
         local children = { ui.h4 ({ 'Problems' }) } ---@type Proteus.Child[]
@@ -190,6 +287,9 @@ return {
           local where = e.node and ('node ' .. e.node)
             or (e.line and ('line ' .. e.line))
             or (e.stage or '')
+          if e.pass then
+            where = core.passes.pass_label (e.pass) .. ' ' .. where
+          end
           children[#children + 1] = ui.div ({
             class = {
               'sp-problem',
@@ -198,7 +298,9 @@ return {
             ui.span ({ class = 'where', where }),
             ui.span ({ class = 'what', e.message }),
             onclick = function ()
-              if e.node and canvas and shown_path then
+              if e.path and e.path ~= shown_path then
+                docs.open (e.path)
+              elseif e.node and canvas and shown_path then
                 canvas.select (shown_path, { e.node })
               end
             end,
@@ -226,6 +328,14 @@ return {
           end)
           gpu_errors = list
           draw_problems ()
+        elseif message.type == 'file' and type (message.grant) == 'string' then
+          file_errors[message.grant] =
+            tostring (message.error or 'It did not load.')
+          app.timer.after (0, function ()
+            for _, p in ipairs (previews) do
+              p.refresh ()
+            end
+          end)
         elseif message.type == 'stats' then
           local fps = tonumber (message.fps) or 0
           fps_el:text (string.format ('%d fps', math.floor (fps + 0.5)))
@@ -259,14 +369,20 @@ return {
       end
       post ({ type = 'scale', scale = scale })
 
-      ---What the page needs of a program, and nothing else.
+      ---What the page needs of a program, and nothing else. Each channel carries what it shows.
       ---@param p Shader.Program
+      ---@param sources table<integer, Shader.ChannelSource>
       ---@return table
-      local function page_program (p)
+      local function page_program (p, sources)
         local uniforms = {} ---@type table[]
         for i, u in ipairs (p.uniforms) do
           uniforms[i] =
             { key = u.key, glsl = u.glsl, type = u.type, value = u.value }
+        end
+        local channels = {} ---@type table[]
+        for i, c in ipairs (p.channels or {}) do
+          channels[i] =
+            { index = c.index, names = c.names, source = sources[c.index] }
         end
         return {
           language = p.language,
@@ -276,7 +392,25 @@ return {
           fragment_entry = p.fragment_entry,
           uniforms = uniforms,
           layout = p.layout,
+          bindings = p.bindings,
+          channels = channels,
         }
+      end
+
+      ---A source as text, for telling whether anything the page runs changed.
+      ---@param src Shader.ChannelSource?
+      ---@return string
+      local function source_key (src)
+        if not src then
+          return ''
+        end
+        return table.concat ({
+          src.kind,
+          src.buffer or '',
+          src.grant or '',
+          src.filter or '',
+          src.wrap or '',
+        }, ':')
       end
 
       ---@param u Shader.Uniform
@@ -402,6 +536,137 @@ return {
         uniforms_el:set_children (children)
       end
 
+      ---One channel's controls: what it shows, and how it filters and wraps.
+      ---@param path string
+      ---@param c Shader.Channel
+      ---@param src Shader.ChannelSource
+      ---@return Proteus.El
+      local function channel_row (path, c, src)
+        local current = src.kind == 'buffer'
+            and ('buffer-' .. tostring (src.buffer))
+          or src.kind
+        ---@param words string
+        local function set (words)
+          local next_src = core.passes.parse_source (words) or { kind = 'none' }
+          next_src.filter, next_src.wrap = src.filter, src.wrap
+          docs.set_channel (path, c.index, next_src)
+        end
+        ---@type Proteus.ElementSpec
+        local menu = {
+          title = 'What iChannel' .. c.index .. ' shows',
+          onchange = function (ev)
+            local v = tostring (ev.value or '')
+            if v == 'image' then
+              pick_image (path, c.index, src)
+              -- The menu shows the source again until an image is picked.
+              channel_shape = ''
+              app.timer.after (0, function ()
+                inst.refresh ()
+              end)
+            else
+              set (v)
+            end
+          end,
+        }
+        for _, o in ipairs (SOURCES) do
+          menu[#menu + 1] =
+            ui.h ('option', { value = o[1], selected = o[1] == current, o[2] })
+        end
+        local parts = { ui.h ('select', menu) } ---@type Proteus.Child[]
+        if src.kind == 'image' then
+          parts[#parts + 1] =
+            ui.span ({ class = 'file', title = src.name, src.name or '' })
+          parts[#parts + 1] = ui.button ({
+            'Pick…',
+            variant = 'ghost',
+            title = 'Pick another image',
+            onclick = function ()
+              pick_image (path, c.index, src)
+            end,
+          })
+        end
+        if src.kind ~= 'none' then
+          local filter = src.filter or 'linear'
+          local wrap = src.wrap
+            or (src.kind == 'buffer' and 'clamp' or 'repeat')
+          parts[#parts + 1] = ui.h ('select', {
+            title = 'How it reads between pixels',
+            ui.h (
+              'option',
+              { value = 'linear', selected = filter == 'linear', 'Smooth' }
+            ),
+            ui.h (
+              'option',
+              { value = 'nearest', selected = filter == 'nearest', 'Pixels' }
+            ),
+            onchange = function (ev)
+              local copy = core.graph.copy (src) --[[@as Shader.ChannelSource]]
+              copy.filter = tostring (ev.value) == 'nearest' and 'nearest'
+                or 'linear'
+              docs.set_channel (path, c.index, copy)
+            end,
+          })
+          parts[#parts + 1] = ui.h ('select', {
+            title = 'What it reads past its edges',
+            ui.h (
+              'option',
+              { value = 'repeat', selected = wrap == 'repeat', 'Repeat' }
+            ),
+            ui.h (
+              'option',
+              { value = 'clamp', selected = wrap == 'clamp', 'Clamp' }
+            ),
+            onchange = function (ev)
+              local copy = core.graph.copy (src) --[[@as Shader.ChannelSource]]
+              copy.wrap = tostring (ev.value) == 'clamp' and 'clamp' or 'repeat'
+              docs.set_channel (path, c.index, copy)
+            end,
+          })
+        end
+        return ui.div ({
+          class = 'sp-channel',
+          ui.span ({
+            class = 'name',
+            title = table.concat (c.names, ', '),
+            table.concat (c.names, ', '),
+          }),
+          ui.div ({ class = 'parts', parts }),
+        })
+      end
+
+      ---The Channels section: one row for each channel the shader in front reads.
+      ---@param path string?
+      ---@param p Shader.Program?
+      ---@param sources table<integer, Shader.ChannelSource>
+      local function draw_channels (path, p, sources)
+        local list = p and p.channels or {}
+        local shape = { path or '' } ---@type string[]
+        for _, c in ipairs (list) do
+          shape[#shape + 1] = table.concat (c.names, ',')
+            .. '='
+            .. source_key (sources[c.index])
+            .. ':'
+            .. tostring (sources[c.index] and sources[c.index].name)
+        end
+        local key = table.concat (shape, '|')
+        if key == channel_shape then
+          return
+        end
+        channel_shape = key
+        if #list == 0 or not path then
+          channels_el:set_children ({})
+          channels_el:show (false)
+          return
+        end
+        local children = { ui.h4 ({ 'Channels' }) } ---@type Proteus.Child[]
+        for _, c in ipairs (list) do
+          children[#children + 1] =
+            channel_row (path, c, sources[c.index] or { kind = 'none' })
+        end
+        channels_el:show (true)
+        channels_el:set_children (children)
+      end
+
       local function draw_bar ()
         local d = shown_path and docs.get (shown_path)
         for key, b in pairs (lang_buttons) do
@@ -423,39 +688,136 @@ return {
         shown_path = d and d.path or nil
         draw_bar ()
         if not d then
-          program, lua_errors, gpu_errors = nil, {}, {}
+          runs, lua_errors, gpu_errors = {}, {}, {}
           last_key = nil
           draw_problems ()
           draw_uniforms ({})
+          draw_channels (nil, nil, {})
           return
         end
         local p, errors = docs.program (d.path)
-        lua_errors = errors or {}
-        program = p
+        local set = docs.passes (d.path)
+        shown_pass = set.show
+        lua_errors = {}
+        for _, e in ipairs (errors or {}) do
+          lua_errors[#lua_errors + 1] = e
+        end
         if not p then
-          gpu_errors = {}
+          runs, gpu_errors = {}, {}
           draw_problems ()
           draw_uniforms ({})
+          draw_channels (nil, nil, {})
           return
         end
-        local key = table.concat ({
-          d.path,
-          p.language,
-          p.source,
-          p.vertex or '',
-          p.vertex_entry or '',
-          p.fragment_entry or '',
-        }, '\0')
+        -- Each buffer runs before the image, in the image's language. When a buffer is in
+        -- front, the page shows its picture, and the image does not run.
+        runs = {}
+        local order = {} ---@type { id: Shader.PassId, path: string, program: Shader.Program }[]
+        for _, b in ipairs (core.passes.BUFFERS) do
+          local path = set.buffers[b]
+          if path then
+            local bp, berrors ---@type Shader.Program?, Shader.CompileError[]
+            if b == set.show then
+              bp, berrors = p, {}
+            else
+              bp, berrors = docs.program (path, p.language)
+            end
+            for _, e in ipairs (berrors or {}) do
+              local copy = core.graph.copy (e) --[[@as Shader.CompileError]]
+              copy.pass, copy.path = b, path
+              lua_errors[#lua_errors + 1] = copy
+            end
+            if bp and bp.language ~= p.language then
+              lua_errors[#lua_errors + 1] = {
+                message = core.passes.pass_label (b)
+                  .. ' is '
+                  .. bp.language:upper ()
+                  .. ', and this shader runs '
+                  .. p.language:upper ()
+                  .. '. Every pass runs in one language.',
+                severity = 'error',
+                pass = b,
+                path = path,
+              }
+            elseif bp then
+              order[#order + 1] = { id = b, path = path, program = bp }
+            end
+          end
+        end
+        if set.show == 'image' then
+          order[#order + 1] = { id = 'image', path = d.path, program = p }
+        end
+        local passes = {} ---@type table[]
+        local key_parts = { d.path, p.language, set.show } ---@type string[]
+        local shown_sources = {} ---@type table<integer, Shader.ChannelSource>
+        for i, run in ipairs (order) do
+          runs[run.id] = { path = run.path, program = run.program }
+          local sources = docs.channels (run.path)
+          if run.id == set.show then
+            shown_sources = sources
+          end
+          passes[i] =
+            { id = run.id, program = page_program (run.program, sources) }
+          local rp = run.program
+          key_parts[#key_parts + 1] = table.concat ({
+            run.id,
+            rp.source,
+            rp.vertex or '',
+            rp.vertex_entry or '',
+            rp.fragment_entry or '',
+          }, '\1')
+          for _, c in ipairs (rp.channels or {}) do
+            local src = sources[c.index]
+            key_parts[#key_parts + 1] = source_key (src)
+            -- An image goes to the page once, and stays there for every pass.
+            if src and src.kind == 'image' and src.grant then
+              if file_errors[src.grant] then
+                lua_errors[#lua_errors + 1] = {
+                  message = 'iChannel'
+                    .. c.index
+                    .. ' shows '
+                    .. (src.name or 'an image')
+                    .. ', which did not arrive: '
+                    .. file_errors[src.grant]
+                    .. ' Pick it again to use it.',
+                  severity = 'warning',
+                  pass = run.id ~= set.show and run.id or nil,
+                  path = run.path,
+                }
+              elseif not sent[src.grant] then
+                sent[src.grant] = true
+                local ok, err = pcall (
+                  surface.widget,
+                  surface,
+                  'send_file',
+                  src.grant,
+                  src.grant
+                )
+                if not ok then
+                  file_errors[src.grant] = tostring (err)
+                end
+              end
+            end
+          end
+        end
+        local key = table.concat (key_parts, '\0')
         if key ~= last_key then
           last_key = key
-          post ({ type = 'run', program = page_program (p) })
+          post ({
+            type = 'run',
+            language = p.language,
+            show = set.show,
+            passes = passes,
+          })
         else
           for _, u in ipairs (p.uniforms) do
             post ({ type = 'uniform', key = u.key, value = u.value })
           end
+          -- After a run, the page's status draws the problems.
           draw_problems ()
         end
         draw_uniforms (p.uniforms)
+        draw_channels (d.path, p, shown_sources)
       end
 
       ---@param key 'glsl'|'wgsl'
@@ -541,7 +903,7 @@ return {
         bar,
         ui.div ({ class = 'sp-surface', surface }),
         ui.div ({ class = 'sp-stats', lang_el, fps_el, time_el }),
-        ui.div ({ class = 'sp-scroll', problems_el, uniforms_el }),
+        ui.div ({ class = 'sp-scroll', problems_el, channels_el, uniforms_el }),
       })
 
       inst = {
@@ -564,6 +926,9 @@ return {
           if path == shown_path then
             post ({ type = 'uniform', key = key, value = value })
           end
+        end,
+        resend = function (grant)
+          sent[grant] = nil
         end,
       }
       return inst
@@ -600,6 +965,13 @@ return {
     app.on ('shader:uniform', function (path, key, value)
       for _, p in ipairs (previews) do
         p.uniform (path, key, value)
+      end
+    end)
+    -- A buffer without a tab runs from its file, so a change to any shader file counts.
+    app.on ('fs:changed', function (path)
+      local p = tostring (path)
+      if p:sub (1, #docs.folder + 1) == docs.folder .. '/' then
+        soon ()
       end
     end)
     app.on ('settings:changed', function (key)

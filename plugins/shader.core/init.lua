@@ -1,7 +1,7 @@
 -- shader.core: the pure logic of the shader builder, shared with the other shader plugins as
 -- the `shader` service. It has no UI and does no I/O: the node catalog, graph operations,
--- the GLSL and WGSL compiler, code shaders, the file format, builds, undo, and how numbers
--- and colours show in fields.
+-- the GLSL and WGSL compiler, code shaders, channels and passes, the file format, builds, undo,
+-- and how numbers and colours show in fields.
 
 local build = require ('shader_build') --[[@as Shader.BuildModule]]
 local compile = require ('shader_compile') --[[@as Shader.CompileModule]]
@@ -13,6 +13,7 @@ local helpers = require ('shader_helpers') --[[@as Shader.HelpersModule]]
 local history = require ('shader_history') --[[@as Shader.HistoryModule]]
 local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 local source = require ('shader_source') --[[@as Shader.SourceModule]]
 local types = require ('shader_types') --[[@as Shader.TypesModule]]
 
@@ -20,7 +21,7 @@ local types = require ('shader_types') --[[@as Shader.TypesModule]]
 return {
   name = 'Shader core',
   description = 'The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.',
-  version = '1.2.0',
+  version = '1.3.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)
@@ -33,6 +34,7 @@ return {
       compile = compile,
       layout = layout,
       source = source,
+      passes = passes,
       file = file,
       format = format,
       history = history,

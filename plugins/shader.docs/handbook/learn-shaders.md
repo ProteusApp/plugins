@@ -67,10 +67,11 @@ Read them in order. Each one uses what the ones before it taught.
 | 11. [Clouds and other volumes](volumes.md) | Light passing through fog, smoke and cloud. |
 | 12. [A weather system](weather.md) | Sky, sun, stars, clouds, rain, snow, lightning and wet ground, all set by one dial. |
 
-Three more pages sit beside the course:
+Four more pages sit beside the course:
 
 - [Shaders as node graphs](node-graphs.md) builds the same ideas from nodes, and shows which node matches which function.
 - [From GLSL to WGSL](wgsl.md) turns a GLSL shader into WGSL for WebGPU.
+- [Textures and buffers](textures.md) reads pictures in a shader, and adds passes that remember what they drew.
 - [Further reading](resources.md) lists the books, articles, videos and shaders these pages draw on.
 
 ## How to learn from these pages

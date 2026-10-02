@@ -796,6 +796,64 @@ test ('impossible dates stay text', function ()
   eq (parse ('2/29/1900'), { 60, 'm/d/yyyy' })
 end)
 
+test ('typing and DATEVALUE read the same dates', function ()
+  local ctx = {
+    rows = 10,
+    cols = 10,
+    clock = clock,
+    value = function ()
+      return nil
+    end,
+  } ---@type Sheet.Context
+  ---@param text string
+  ---@return Sheet.Value
+  local function datevalue (text)
+    local ast = assert (formula.parse ('=DATEVALUE("' .. text .. '")'))
+    return formula.evaluate (ast, ctx)
+  end
+  local cases = {
+    { '9/2026', F.serial (2026, 9, 1) },
+    { '2026.09.29', TUESDAY },
+    { '2026-09-29', TUESDAY },
+    { '9/29/26', TUESDAY },
+    { '29 Sept. 2026', TUESDAY },
+    { '29-sep 2026', TUESDAY },
+    { 'Sep. 29, 2026', TUESDAY },
+    { 'sep 2026', F.serial (2026, 9, 1) },
+    { '9/29', TUESDAY },
+    { '29-Sep', TUESDAY },
+    { '2/29/1900', 60 },
+    -- Neither reads a year of three digits, nor one before 1900.
+    { '1/2/123', nil },
+    { '1/2/1899', nil },
+    { '2/30/2026', nil },
+    { 'Sep 292026', nil },
+  }
+  for _, case in ipairs (cases) do
+    local text, want = case[1], case[2]
+    local typed = F.parse_input (text, clock)
+    if want then
+      eq (typed, want, 'typed ' .. text)
+      eq (datevalue (text), want, 'DATEVALUE of ' .. text)
+    else
+      eq (typed, text, 'typed ' .. text .. ' stays text')
+      eq (datevalue (text), formula.error ('#VALUE!'), 'DATEVALUE of ' .. text)
+    end
+  end
+  -- A dotted date shows with dashes, since a point in a format code is a decimal point.
+  eq (parse ('2026.09.29'), { TUESDAY, 'yyyy-mm-dd' })
+  eq (parse ('9/2026'), { F.serial (2026, 9, 1), 'm/yyyy' })
+  eq (parse ('9 a.m.'), { 9 / 24, 'h AM/PM' })
+  eq (
+    parse ('2:30:15.5 pm'),
+    { (14.5 * 3600 + 15.5) / 86400, 'h:mm:ss.0 AM/PM' }
+  )
+  eq (
+    parse ('Sep 29, 2026, 2:30 PM'),
+    { HALF_PAST_TWO, 'mmm d, yyyy h:mm AM/PM' }
+  )
+end)
+
 test ('what parse_input stores shows the way it was typed', function ()
   local typed = {
     '1,234.56',
