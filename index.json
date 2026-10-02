@@ -425,7 +425,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -456,14 +456,22 @@
       },
       "files": [
         "README.md",
+        "git_args.lua",
         "git_blame.lua",
         "git_graph.lua",
+        "git_html.lua",
         "git_parse.lua",
+        "git_paths.lua",
+        "git_text.lua",
         "init.lua",
-        "tests/git.test.lua"
+        "tests/git.test.lua",
+        "tests/git_args.test.lua",
+        "tests/git_html.test.lua",
+        "tests/git_paths.test.lua",
+        "tests/git_text.test.lua"
       ],
-      "commit": "6fb516eee59e53396e5c2639646b2ce0abdf9ebe",
-      "updated": "2026-10-02T16:38:41Z"
+      "commit": "e28f26da4eecab0c7e28b14d0ad12dfb6a4899c0",
+      "updated": "2026-10-02T16:40:59Z"
     },
     {
       "id": "lang.gitfiles",
