@@ -1,7 +1,7 @@
 -- sheet_fn_arrays: the functions of the Sheet app's formulas that make arrays, and LET and
 -- LAMBDA. SEQUENCE, UNIQUE, SORT, SORTBY and FILTER give a block of values, which spills into
 -- the cells around the formula. LET names values inside a formula, and LAMBDA makes a function
--- that MAP, REDUCE, SCAN, BYROW, BYCOL and MAKEARRAY call. sheet_formula loads the module.
+-- that MAP, REDUCE, SCAN, BYROW, BYCOL and MAKEARRAY call. sheet_formula_kit loads the module.
 
 ---A key that SORT and SORTBY sort the lines of a block by.
 ---@class Sheet.ArraySortKey

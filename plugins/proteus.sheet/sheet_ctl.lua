@@ -1,7 +1,8 @@
--- sheet_ctl: the controller that joins the Sheet app's screen parts. init.lua and sheet_grid.lua
--- make it and own the grid, files and sheets. sheet_toolbar.lua and sheet_panels.lua use it for
--- the toolbar, the side panels and the pop-ups. The parts also reach each other's commands by
--- id with `commands.run`.
+-- sheet_ctl: the controller that joins the Sheet app's screen parts. init.lua makes it, and
+-- sheet_grid.lua and sheet_files.lua own the grid, the files and the sheets behind it. It also
+-- describes what init.lua hands sheet_commands.lua and sheet_menus.lua. sheet_toolbar.lua and
+-- sheet_panels.lua use it for the toolbar, the side panels and the pop-ups. The parts also
+-- reach each other's commands by id with `commands.run`.
 
 ---What the grid shows besides the cells.
 ---@class Sheet.ViewOptions
@@ -50,6 +51,18 @@
 ---The side panels, pop-ups, and the Format, Data and Insert commands, from sheet_panels.lua.
 ---@class Sheet.PanelsModule
 ---@field install fun(app: Proteus.App, ctl: Sheet.Ctl) Registers the panels and their commands.
+
+---What init.lua hands sheet_commands.lua and sheet_menus.lua.
+---@class Sheet.AppEnv
+---@field views Proteus.Views
+---@field commands Proteus.Commands
+---@field tabs? Proteus.Tabs
+---@field menus? Proteus.Menus
+---@field grid Sheet.GridView
+---@field files Sheet.Files The open workbook and its file, from sheet_files.lua.
+---@field on fun(event: Sheet.CtlEvent, fn: fun(...: any)): fun()
+---@field emit fun(event: Sheet.CtlEvent, ...: any)
+---@field keys_label fun(combo: string): string? A key as menus show it on this computer.
 
 ---@class Sheet.CtlModule
 local M = {}

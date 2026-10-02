@@ -16,7 +16,7 @@ A spreadsheet with formulas, formats, charts and several sheets per workbook. In
 - **Charts.** Column, bar, line, area, pie, doughnut and scatter charts, drawn from a range.
 - **Files.** Import and export CSV and Excel (`.xlsx`) files. Excel files keep notes, links, conditional formats, validation, the filter, charts and defined names, both ways.
 
-The parts live in their own modules: `sheet_formula` holds the formula language, the `sheet_fn_*` modules more of its functions, `sheet_calendar` the dates both typing and formulas read, `sheet_book`, `sheet_model` and `sheet_ops` the workbook, `sheet_xlsx` and `sheet_xlsx_parts` the Excel format, `sheet_chart` the charts, and the `sheet_grid*` and `sheet_panel*` modules the screen. Their tests are in `tests/`.
+The parts live in their own modules: `sheet_formula` and the `sheet_formula_*` modules hold the formula language, the `sheet_fn_*` modules its functions, one module per category, `sheet_calendar` the dates both typing and formulas read, `sheet_book`, `sheet_model`, the `sheet_model_*` modules and `sheet_ops` the workbook, `sheet_json` and `sheet_example` the workbook file and the example, `sheet_xml`, `sheet_xlsx` and the `sheet_xlsx_*` modules the Excel format, `sheet_chart` the charts, `sheet_files`, `sheet_commands` and `sheet_menus` the workbook files, the commands and the menus, and the `sheet_grid*` and `sheet_panel*` modules the screen. Their tests are in `tests/`.
 
 ## Permissions
 
