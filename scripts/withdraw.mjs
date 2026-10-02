@@ -5,14 +5,22 @@
 // - A removal request is an issue titled "Removal request: <id>", or "Profile removal
 //   request: <id>", which Proteus opens for a plugin or profile that is listed already. When
 //   the person who opened it is the listed author, it opens a pull request that deletes the
-//   folder, on the same branch a submission would use, so /approve merges it the same way.
-//   The index workflow then drops it. Copies people installed stay on their machines.
+//   folder and keeps the id with its author in removed.json, on the same branch a
+//   submission would use, so /approve merges it the same way. The index workflow then drops
+//   it. Copies people installed stay on their machines, and nobody else can publish under
+//   the id and have the marketplace offer their code as an update.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { allComments, client, say } from './github.mjs';
 import { LABEL, branchFor, folderFor, isSubmission, removalOf } from './registry.mjs';
+
+/** `list` with `id` set to `owner`, its keys in order. */
+function withEntry(list, id, owner) {
+  const all = { ...list, [id]: owner };
+  return Object.fromEntries(Object.keys(all).sort().map((k) => [k, all[k]]));
+}
 
 /**
  * Runs one issue event. `checkout.existing(id, kind)` is a listed plugin's or profile's
@@ -69,6 +77,17 @@ export async function withdraw({ api, event, repo, checkout }) {
     await say(api, issue.number, comments, [`\`${folder}\` is gone from main already.`]);
     return 'unchanged';
   }
+  // The id stays with its author, as the check wants for anything index.json still lists.
+  const kept = (listing?.tree ?? []).find((e) => e.type === 'blob' && e.path === 'removed.json');
+  let removed = {};
+  if (kept) {
+    const blob = await api('GET', `/git/blobs/${kept.sha}`);
+    removed = JSON.parse(Buffer.from(blob.content, 'base64').toString('utf8'));
+  }
+  const root = kind === 'profile' ? 'profiles' : 'plugins';
+  removed[root] = withEntry(removed[root] ?? {}, id, { login: listed.author.login, id: listed.author.id });
+  const removedBlob = await api('POST', '/git/blobs', { content: JSON.stringify(removed, null, 2) + '\n', encoding: 'utf-8' });
+  gone.push({ path: 'removed.json', mode: '100644', type: 'blob', sha: removedBlob.sha });
   const tree = await api('POST', '/git/trees', { base_tree: parent.tree.sha, tree: gone });
   const title = `Remove ${kind === 'profile' ? 'profile ' : ''}${listed.name} (${id})`;
   const commit = await api('POST', '/git/commits', {
@@ -83,7 +102,7 @@ export async function withdraw({ api, event, repo, checkout }) {
   const body = [
     `Removes the ${noun} **${listed.name}** (\`${id}\`), as its author @${issue.user.login} asked in #${issue.number}.`,
     '',
-    `Merging deletes \`${folder}/\`, and the index workflow drops it from the marketplace. Copies people installed stay on their machines.`,
+    `Merging deletes \`${folder}/\`, and the index workflow drops it from the marketplace. Its id stays with @${listed.author.login} in \`removed.json\`. Copies people installed stay on their machines.`,
     '',
     `Closes #${issue.number}.`,
   ].join('\n');

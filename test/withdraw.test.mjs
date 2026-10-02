@@ -25,13 +25,21 @@ function request(user = ANN, id = 'hello.world', title = `Removal request: ${id}
 }
 
 function world({ pr = null, tree = [{ path: 'plugins/hello.world/init.lua', type: 'blob' }] } = {}) {
+  const removed = { plugins: { zeta: { login: 'zed', id: 9 } }, profiles: {} };
   return {
+    'GET /git/blobs/removed1': { content: Buffer.from(JSON.stringify(removed)).toString('base64') },
+    'POST /git/blobs': { sha: 'removed2' },
     'GET /issues/9/comments': [],
     'GET /pulls': pr ? [pr] : [],
     'GET /git/ref/heads/main': { object: { sha: 'main1' } },
     'GET /git/commits/main1': { tree: { sha: 'tmain' } },
     'GET /git/trees/tmain': {
-      tree: [...tree, { path: 'plugins/other/init.lua', type: 'blob' }, { path: 'plugins/hello.world', type: 'tree' }],
+      tree: [
+        ...tree,
+        { path: 'plugins/other/init.lua', type: 'blob' },
+        { path: 'plugins/hello.world', type: 'tree' },
+        { path: 'removed.json', type: 'blob', sha: 'removed1' },
+      ],
     },
     'POST /git/trees': { sha: 'tgone' },
     'POST /git/commits': { sha: 'gone1' },
@@ -53,7 +61,14 @@ test('the author’s removal request opens a pull request that deletes the folde
   assert.equal(await withdraw({ api: gh.api, event: request(), repo: REPO, checkout }), 'opened');
   const tree = gh.find('POST', '/git/trees')[0].body;
   assert.equal(tree.base_tree, 'tmain');
-  assert.deepEqual(tree.tree, [{ path: 'plugins/hello.world/init.lua', mode: '100644', type: 'blob', sha: null }]);
+  assert.deepEqual(tree.tree, [
+    { path: 'plugins/hello.world/init.lua', mode: '100644', type: 'blob', sha: null },
+    { path: 'removed.json', mode: '100644', type: 'blob', sha: 'removed2' },
+  ]);
+  // The id stays with ann, beside the ids kept already, in order.
+  const kept = JSON.parse(gh.find('POST', '/git/blobs')[0].body.content);
+  assert.deepEqual(Object.keys(kept.plugins), ['hello.world', 'zeta']);
+  assert.deepEqual(kept.plugins['hello.world'], { login: 'ann', id: 1 });
   // On the branch a submission would use, so /approve merges it.
   assert.equal(gh.find('POST', '/git/refs')[0].body.ref, 'refs/heads/submission/9');
   const pr = gh.find('POST', '/pulls')[0].body;

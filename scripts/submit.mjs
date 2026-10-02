@@ -10,6 +10,10 @@
 // then goes on top of the branch as a new commit, and a comment on the issue shows what
 // changed. Once the pull request is merged or closed, the branch starts again from main, with
 // a new pull request.
+//
+// GitHub starts no workflow for a branch or a pull request made with the workflow's own
+// token, so it starts the check workflow on the branch itself. /approve merges only once
+// that check has passed on the commit the maintainer names.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,8 +37,10 @@ import {
 /**
  * Runs one issue event. `api` calls the GitHub API of `repo`. `checkout` reads the main
  * branch: `reserved` is reserved.json, `existing(id, kind)` is a listed plugin's or
- * profile's proteus.json, or null, and `listed()`, when there, the ids of the listed plugins. Returns what happened, as a word the tests check: ignored, unreadable, waiting,
- * refused, unchanged, opened or updated.
+ * profile's proteus.json, or null, `removed(id, kind)`, when there, the owner of an id that
+ * was taken down, from removed.json, or null, and `listed()`, when there, the ids of the
+ * listed plugins. Returns what happened, as a word the tests check: ignored, unreadable,
+ * waiting, refused, unchanged, opened or updated.
  */
 export async function submit({ api, event, repo, checkout }) {
   const issue = event.issue;
@@ -61,7 +67,8 @@ export async function submit({ api, event, repo, checkout }) {
   const existing = typeof sub.id === 'string' ? checkout.existing(sub.id, kind) : null;
   // A plugin it needs must ship with Proteus or be listed here already.
   const known = checkout.listed ? new Set([...(checkout.reserved.ids ?? []), ...checkout.listed()]) : null;
-  const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved, known });
+  const removed = typeof sub.id === 'string' && checkout.removed ? checkout.removed(sub.id, kind) : null;
+  const problems = validate(sub, { existing, author: issue.user, reserved: checkout.reserved, known, removed });
   if (problems.length > 0) {
     await say(api, issue.number, comments, [
       'This submission cannot become a pull request yet:',
@@ -109,6 +116,8 @@ export async function submit({ api, event, repo, checkout }) {
       `Thanks, @${issue.user.login}. This submission is ${pr.html_url}.`,
       '',
       'The last publish changed nothing, so the pull request stays as it was.',
+      '',
+      approveLine(current.object.sha),
     ]);
     return 'unchanged';
   }
@@ -139,6 +148,16 @@ export async function submit({ api, event, repo, checkout }) {
   else pr = await api('POST', '/pulls', { title, head: branch, base: 'main', body, maintainer_can_modify: true });
   await api('POST', `/issues/${pr.number}/labels`, { labels: [LABEL] });
 
+  // The check workflow runs on the branch's new commit. A dispatch made with the workflow's
+  // token starts it, where a push or a pull request made with it would not.
+  let checking = true;
+  try {
+    await api('POST', '/actions/workflows/check.yml/dispatches', { ref: branch });
+  } catch (err) {
+    console.error(`The check did not start: ${err.message}`);
+    checking = false;
+  }
+
   if (inReview) {
     // The version the branch held before, from its proteus.json.
     let from = null;
@@ -160,9 +179,18 @@ export async function submit({ api, event, repo, checkout }) {
   await say(api, issue.number, comments, [
     `Thanks, @${issue.user.login}. Version ${manifest.version} of this submission is in ${pr.html_url}.`,
     '',
-    `A maintainer reviews it there, then approves it by commenting /approve on this issue or by merging the PR. The Proteus marketplace lists the ${kind} once it is merged. Publishing again before then updates this same submission.`,
+    `A maintainer reviews it there, then approves it on this issue or merges the PR. The Proteus marketplace lists the ${kind} once it is merged. Publishing again before then updates this same submission.`,
+    '',
+    checking
+      ? approveLine(commit.sha)
+      : `${approveLine(commit.sha)} The check workflow did not start, so a maintainer starts it on \`${branch}\` from the Actions tab first.`,
   ]);
   return inReview ? 'updated' : 'opened';
+}
+
+/** How a maintainer approves the commit `sha`, once the check has passed on it. */
+function approveLine(sha) {
+  return `To approve this version once its check passes, comment \`/approve ${sha.slice(0, 7)}\`.`;
 }
 
 // Run as the workflow step, not when a test imports this file.
@@ -176,6 +204,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       if (!/^[a-z0-9][a-z0-9._-]*$/.test(id) || id.includes('..')) return null;
       const path = join(folderFor(kind, id), 'proteus.json');
       return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+    },
+    removed(id, kind) {
+      const all = existsSync('removed.json') ? JSON.parse(readFileSync('removed.json', 'utf8')) : {};
+      const list = all[kind === 'profile' ? 'profiles' : 'plugins'] ?? {};
+      return Object.hasOwn(list, id) ? list[id] : null;
     },
     listed() {
       return existsSync('plugins') ? readdirSync('plugins').filter((id) => existsSync(join('plugins', id, 'proteus.json'))) : [];
