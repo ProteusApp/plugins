@@ -308,6 +308,7 @@ function M.sort (sheet, rect, keys, opts)
   ---@type table<integer, { text: string, style: Sheet.Style }>
   local states = {}
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   local lo, hi = r.c1, r.c2
   if across then
     lo, hi = r.r1, r.r2
@@ -322,6 +323,7 @@ function M.sort (sheet, rect, keys, opts)
       states[key] =
         { text = sheet:text (row, col), style = sheet:style_at (row, col) }
       notes[key] = sheet:note (row, col)
+      links[key] = sheet:link (row, col)
     end
   end
   local sizes = across and sheet.widths or sheet.heights
@@ -364,6 +366,7 @@ function M.sort (sheet, rect, keys, opts)
           style = sheet:own_for (row, col, state.style),
         })
         sheet:set_prop ('notes', row * KEY + col, notes[src_row * KEY + src_col])
+        sheet:set_prop ('links', row * KEY + col, links[src_row * KEY + src_col])
       end
     end
   end
@@ -433,10 +436,12 @@ function M.remove_duplicates (sheet, rect, opts)
   -- Read every source before writing, since the rows that stay move onto rows being read.
   local texts = {} ---@type table<integer, string>
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   for row = first, r.r2 do
     for c = r.c1, r.c2 do
       texts[row * KEY + c] = sheet:text (row, c)
       notes[row * KEY + c] = sheet:note (row, c)
+      links[row * KEY + c] = sheet:link (row, c)
     end
   end
   sheet:begin ({ select = r, label = 'Remove duplicates' })
@@ -444,13 +449,15 @@ function M.remove_duplicates (sheet, rect, opts)
     local to, from = first + i - 1, keep[i]
     if from ~= to then
       for c = r.c1, r.c2 do
-        local text, note = '', nil ---@type string, string?
+        local text, note, link = '', nil, nil ---@type string, string?, string?
         if from then
           text = formula.shift (texts[from * KEY + c], to - from, 0)
           note = notes[from * KEY + c]
+          link = links[from * KEY + c]
         end
         sheet:record (to, c, { text = text, style = sheet:own_style (to, c) })
         sheet:set_prop ('notes', to * KEY + c, note)
+        sheet:set_prop ('links', to * KEY + c, link)
       end
     end
   end
@@ -1888,7 +1895,35 @@ function M.write_xlsx (book)
       return nil, nil
     end
     return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
+  end, function (index)
+    local sheet = book.sheets[index]
+    local rows = {} ---@type integer[]
+    for row in pairs (sheet and sheet.filter and sheet.filter.hidden or {}) do
+      rows[#rows + 1] = row
+    end
+    table.sort (rows)
+    return rows
   end)
+end
+
+---How CSV text comes in.
+---@class Sheet.CsvOptions
+---@field keep_zeros? boolean Keep numbers that start with 0, such as `00123`, as text with their zeros.
+
+---True when CSV text holds a number that starts with 0, such as `00123`, which reading as a
+---number would cut short.
+---@param text string
+---@param sep? string
+---@return boolean
+function M.leading_zeros (text, sep)
+  for _, line in ipairs (model.parse_csv (text, sep)) do
+    for _, cell in ipairs (line) do
+      if string.match (cell, '^0%d+$') then
+        return true
+      end
+    end
+  end
+  return false
 end
 
 ---Adds a sheet holding CSV text, each cell read as if typed, and shows it. The name is `name`
@@ -1897,8 +1932,10 @@ end
 ---@param text string
 ---@param name? string
 ---@param sep? string A comma when nil, or a tab.
+---@param opts? Sheet.CsvOptions
 ---@return Sheet.Sheet
-function M.import_csv (book, text, name, sep)
+function M.import_csv (book, text, name, sep, opts)
+  local keep_zeros = opts and opts.keep_zeros
   local free = book:free_name ('Sheet')
   if name then
     local base = string.gsub (name, "[%[%]:%*%?/\\']", '')
@@ -1913,7 +1950,9 @@ function M.import_csv (book, text, name, sep)
   local rows = model.parse_csv (text, sep)
   for r, line in ipairs (rows) do
     for c, cell in ipairs (line) do
-      if cell ~= '' then
+      if keep_zeros and string.match (cell, '^0%d+$') then
+        sheet:record (r, c, { text = "'" .. cell })
+      elseif cell ~= '' then
         sheet:record (r, c, sheet:typed (r, c, cell))
       end
     end

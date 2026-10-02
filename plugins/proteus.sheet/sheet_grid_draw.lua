@@ -29,6 +29,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@class Sheet.GridDrawOptions
 ---@field first integer The first scrolling row to draw.
 ---@field last integer The last row to draw.
+---@field col_first? integer The first scrolling column to draw. The default is the first.
+---@field col_last? integer The last column to draw. The default is the last.
 ---@field formulas? boolean Show formulas instead of their values.
 ---@field styles Sheet.GridStyles
 
@@ -40,6 +42,24 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field text boolean True for the piece that shows the block's text.
 ---@field height number
 ---@field width number
+
+---One row of the table: a row of the sheet, keyed `r<row>`, or the padding above or below the
+---drawn rows, keyed `top` or `bottom`. The grid keeps one element per key, and writes it again
+---only when its class, style or cells changed.
+---@class Sheet.GridRowPart
+---@field key string
+---@field class? string
+---@field style? string
+---@field html string The cells, as the inside of the `tr`.
+
+---The table in parts, so the grid can write only the parts that changed.
+---@class Sheet.GridParts
+---@field width number The table's width in pixels.
+---@field cols string The inside of the `colgroup`.
+---@field head string The inside of the `thead`.
+---@field rows Sheet.GridRowPart[] The rows of the `tbody`, in order.
+---@field col_first integer The first scrolling column drawn.
+---@field col_last integer The last column drawn.
 
 ---What pass one finds out about a cell.
 ---@class Sheet.GridCellInfo
@@ -340,24 +360,64 @@ local function edge (own, own_side, other, other_side)
   return nil
 end
 
----Draws the table: the column letters, the frozen rows, the scrolling rows from
+---The scrolling columns to draw, from `first` to `last`, grown to take in every merged block
+---they cut, so a merge draws whole and its text sits where it belongs.
+---@param sheet Sheet.Sheet
+---@param geo Sheet.GridGeo
+---@param first integer
+---@param last integer
+---@return integer first
+---@return integer last
+function M.col_window (sheet, geo, first, last)
+  first = math.max (first, geo.fc + 1)
+  last = math.min (last, geo.cols)
+  local grew = true
+  while grew do
+    grew = false
+    for _, m in ipairs (sheet.merges) do
+      if m.c2 >= first and m.c1 <= last then
+        if m.c1 < first and m.c1 > geo.fc then
+          first, grew = m.c1, true
+        end
+        if m.c2 > last then
+          last, grew = math.min (m.c2, geo.cols), true
+        end
+      end
+    end
+  end
+  return first, last
+end
+
+---Draws the table in parts: the column letters, the frozen rows, the scrolling rows from
 ---`opts.first` to `opts.last`, and padding rows that keep the rest of the sheet's height.
+---Columns are drawn the same way: the frozen ones, the scrolling ones from `opts.col_first`
+---to `opts.col_last`, and a padding column on each side for the rest of the sheet's width.
 ---@param sheet Sheet.Sheet
 ---@param geo Sheet.GridGeo
 ---@param opts Sheet.GridDrawOptions
----@return string
-function M.table_html (sheet, geo, opts)
+---@return Sheet.GridParts
+function M.table_parts (sheet, geo, opts)
   local styles = opts.styles
   local tops, lefts = geo.tops, geo.lefts
-  local vcols = visible (lefts, 1, geo.cols)
-  local frozen_cols, scroll_cols = {}, {} ---@type integer[], integer[]
-  for _, c in ipairs (vcols) do
-    if c <= geo.fc then
-      frozen_cols[#frozen_cols + 1] = c
-    else
-      scroll_cols[#scroll_cols + 1] = c
-    end
+  local col_first, col_last =
+    M.col_window (sheet, geo, opts.col_first or 1, opts.col_last or geo.cols)
+  local frozen_cols = visible (lefts, 1, math.min (geo.fc, geo.cols))
+  local scroll_cols = visible (lefts, col_first, col_last)
+  local vcols = {} ---@type integer[]
+  for _, c in ipairs (frozen_cols) do
+    vcols[#vcols + 1] = c
   end
+  for _, c in ipairs (scroll_cols) do
+    vcols[#vcols + 1] = c
+  end
+  -- The width of the scrolling columns left out on each side.
+  local scroll_left = lefts[math.min (geo.fc, geo.cols) + 1]
+  local left_pad = lefts[col_first] - scroll_left
+  local right_pad = lefts[geo.cols + 1] - lefts[col_last + 1]
+  if #scroll_cols == 0 then
+    left_pad, right_pad = 0, lefts[geo.cols + 1] - scroll_left
+  end
+  local first_scroll = scroll_cols[1]
   local frozen_rows = visible (tops, 1, geo.fr)
   local first = math.max (opts.first, geo.fr + 1)
   local last = math.min (opts.last, geo.rows)
@@ -370,6 +430,10 @@ function M.table_html (sheet, geo, opts)
   )
   local next_col = next_of (vcols)
   local last_frozen = frozen_cols[#frozen_cols] or -1
+  if left_pad > 0 and last_frozen > 0 then
+    -- Columns that are not drawn lie between, so the frozen ones end at no drawn neighbour.
+    next_col[last_frozen] = nil
+  end
   -- A frozen column's text spills only into frozen columns, since the rest slide under it.
   local seg_end = {} ---@type table<integer, integer>
   for _, c in ipairs (frozen_cols) do
@@ -383,6 +447,7 @@ function M.table_html (sheet, geo, opts)
   local spills = sheet.watch.spills
   local row_styles, col_styles = sheet.row_styles, sheet.col_styles
   local notes = sheet.notes
+  local links = sheet.links
   local areas = look_areas (sheet)
   local filter = sheet.filter
   local filter_row = filter and filter.rect.r1 or nil
@@ -431,31 +496,35 @@ function M.table_html (sheet, geo, opts)
     return out
   end
 
-  local html = {} ---@type string[]
-  local width = HEAD_W + lefts[geo.cols + 1]
-  html[#html + 1] = '<table class="sheet-grid-t" style="width:'
-    .. width
-    .. 'px"><colgroup><col style="width:'
-    .. HEAD_W
-    .. 'px">'
+  ---@type Sheet.GridParts
+  local parts = {
+    width = HEAD_W + lefts[geo.cols + 1],
+    cols = '',
+    head = '',
+    rows = {},
+    col_first = col_first,
+    col_last = col_last,
+  }
+  local LEFT_PAD = '<td class="sheet-grid-cp"></td>'
+  local cols = { '<col style="width:' .. HEAD_W .. 'px">' } ---@type string[]
+  local head = { '<tr><th class="sheet-grid-corner" data-item="all"></th>' } ---@type string[]
   for _, c in ipairs (vcols) do
-    html[#html + 1] = '<col style="width:'
+    if c == first_scroll and left_pad > 0 then
+      cols[#cols + 1] = '<col style="width:' .. left_pad .. 'px">'
+      head[#head + 1] = '<th></th>'
+    end
+    cols[#cols + 1] = '<col style="width:'
       .. (lefts[c + 1] - lefts[c])
       .. 'px">'
-  end
-  html[#html + 1] =
-    '</colgroup><thead><tr><th class="sheet-grid-corner" data-item="all"></th>'
-  for i, c in ipairs (vcols) do
     local cls = c <= geo.fc
         and (' class="sheet-grid-fc sheet-grid-fc' .. c .. (c == last_frozen and ' sheet-grid-fcl' or '') .. '"')
       or ''
-    local prev = vcols[i - 1] or 0
-    if c - prev > 1 then
+    if c > 1 and lefts[c] == lefts[c - 1] then
       -- Columns hidden just before this one show as a double line.
       cls = cls == '' and ' class="sheet-grid-hid"'
         or (string.sub (cls, 1, -2) .. ' sheet-grid-hid"')
     end
-    html[#html + 1] = '<th'
+    head[#head + 1] = '<th'
       .. cls
       .. ' data-item="col:'
       .. c
@@ -465,18 +534,29 @@ function M.table_html (sheet, geo, opts)
       .. c
       .. '"></i></th>'
   end
-  html[#html + 1] = '</tr></thead><tbody>'
+  if right_pad > 0 then
+    cols[#cols + 1] = '<col style="width:' .. right_pad .. 'px">'
+    head[#head + 1] = '<th></th>'
+  end
+  head[#head + 1] = '</tr>'
+  parts.cols = table.concat (cols)
+  parts.head = table.concat (head)
 
-  local ncols = #vcols + 1
+  local ncols = #vcols
+    + 1
+    + (left_pad > 0 and 1 or 0)
+    + (right_pad > 0 and 1 or 0)
 
+  ---@param key string
   ---@param h number
-  local function pad (h)
+  local function pad (key, h)
     if h > 0 then
-      html[#html + 1] = '<tr class="sheet-grid-pad" style="height:'
-        .. h
-        .. 'px"><td colspan="'
-        .. ncols
-        .. '"></td></tr>'
+      parts.rows[#parts.rows + 1] = {
+        key = key,
+        class = 'sheet-grid-pad',
+        style = 'height:' .. h .. 'px',
+        html = '<td colspan="' .. ncols .. '"></td>',
+      }
     end
   end
 
@@ -492,24 +572,22 @@ function M.table_html (sheet, geo, opts)
     end
     for i, r in ipairs (rows) do
       local h = tops[r + 1] - tops[r]
-      local tr = '<tr'
+      ---@type Sheet.GridRowPart
+      local part = { key = 'r' .. r, html = '' }
       if frozen then
-        tr = tr
-          .. ' class="sheet-grid-fr sheet-grid-fr'
+        part.class = 'sheet-grid-fr sheet-grid-fr'
           .. r
           .. (i == #rows and ' sheet-grid-frl' or '')
-          .. '"'
       end
       if h ~= DEFAULT_H then
-        tr = tr
-          .. ' style="height:'
+        part.style = 'height:'
           .. h
           .. 'px;--h:'
           .. math.max (0, h - CELL_PAD)
-          .. 'px"'
+          .. 'px'
       end
-      html[#html + 1] = tr
-        .. '><th data-item="row:'
+      local html = {} ---@type string[]
+      html[#html + 1] = '<th data-item="row:'
         .. r
         .. '">'
         .. r
@@ -538,6 +616,9 @@ function M.table_html (sheet, geo, opts)
       end
       for _, c in ipairs (vcols) do
         local k = r * KEY + c
+        if c == first_scroll and left_pad > 0 then
+          html[#html + 1] = LEFT_PAD
+        end
         if not skip[k] then
           local info = here[c]
           local piece = pieces[k]
@@ -644,6 +725,9 @@ function M.table_html (sheet, geo, opts)
             if note then
               classes[#classes + 1] = 'sheet-grid-nt'
             end
+            if links[k] then
+              classes[#classes + 1] = 'sheet-grid-ln'
+            end
             if look and look.list then
               classes[#classes + 1] = 'sheet-grid-dd'
             end
@@ -735,56 +819,245 @@ function M.table_html (sheet, geo, opts)
           end
         end
       end
-      html[#html + 1] = '</tr>'
+      if right_pad > 0 then
+        html[#html + 1] = LEFT_PAD
+      end
+      part.html = table.concat (html)
+      parts.rows[#parts.rows + 1] = part
     end
   end
 
   draw_rows (frozen_rows, true, true)
   local gap = tops[first] - tops[geo.fr + 1]
-  pad (gap)
+  pad ('top', gap)
   draw_rows (scroll_rows, false, #frozen_rows == 0 or gap > 0)
-  pad (tops[geo.rows + 1] - tops[last + 1])
+  pad ('bottom', tops[geo.rows + 1] - tops[last + 1])
+  return parts
+end
+
+---Draws the table as one piece of HTML, from its parts.
+---@param sheet Sheet.Sheet
+---@param geo Sheet.GridGeo
+---@param opts Sheet.GridDrawOptions
+---@return string
+function M.table_html (sheet, geo, opts)
+  local parts = M.table_parts (sheet, geo, opts)
+  local html = {
+    '<table class="sheet-grid-t" style="width:'
+      .. parts.width
+      .. 'px"><colgroup>'
+      .. parts.cols
+      .. '</colgroup><thead>'
+      .. parts.head
+      .. '</thead><tbody>',
+  }
+  for _, part in ipairs (parts.rows) do
+    html[#html + 1] = '<tr'
+      .. (part.class and (' class="' .. part.class .. '"') or '')
+      .. (part.style and (' style="' .. part.style .. '"') or '')
+      .. '>'
+      .. part.html
+      .. '</tr>'
+  end
   html[#html + 1] = '</tbody></table>'
   return table.concat (html)
 end
 
----Rows of the default height that need more room for a big font or for line breaks, as the
----row and the height they need. Rows given a height of their own keep it, and wrapped text is
----left out. A spreadsheet grows such rows by itself, so the file does not change.
----@param sheet Sheet.Sheet
----@return table<integer, number>
-function M.auto_heights (sheet)
-  local out = {} ---@type table<integer, number>
-  local heights = sheet.heights
-  local row_styles, col_styles = sheet.row_styles, sheet.col_styles
-  for _, cell in pairs (sheet.cells) do
-    local r = cell.row
-    if cell.text ~= '' and not heights[r] then
-      local own = cell.style
-      local size = own and own.size
-      local wrap = own and own.wrap
-      if not size then
-        local rs = row_styles[r]
-        size = rs and rs.size
-      end
-      if not size then
-        local cs = col_styles[cell.col]
-        size = cs and cs.size
-      end
-      local lines = 1
-      if string.find (cell.text, '\n', 1, true) then
-        local _, breaks = string.gsub (cell.text, '\n', '')
-        lines = breaks + 1
-      end
-      if (lines > 1 or (size and size > 15)) and not wrap then
-        local need = math.ceil ((size or 13) * 1.25 * lines + CELL_PAD)
-        if need > DEFAULT_H and need > (out[r] or 0) then
-          out[r] = need
-        end
+---What the grid's table holds now, row by row, as the parts it last wrote.
+---@alias Sheet.GridDrawn table<string, Sheet.GridRowPart>
+
+---What changed between the rows the table holds and the rows it should hold.
+---@class Sheet.GridRowDiff
+---@field order string[] The keys in the order the rows should stand.
+---@field write Sheet.GridRowPart[] Rows that are new, or whose class, style or cells changed.
+---@field drop string[] Keys of rows to take away.
+---@field moved boolean True when the rows that stay are in another order, or rows come or go.
+
+---Compares the rows a table holds with the parts it should hold, so the grid writes only the
+---rows that changed. An edit that changes one cell rewrites one row.
+---@param drawn Sheet.GridDrawn
+---@param order string[] The keys the table holds, in order.
+---@param parts Sheet.GridRowPart[]
+---@return Sheet.GridRowDiff
+function M.diff_rows (drawn, order, parts)
+  ---@type Sheet.GridRowDiff
+  local out = { order = {}, write = {}, drop = {}, moved = false }
+  local wanted = {} ---@type table<string, boolean>
+  for i, part in ipairs (parts) do
+    out.order[i] = part.key
+    wanted[part.key] = true
+    local had = drawn[part.key]
+    if
+      not had
+      or had.class ~= part.class
+      or had.style ~= part.style
+      or had.html ~= part.html
+    then
+      out.write[#out.write + 1] = part
+    end
+  end
+  for _, key in ipairs (order) do
+    if not wanted[key] then
+      out.drop[#out.drop + 1] = key
+    end
+  end
+  if #order ~= #parts then
+    out.moved = true
+  else
+    for i, key in ipairs (order) do
+      if out.order[i] ~= key then
+        out.moved = true
+        break
       end
     end
   end
   return out
+end
+
+---Measures wrapped text: the height in pixels a text needs in a style's font when it wraps in
+---a column `width` pixels wide.
+---@alias Sheet.MeasureWrap fun(text: string, style: Sheet.Style, width: number): number
+
+---The rows grown for their text, kept on the sheet between draws.
+---@class Sheet.TallRows
+---@field cells table<integer, table<integer, number>> By row, each cell that needs more than the default height, by column.
+---@field rows table<integer, number> By row, the most any of its cells needs.
+
+-- The tallest a row grows by itself, as Auto-fit.
+local MAX_TALL = 600
+
+---Roughly how many lines a text takes when it wraps in `width` pixels, by words, for when
+---there is nothing to measure it with.
+---@param text string
+---@param width number
+---@param size number
+---@return integer
+local function wrapped_lines (text, width, size)
+  local per = math.max (1, math.floor ((width - 9) / (size * 0.55)))
+  local lines = 0
+  for para in string.gmatch (text .. '\n', '(.-)\n') do
+    local n, used = 1, 0
+    for word in string.gmatch (para, '%S+') do
+      local len = #word
+      if used > 0 and used + 1 + len > per then
+        n, used = n + 1, 0
+      elseif used > 0 then
+        used = used + 1
+      end
+      used = used + len
+      while used > per do
+        n, used = n + 1, used - per
+      end
+    end
+    lines = lines + n
+  end
+  return lines
+end
+
+---How tall a cell's text needs its row to be, or nil when the default height does.
+---@param sheet Sheet.Sheet
+---@param cell Sheet.Cell
+---@param measure? Sheet.MeasureWrap
+---@return number?
+local function need_of (sheet, cell, measure)
+  local r, c = cell.row, cell.col
+  if cell.text == '' or sheet.heights[r] then
+    return nil
+  end
+  local style = sheet:style_at (r, c)
+  local size = style.size or 13
+  local need ---@type number
+  if style.wrap then
+    local text = (sheet:display (r, c))
+    if text == '' then
+      return nil
+    end
+    local width = sheet:width (c)
+    if measure then
+      need = math.ceil (measure (text, style, width) + 1)
+    else
+      need =
+        math.ceil (size * 1.25 * wrapped_lines (text, width, size) + CELL_PAD)
+    end
+  else
+    local lines = 1
+    if string.find (cell.text, '\n', 1, true) then
+      local _, breaks = string.gsub (cell.text, '\n', '')
+      lines = breaks + 1
+    end
+    if lines == 1 and size <= 15 then
+      return nil
+    end
+    need = math.ceil (size * 1.25 * lines + CELL_PAD)
+  end
+  if need <= DEFAULT_H then
+    return nil
+  end
+  return math.min (need, MAX_TALL)
+end
+
+---Rows of the default height that need more room for a big font, for line breaks or for
+---wrapped text, as the row and the height they need. Rows given a height of their own keep
+---it. A spreadsheet grows such rows by itself, so the file does not change.
+---
+---The answer is kept on the sheet. After an edit only the cells written since the last call
+---are looked at again, and the whole sheet only after something that may change any row,
+---such as a new column width or an insert. Wrapped text is measured with `measure` when it is
+---given, and guessed from its length otherwise.
+---@param sheet Sheet.Sheet
+---@param measure? Sheet.MeasureWrap
+---@return table<integer, number>
+function M.auto_heights (sheet, measure)
+  local touched = sheet:take_touched ()
+  local tall = sheet.tall
+  ---@param row integer
+  ---@param col integer
+  ---@param need number?
+  local function note (row, col, need)
+    local t = tall --[[@as Sheet.TallRows]]
+    local per = t.cells[row]
+    if need then
+      if not per then
+        per = {}
+        t.cells[row] = per
+      end
+      per[col] = need
+    elseif per then
+      per[col] = nil
+    end
+    if not per then
+      return
+    end
+    local most = nil ---@type number?
+    for _, h in pairs (per) do
+      if not most or h > most then
+        most = h
+      end
+    end
+    t.rows[row] = most
+    if not most then
+      t.cells[row] = nil
+    end
+  end
+  if touched == true or not tall then
+    tall = { cells = {}, rows = {} }
+    sheet.tall = tall
+    for _, cell in pairs (sheet.cells) do
+      local need = need_of (sheet, cell, measure)
+      if need then
+        note (cell.row, cell.col, need)
+      end
+    end
+  else
+    local cells = sheet.cells
+    for key in pairs (touched) do
+      local row = math.floor (key / KEY)
+      local col = key - row * KEY
+      local cell = cells[key]
+      note (row, col, cell and need_of (sheet, cell, measure) or nil)
+    end
+  end
+  return tall.rows
 end
 
 ---Row tops with some rows grown, from the model's tops. Hidden rows stay hidden.

@@ -3,10 +3,13 @@
 -- zipping. The module draws nothing and calls no host function.
 --
 -- An Excel file can hold more than a workbook file keeps. Whatever does not come across, such
--- as charts or conditional formats, is named in a list of warnings.
+-- as pictures or pivot tables, is named in a list of warnings. Notes, links, conditional
+-- formats, validation, the filter and charts come across both ways, through
+-- sheet_xlsx_parts.lua.
 
 local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
+local sheet_parts = require ('sheet_xlsx_parts') --[[@as Sheet.XlsxPartsModule]]
 
 -- The workbook shapes it reads and writes, Sheet.BookData and the types inside it, are
 -- declared in sheet_book.lua.
@@ -36,6 +39,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field xf_dates table<integer, boolean> Styles with a date format.
 ---@field date1904 boolean
 ---@field typed table<string, Sheet.XlsxTyped>
+---@field dxfs Sheet.Style[] The styles of conditional formats.
+---@field theme string[]
 
 ---A column range from a `<col>` element.
 ---@class Sheet.XlsxCol
@@ -65,6 +70,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field format_ids table<string, integer>
 ---@field xfs string[]
 ---@field xf_ids table<string, integer>
+---@field dxfs string[] The styles of conditional formats, as XML.
 ---@field by_style table<string, integer> Style keys to `s` numbers.
 
 ---@class Sheet.XlsxStrings
@@ -80,7 +86,10 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field warnings string[]
 ---@field typed table<string, Sheet.XlsxTyped>
 ---@field spills? Sheet.XlsxSpills
+---@field filtered? Sheet.XlsxFiltered
 ---@field dynamic? boolean True once a formula writes a spilled block, which needs the metadata part.
+---@field seen table<string, boolean> Kinds of warnings already given.
+---@field charts integer How many charts the sheets written so far hold.
 
 ---What typing a text stores, kept so that text which repeats is parsed once.
 ---@class Sheet.XlsxTyped
@@ -91,6 +100,9 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 
 ---The height and width of the block a formula cell spills, or nil when it spills none.
 ---@alias Sheet.XlsxSpills fun(sheet_index: integer, row: integer, col: integer): integer?, integer?
+
+---The rows a sheet's filter hides, so the Excel file shows them hidden too.
+---@alias Sheet.XlsxFiltered fun(sheet_index: integer): integer[]
 
 ---@class Sheet.XlsxModule
 local M = {}
@@ -113,6 +125,10 @@ local MAX_COLS = 16384
 local REST_OF_SHEET = 1000
 -- Excel counts dates in a 1904 workbook from 1904-01-01, 1462 days after this app's day 0.
 local DAYS_1904 = 1462
+-- The helpers sheet_xlsx_parts uses, filled in at the end of the file.
+---@type Sheet.XlsxKit
+---@diagnostic disable-next-line: missing-fields
+local KIT = {}
 
 local NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 local NS_REL =
@@ -1252,14 +1268,18 @@ end
 
 -- What a sheet may hold that this app leaves out, in the order the warnings list them.
 local LEFT_OUT = {
-  { 'charts', 'Charts in %s were left out.' },
+  { 'charts', 'Charts in %s that this app cannot show were left out.' },
   { 'pictures', 'Pictures in %s were left out.' },
   { 'shapes', 'Shapes in %s were left out.' },
-  { 'comments', 'Comments in %s were left out.' },
-  { 'conditional', 'Conditional formats in %s were left out.' },
-  { 'validation', 'Data validation in %s was left out.' },
-  { 'filter', 'The filter in %s was left out.' },
-  { 'links', 'Links in %s were left out.' },
+  {
+    'conditional',
+    'Conditional formats in %s that this app cannot show were left out.',
+  },
+  {
+    'validation',
+    'Data validation in %s that this app cannot check was left out.',
+  },
+  { 'filter', 'Filter tests in %s that this app cannot apply were left out.' },
   { 'tables', 'Table styles in %s were left out.' },
   {
     'pivots',
@@ -1278,16 +1298,18 @@ local LEFT_OUT = {
   },
 }
 
--- Worksheet elements that mean a feature is there.
+-- Worksheet elements that mean a feature is there, at the top of the sheet and inside its
+-- extension lists. Newer conditional formats and validation sit in the extension lists,
+-- where the app does not read them.
 ---@type table<string, string>
 local FEATURE_TAGS = {
-  conditionalFormatting = 'conditional',
-  conditionalFormattings = 'conditional',
-  dataValidations = 'validation',
-  autoFilter = 'filter',
-  hyperlinks = 'links',
   tableParts = 'tables',
   sheetProtection = 'protection',
+}
+---@type table<string, string>
+local EXT_TAGS = {
+  conditionalFormattings = 'conditional',
+  dataValidations = 'validation',
   sparklineGroups = 'sparklines',
 }
 
@@ -1304,7 +1326,10 @@ local function find_features (src, root, path, found)
     stack[#stack] = nil
     for _, c in ipairs (node.children) do
       local name = bare (c.name)
-      local kind = FEATURE_TAGS[name]
+      local kind = EXT_TAGS[name]
+      if node == root then
+        kind = FEATURE_TAGS[name]
+      end
       if kind then
         found[kind] = true
       elseif name == 'extLst' or name == 'ext' then
@@ -1314,25 +1339,10 @@ local function find_features (src, root, path, found)
   end
   local _, rels = rels_of (src, path)
   for _, rel in ipairs (rels) do
-    if rel.type == 'comments' or rel.type == 'threadedComment' then
-      found.comments = true
-    elseif rel.type == 'pivotTable' then
+    if rel.type == 'pivotTable' then
       found.pivots = true
     elseif rel.type == 'table' then
       found.tables = true
-    elseif rel.type == 'drawing' then
-      local _, drawing_rels = rels_of (src, rel.target)
-      for _, d in ipairs (drawing_rels) do
-        if d.type == 'chart' or d.type == 'chartEx' then
-          found.charts = true
-        elseif d.type == 'image' then
-          found.pictures = true
-        end
-      end
-      local drawing = part_text (src, rel.target) or ''
-      if string.find (drawing, '<[%w]*:?sp[%s>]') then
-        found.shapes = true
-      end
     end
   end
 end
@@ -1665,6 +1675,15 @@ local function read_sheet (src, path, name, book, warnings)
     end
   end
 
+  sheet_parts.read (KIT, {
+    src = src,
+    path = path,
+    root = root,
+    data = data,
+    dxfs = book.dxfs,
+    theme = book.theme,
+    found = found,
+  })
   find_features (src, root, path, found)
   for _, item in ipairs (LEFT_OUT) do
     if found[item[1]] then
@@ -1743,6 +1762,8 @@ function M.read (files)
     xf_dates = xf_dates,
     date1904 = date1904,
     typed = {},
+    dxfs = sheet_parts.read_dxfs (KIT, styles_root, theme),
+    theme = theme,
   }
 
   local view = child (child (wb, 'bookViews'), 'workbookView')
@@ -1987,6 +2008,7 @@ local function new_style_sheet ()
     xfs = {},
     xf_ids = {},
     by_style = {},
+    dxfs = {},
   }
   return sheet
 end
@@ -2003,6 +2025,25 @@ local function add_entry (list, ids, key, xml)
     list[#list + 1] = xml
     id = #list - 1
     ids[key] = id
+  end
+  return id
+end
+
+---The number of a format code, adding it to the style sheet's own formats when Excel has no
+---such format built in.
+---@param sheet Sheet.XlsxStyleSheet
+---@param code string
+---@return integer
+local function format_id_of (sheet, code)
+  local id = BUILTIN_IDS[code] or sheet.format_ids[code]
+  if not id then
+    id = 164 + #sheet.formats
+    sheet.format_ids[code] = id
+    sheet.formats[#sheet.formats + 1] = '<numFmt numFmtId="'
+      .. id
+      .. '" formatCode="'
+      .. attr (code)
+      .. '"/>'
   end
   return id
 end
@@ -2089,16 +2130,7 @@ local function xf_of (sheet, style)
   local format_id = 0
   local code = s.format
   if code then
-    format_id = BUILTIN_IDS[code] or sheet.format_ids[code]
-    if not format_id then
-      format_id = 164 + #sheet.formats
-      sheet.format_ids[code] = format_id
-      sheet.formats[#sheet.formats + 1] = '<numFmt numFmtId="'
-        .. format_id
-        .. '" formatCode="'
-        .. attr (code)
-        .. '"/>'
-    end
+    format_id = format_id_of (sheet, code)
   end
 
   local xf = {
@@ -2177,6 +2209,13 @@ local function styles_xml (sheet)
   out[#out + 1] = '</cellXfs>'
   out[#out + 1] =
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+  if #sheet.dxfs > 0 then
+    out[#out + 1] = '<dxfs count="'
+      .. #sheet.dxfs
+      .. '">'
+      .. table.concat (sheet.dxfs)
+      .. '</dxfs>'
+  end
   out[#out + 1] = '</styleSheet>'
   return table.concat (out)
 end
@@ -2261,12 +2300,6 @@ end
 ---@return integer
 local function place (row, col)
   return row * (MAX_COLS + 1) + col
-end
-
----@param map any
----@return boolean
-local function has_entries (map)
-  return type (map) == 'table' and next (map) ~= nil
 end
 
 ---@param value any
@@ -2369,13 +2402,14 @@ end
 ---@field hidden? boolean
 ---@field style? Sheet.Style
 
----Writes one worksheet.
+---Writes one worksheet, and the parts beside it.
 ---@param w Sheet.XlsxWriter
 ---@param data Sheet.SheetData
 ---@param index integer
 ---@param name string The name the file gives the sheet.
 ---@param active boolean
 ---@return string
+---@return Sheet.XlsxSheetParts
 local function sheet_xml (w, data, index, name, active)
   local styles = w.styles
   local values = w.values
@@ -2496,6 +2530,31 @@ local function sheet_xml (w, data, index, name, active)
     local row = row_at (whole (key))
     if row and type (style) == 'table' then
       row.style = style
+    end
+  end
+
+  -- Notes, links, rules, validation, the filter and charts. The rows the filter hides are
+  -- hidden in the file too, since Excel does not apply a filter as it opens a file.
+  local extra = sheet_parts.write (KIT, {
+    data = data,
+    index = index,
+    name = name,
+    styles = styles,
+    values = values,
+    filtered = w.filtered and w.filtered (index) or nil,
+    warn = function (kind, text)
+      if not w.seen[kind] then
+        w.seen[kind] = true
+        w.warnings[#w.warnings + 1] = text
+      end
+    end,
+    charts = w.charts,
+  })
+  w.charts = w.charts + extra.charts
+  for r in pairs (extra.hidden) do
+    local row = row_at (r)
+    if row then
+      row.hidden = true
     end
   end
 
@@ -2720,6 +2779,7 @@ local function sheet_xml (w, data, index, name, active)
     out[#out + 1] = '</row>'
   end
   out[#out + 1] = '</sheetData>'
+  out[#out + 1] = extra.filter
 
   -- Excel repairs a file whose merges overlap, so a merge that overlaps an earlier one is
   -- left out.
@@ -2774,31 +2834,46 @@ local function sheet_xml (w, data, index, name, active)
       .. table.concat (merges)
       .. '</mergeCells>'
   end
+  out[#out + 1] = extra.after_merges
   out[#out + 1] =
     '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
+  out[#out + 1] = extra.drawings
   out[#out + 1] = '</worksheet>'
-  return table.concat (out)
+  return table.concat (out), extra
 end
 
--- What a workbook file may hold that an Excel file from this app leaves out for now.
-local NOT_WRITTEN = {
-  { 'rules', 'Conditional formats were left out of the Excel file.' },
-  { 'validation', 'Validation rules were left out of the Excel file.' },
-  { 'notes', 'Notes were left out of the Excel file.' },
-  { 'charts', 'Charts were left out of the Excel file.' },
-  { 'filter', 'Filters were left out of the Excel file.' },
-}
+---The content types of files by extension, such as the drawings that show notes.
+---@param map table<string, string>
+---@return string
+local function defaults_xml (map)
+  local keys = {} ---@type string[]
+  for ext in pairs (map) do
+    keys[#keys + 1] = ext
+  end
+  table.sort (keys)
+  local out = {} ---@type string[]
+  for _, ext in ipairs (keys) do
+    out[#out + 1] = '<Default Extension="'
+      .. ext
+      .. '" ContentType="'
+      .. map[ext]
+      .. '"/>'
+  end
+  return table.concat (out)
+end
 
 ---Makes the files of an `.xlsx` file from workbook data, as a map of path to text. `values`,
 ---when given, supplies the value of each formula cell, so other programs can show values
 ---without working them out. `spills`, when given, says which formulas spill a block, which
----write as array formulas over their blocks. Returns the files and a list of warnings.
+---write as array formulas over their blocks. `filtered`, when given, names the rows each
+---sheet's filter hides. Returns the files and a list of warnings.
 ---@param book Sheet.BookData
 ---@param values? Sheet.XlsxValues
 ---@param spills? Sheet.XlsxSpills
+---@param filtered? Sheet.XlsxFiltered
 ---@return table<string, string>
 ---@return string[]
-function M.write (book, values, spills)
+function M.write (book, values, spills, filtered)
   local warnings = {} ---@type string[]
   local sheets = {} ---@type Sheet.SheetData[]
   for _, data in ipairs (type (book.sheets) == 'table' and book.sheets or {}) do
@@ -2870,6 +2945,9 @@ function M.write (book, values, spills)
     warnings = warnings,
     typed = {},
     spills = spills,
+    filtered = filtered,
+    seen = {},
+    charts = 0,
   }
   xf_of (w.styles, nil)
   local files = {} ---@type table<string, string>
@@ -2877,6 +2955,8 @@ function M.write (book, values, spills)
   local sheet_entries = {} ---@type string[]
   local rel_entries = {} ---@type string[]
   local type_entries = {} ---@type string[]
+  local default_types = {} ---@type table<string, string>
+  local filter_names = {} ---@type string[]
   for i, data in ipairs (sheets) do
     if #renames > 0 and type (data.cells) == 'table' then
       local cells = {} ---@type table<string, string>
@@ -2898,7 +2978,28 @@ function M.write (book, values, spills)
       data = copy --[[@as Sheet.SheetData]]
     end
     local path = 'xl/worksheets/sheet' .. i .. '.xml'
-    files[path] = sheet_xml (w, data, i, names[i], i == active)
+    local xml, extra = sheet_xml (w, data, i, names[i], i == active)
+    files[path] = xml
+    for part, text in pairs (extra.files) do
+      files[part] = text
+    end
+    for _, entry in ipairs (extra.types) do
+      type_entries[#type_entries + 1] = entry
+    end
+    for ext, kind in pairs (extra.defaults) do
+      default_types[ext] = kind
+    end
+    if extra.defined then
+      filter_names[#filter_names + 1] = extra.defined
+    end
+    if #extra.rels > 0 then
+      files['xl/worksheets/_rels/sheet' .. i .. '.xml.rels'] = XML_HEAD
+        .. '<Relationships xmlns="'
+        .. NS_PACKAGE
+        .. '">'
+        .. table.concat (extra.rels)
+        .. '</Relationships>'
+    end
     sheet_entries[#sheet_entries + 1] = '<sheet name="'
       .. attr (names[i])
       .. '" sheetId="'
@@ -2949,6 +3050,7 @@ function M.write (book, values, spills)
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
     '<Default Extension="xml" ContentType="application/xml"/>',
+    defaults_xml (default_types),
     '<Override PartName="/xl/workbook.xml" ContentType="'
       .. SHEET_TYPE
       .. 'sheet.main+xml"/>',
@@ -2990,6 +3092,9 @@ function M.write (book, values, spills)
   -- The file asks Excel to work out every formula again on opening, since the cached values
   -- came from this app.
   local defined = {} ---@type string[]
+  for _, entry in ipairs (filter_names) do
+    defined[#defined + 1] = entry
+  end
   for _, entry in ipairs (type (book.names) == 'table' and book.names or {}) do
     if
       type (entry) == 'table'
@@ -3028,18 +3133,28 @@ function M.write (book, values, spills)
   })
   files['xl/styles.xml'] = styles_xml (w.styles)
   files['xl/sharedStrings.xml'] = strings_xml (w.strings)
-
-  for _, item in ipairs (NOT_WRITTEN) do
-    for _, data in ipairs (sheets) do
-      if
-        has_entries ((data --[[@as table<string, any>]])[item[1]])
-      then
-        warnings[#warnings + 1] = item[2]
-        break
-      end
-    end
-  end
   return files, warnings
 end
+
+KIT.child = child
+KIT.children = children
+KIT.bare = bare
+KIT.prefixed = prefixed
+KIT.flag = flag
+KIT.int = int
+KIT.attr = attr
+KIT.text = cell_string
+KIT.formula_text = formula_text
+KIT.from_excel = from_excel
+KIT.to_excel = to_excel
+KIT.color_of = color_of
+KIT.argb = argb
+KIT.part_xml = part_xml
+KIT.resolve = resolve
+KIT.string_of = string_of
+KIT.number_text = number_text
+KIT.read_number = read_number
+KIT.format_id = format_id_of
+KIT.border_read = BORDER_READ
 
 return M

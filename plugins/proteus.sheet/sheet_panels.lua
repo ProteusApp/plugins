@@ -962,6 +962,33 @@ local M = {
       end,
     })
     command ({
+      id = 'sheet.link',
+      title = 'Link',
+      menu = 'Insert',
+      group = 'objects',
+      order = 12,
+      icon = 'link',
+      key = 'ctrl+k',
+      when = has_sheet,
+      run = function ()
+        floats.link ()
+      end,
+    })
+    command ({
+      id = 'sheet.follow_link',
+      title = 'Follow link',
+      icon = 'external-link',
+      when = function ()
+        local sheet = ctl.sheet ()
+        local _, row, col = ctl.selection ()
+        return sheet ~= nil and sheet:link (row, col) ~= nil
+      end,
+      run = function ()
+        local _, row, col = ctl.selection ()
+        ctl.follow_link (row, col)
+      end,
+    })
+    command ({
       id = 'sheet.function',
       title = 'Function…',
       menu = 'Insert',

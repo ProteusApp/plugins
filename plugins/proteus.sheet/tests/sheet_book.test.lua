@@ -499,6 +499,114 @@ test ('20,000 formulas: one edit touches only what it must', function ()
   ok (full < 30, 'the full recalculation took too long')
 end)
 
+test (
+  'big blocks are found by column and row, so an edit looks only at its own',
+  function ()
+    local book = book_of ({ 'S' }, {
+      S = {
+        A1 = '1',
+        B1 = '2',
+        Z1 = '3',
+        DA600 = '=SUM(A:B)',
+        DA601 = '=SUM(1:1)',
+        DA602 = '=SUM(A1:CZ500)',
+        DA603 = '=SUM(A1:A100)',
+        DB600 = '=DA600*2',
+      },
+    })
+    local s = book.sheets[1]
+    book:ensure ()
+    local w = s.watch
+    ok (w.cols[1] and w.cols[2] and not w.cols[3], 'A:B goes in by column')
+    ok (w.rows[1] and not w.rows[2], '1:1 goes in by row')
+    local wide = 0
+    for _ in pairs (w.big) do
+      wide = wide + 1
+    end
+    eq (wide, 1)
+    -- A1 is read by every one of them, and DB600 reads DA600.
+    set (s, 'A1', '10')
+    book:ensure ()
+    eq (book.last.evaluated, 5)
+    eq (shown (s, 'DB600'), '24')
+    -- Z1 is read by the row and the wide block, and looking for it checks only those.
+    set (s, 'Z1', '4')
+    book:ensure ()
+    eq (book.last.evaluated, 2)
+    ok (book.scanned <= 4, 'scanned ' .. book.scanned)
+    -- A cell far from every block is read by none, and only the wide block is looked at.
+    set (s, 'AZ900', '5')
+    book:ensure ()
+    eq (book.last.evaluated, 0)
+    eq (book.scanned, 1)
+    -- Taking a formula away takes its blocks out of the index.
+    set (s, 'DA600', '')
+    set (s, 'DA601', '')
+    book:ensure ()
+    ok (not w.cols[2] and not w.rows[1], 'their blocks left the index')
+  end
+)
+
+test (
+  '50,000 cells and 5,000 lookups: an edit reaches only what reads it',
+  function ()
+    local rows, lookups = 10000, 5000
+    local book = B.new ({ rows = rows, name = 'Data' })
+    local data = book.sheets[1]
+    for row = 1, rows do
+      data:put (row, 1, { text = 'k' .. row })
+      data:put (row, 2, { text = tostring (row) })
+      data:put (row, 3, { text = tostring (row * 2) })
+      data:put (row, 4, { text = 'item ' .. row })
+    end
+    for row = 1, lookups do
+      data:put (row, 6, { text = 'k' .. (row % 50 + 1) })
+      data:put (row, 7, { text = '=VLOOKUP(F' .. row .. ', $A:$D, 2, FALSE)' })
+    end
+    local started = os.clock ()
+    book:ensure ()
+    local full = os.clock () - started
+    eq (book.last.evaluated, lookups)
+    eq (data:value (7, 7), 8)
+
+    -- A key read by one lookup works out that lookup alone, and looks at no big block on the
+    -- way, however many lookups read the table.
+    started = os.clock ()
+    data:set (7, 6, 'k30')
+    book:ensure ()
+    local one = os.clock () - started
+    eq (book.last, { full = false, evaluated = 1, dirty = 1 })
+    eq (data:value (7, 7), 30)
+    ok (book.scanned <= 1, 'scanned ' .. book.scanned)
+
+    -- An edit inside the table reaches every lookup. Finding them looks at the blocks of its
+    -- column once, not once for every lookup due.
+    started = os.clock ()
+    data:set (3, 2, '-3')
+    book:ensure ()
+    local all = os.clock () - started
+    eq (book.last.evaluated, lookups)
+    ok (book.scanned <= lookups, 'scanned ' .. book.scanned)
+    eq (data:value (2, 7), -3)
+
+    -- A cell nobody reads works nothing out.
+    data:set (9000, 9, '1')
+    book:ensure ()
+    eq (book.last.evaluated, 0)
+
+    print (
+      string.format (
+        '    5,000 lookups over 40,000 cells: full %.3f s, one key %.4f s, a table cell %.3f s',
+        full,
+        one,
+        all
+      )
+    )
+    ok (one < 1, 'an edit that reaches one lookup took too long')
+    ok (all < 20, 'an edit that reaches every lookup took too long')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Undo
 ---------------------------------------------------------------------------------------------
@@ -815,6 +923,7 @@ local function full_book ()
   s:set_freeze (4, 1)
   s:merge ({ r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   s:set_note (5, 2, 'Rent went up in March.')
+  s:set_link (1, 1, 'https://example.com/budget')
   s:set_field ('filter', {
     rect = { r1 = 4, c1 = 1, r2 = 6, c2 = 2 },
     columns = { [1] = { values = { 'Rent' } } },
@@ -866,6 +975,7 @@ test ('decode (encode (book)) gives the same book back', function ()
   eq ({ s:freeze () }, { 4, 1 })
   eq (s:merge_at (1, 2), { r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   eq (s:note (5, 2), 'Rent went up in March.')
+  eq (s:link (1, 1), 'https://example.com/budget')
   -- The filter's hidden rows are worked out on load.
   ok (s:row_hidden (6) and not s:row_hidden (5))
   eq (text (back.sheets[2], 'B2'), 'Say "hi"\n\ttab\\')

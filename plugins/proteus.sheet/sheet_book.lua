@@ -100,6 +100,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field row_styles? table<string, Sheet.Style>
 ---@field merges? string[]
 ---@field notes? table<string, string>
+---@field links? table<string, string> Addresses to links: a web or mail address, or a place in the book after `#`, such as `#Sheet2!A1`.
 ---@field filter? Sheet.Filter
 ---@field rules? Sheet.Rule[]
 ---@field validation? Sheet.Validation[]
@@ -141,24 +142,31 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field c2 number
 ---@field cell Sheet.Cell The formula that reads it.
 
----Each sheet's index from its cells to the formulas that read them.
+---Each sheet's index from its cells to the formulas that read them. A block of more than 64
+---cells goes in by column when it spans at most 64 columns, such as `A:D`, by row when it
+---spans at most 64 rows, such as `1:1`, and in `big` otherwise. So finding the formulas that
+---read a cell looks at the blocks of its own column and row, not at every big block.
 ---@class Sheet.Watch
 ---@field points table<integer, table<Sheet.Cell, boolean>> Small blocks, cell by cell.
----@field big table<Sheet.WatchArea, boolean> Blocks of more than 64 cells.
+---@field cols table<integer, table<Sheet.WatchArea, boolean>> Narrow big blocks, by column.
+---@field rows table<integer, table<Sheet.WatchArea, boolean>> Short wide blocks, by row.
+---@field big table<Sheet.WatchArea, boolean> Blocks both wide and tall.
 ---@field by_col table<integer, table<Sheet.Cell, boolean>> The formulas of each column.
 ---@field spills table<integer, Sheet.Cell> The formula whose block shows in each cell around it.
 ---@field blocked table<Sheet.Cell, Sheet.Rect> Formulas whose block cannot spill, and the cells it needs.
 
 ---One change inside an undo step. `cell` changes a cell's text and style. `prop` changes one
----entry of a sheet's map, or a whole field when `key` is nil. `state` swaps everything a sheet
----holds, around an insert or a delete. `sheets` changes the list of sheets.
+---entry of a sheet's map, or a whole field when `key` is nil. `shift` inserts or deletes rows
+---or columns: it keeps the move in `shift`, and the sheet's lists and size before and after.
+---`sheets` changes the list of sheets.
 ---@class Sheet.Change
----@field kind 'cell'|'prop'|'state'|'sheets'|'names'
+---@field kind 'cell'|'prop'|'shift'|'sheets'|'names'
 ---@field sheet? Sheet.Sheet
 ---@field row? integer
 ---@field col? integer
 ---@field field? string
 ---@field key? any
+---@field shift? Sheet.Shift
 ---@field before any
 ---@field after any
 ---@field active_before? integer
@@ -215,6 +223,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field nesting integer How deep the formulas worked out on demand go.
 ---@field evaluated integer
 ---@field stamp integer Counts every change and recalculation, so caches know when to refresh.
+---@field scanned integer How many blocks of the index the last update looked at to find the formulas due.
 ---@field last Sheet.RecalcStats
 ---@field edits integer Counts the steps done, undone and redone, so the UI can tell when to save.
 local Book = {}
@@ -228,6 +237,8 @@ local HISTORY = 200
 M.HISTORY = HISTORY
 -- A block with at most this many cells goes into the index cell by cell.
 local SMALL = 64
+-- A bigger block that spans at most this many columns, or else rows, goes in by column or row.
+local BAND = 64
 -- How deep formulas worked out on demand may nest before they give #CYCLE!. Each level holds
 -- a pcall on the C stack, which runs out a few hundred calls deep.
 local DEPTH = 32
@@ -276,6 +287,51 @@ local function small (a)
     and (a.r2 - a.r1 + 1) * (a.c2 - a.c1 + 1) <= SMALL
 end
 
+---Where a big block goes in the index: by column, by row, or with the other big blocks.
+---@param a Sheet.WatchArea
+---@return 'cols'|'rows'|'big'
+local function band_of (a)
+  if a.c2 ~= HUGE and a.c2 - a.c1 < BAND then
+    return 'cols'
+  end
+  if a.r2 ~= HUGE and a.r2 - a.r1 < BAND then
+    return 'rows'
+  end
+  return 'big'
+end
+
+---Adds a big block to its sheet's index, or takes it out with `on` false.
+---@param w Sheet.Watch
+---@param a Sheet.WatchArea
+---@param on boolean
+local function index_big (w, a, on)
+  local band = band_of (a)
+  if band == 'big' then
+    w.big[a] = on or nil
+    return
+  end
+  local map = w[band] --[[@as table<integer, table<Sheet.WatchArea, boolean>>]]
+  local from, to = a.c1, a.c2
+  if band == 'rows' then
+    from, to = a.r1, a.r2
+  end
+  for i = from, to --[[@as integer]] do
+    local set = map[i]
+    if on then
+      if not set then
+        set = {}
+        map[i] = set
+      end
+      set[a] = true
+    elseif set then
+      set[a] = nil
+      if next (set) == nil then
+        map[i] = nil
+      end
+    end
+  end
+end
+
 ---@param list any[]
 ---@return any[]
 local function copy_list (list)
@@ -316,6 +372,7 @@ local function blank_book (opts)
   self.nesting = 0
   self.evaluated = 0
   self.stamp = 0
+  self.scanned = 0
   self.last = { full = true, evaluated = 0, dirty = 0 }
   self.edits = 0
   return self
@@ -972,7 +1029,7 @@ function Book:watch (sheet, cell)
           end
         end
       else
-        target.watch.big[a] = true
+        index_big (target.watch, a, true)
       end
     end
   end
@@ -1011,7 +1068,7 @@ function Book:unwatch (sheet, cell)
         end
       end
     else
-      w.big[a] = nil
+      index_big (w, a, false)
     end
   end
   cell.areas = nil
@@ -1030,11 +1087,32 @@ function Book:readers (sheet, row, col, fn)
       fn (cell)
     end
   end
+  local scanned = 0
+  local by_col = w.cols[col]
+  if by_col then
+    for a in pairs (by_col) do
+      scanned = scanned + 1
+      if row >= a.r1 and row <= a.r2 then
+        fn (a.cell)
+      end
+    end
+  end
+  local by_row = w.rows[row]
+  if by_row then
+    for a in pairs (by_row) do
+      scanned = scanned + 1
+      if col >= a.c1 and col <= a.c2 then
+        fn (a.cell)
+      end
+    end
+  end
   for a in pairs (w.big) do
+    scanned = scanned + 1
     if row >= a.r1 and row <= a.r2 and col >= a.c1 and col <= a.c2 then
       fn (a.cell)
     end
   end
+  self.scanned = self.scanned + scanned
 end
 
 ---Tells the book that a cell's text changed, so the formulas that read it are worked out
@@ -1358,13 +1436,28 @@ local function deps_of (cell, dirty)
         end
       end
     else
-      for col, set in pairs (a.sheet.watch.by_col) do
-        if col >= a.c1 and col <= a.c2 then
-          for d in pairs (set) do
-            if dirty[d] and d.row >= a.r1 and d.row <= a.r2 then
-              deps[#deps + 1] = d
-              loops = loops or d == cell
-            end
+      local by_col = a.sheet.watch.by_col
+      ---@param set table<Sheet.Cell, boolean>
+      local function take (set)
+        for d in pairs (set) do
+          if dirty[d] and d.row >= a.r1 and d.row <= a.r2 then
+            deps[#deps + 1] = d
+            loops = loops or d == cell
+          end
+        end
+      end
+      if a.c2 - a.c1 < BAND then
+        -- A narrow block looks at its own columns rather than at every column.
+        for col = a.c1, a.c2 --[[@as integer]] do
+          local set = by_col[col]
+          if set then
+            take (set)
+          end
+        end
+      else
+        for col, set in pairs (by_col) do
+          if col >= a.c1 and col <= a.c2 then
+            take (set)
           end
         end
       end
@@ -1484,6 +1577,7 @@ function Book:update ()
   end
   local edited = self.edited
   local moved = self.spill_moved
+  self.scanned = 0
   self.edited = {}
   self.spill_moved = {}
   self.stale = false
@@ -1629,7 +1723,7 @@ function Book:log (change)
   self:begin ({ sheet = change.sheet })
   local batch = self.batch --[[@as Sheet.Step]]
   batch.changes[#batch.changes + 1] = change
-  if change.kind == 'state' or change.kind == 'sheets' then
+  if change.kind == 'shift' or change.kind == 'sheets' then
     self.batch_cells, self.batch_props = {}, {}
   end
   self:finish ()
@@ -1718,8 +1812,9 @@ function Book:apply (change, back)
     sheet:put (change.row --[[@as integer]], change.col --[[@as integer]], value)
   elseif kind == 'prop' and sheet then
     sheet:put_prop (change.field --[[@as string]], change.key, value)
-  elseif kind == 'state' and sheet then
-    sheet:put_state (value)
+  elseif kind == 'shift' and sheet then
+    sheet:play_shift (change.shift --[[@as Sheet.Shift]], back)
+    sheet:put_shape (value)
   elseif kind == 'sheets' then
     local active = change.active_after
     if back then
@@ -2181,6 +2276,9 @@ local function sheet_json (data)
   end
   if data.notes then
     write_map (out, 'notes', data.notes)
+  end
+  if data.links then
+    write_map (out, 'links', data.links)
   end
   local filter = data.filter
   if filter then

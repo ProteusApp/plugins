@@ -1,10 +1,11 @@
--- sheet_panel_find: the find bar, the filter menu and the note editor of the Sheet app.
+-- sheet_panel_find: the find bar, the filter menu, and the note and link editors of the Sheet
+-- app.
 --
 -- The find bar sits at the top right of the grid. Matches light up as the query changes, and
 -- the selection moves to the nearest one. Each box is drawn over its cell from `ctl.cell_rect`,
 -- all of them as one HTML string, and drawn again when the grid scrolls. The filter menu opens
--- from a filter button in a header row. The note editor opens beside its cell and saves when
--- it closes.
+-- from a filter button in a header row. The note and link editors open beside their cell and
+-- save when they close.
 
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
@@ -15,6 +16,7 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@class Sheet.FloatPanels
 ---@field find fun(replace: boolean) Opens the find bar, with the replace row when asked.
 ---@field note fun() Opens the note editor on the active cell.
+---@field link fun() Opens the link editor on the active cell.
 ---@field filter_menu fun(col: integer, rect: Proteus.Rect) Opens a filter column's menu under its button.
 
 ---What the find bar searches for.
@@ -1132,10 +1134,64 @@ function M.install (env)
     box:focus ()
   end
 
+  -- The link editor ----------------------------------------------------------------------
+
+  local function open_link ()
+    local sheet = ctl.sheet ()
+    if not sheet then
+      return
+    end
+    local _, row, col = ctl.selection ()
+    local old = sheet:link (row, col) or ''
+    local box = ui.input ({
+      value = old,
+      placeholder = 'https://example.com, or #Sheet2!A1',
+      spellcheck = false,
+    })
+    local saved = false
+    local function save ()
+      if saved then
+        return
+      end
+      saved = true
+      local now = string.match (box:value () or '', '^%s*(.-)%s*$')
+      if now == old then
+        return
+      end
+      ctl.change (now == '' and 'Remove link' or 'Link', function (_, s)
+        s:set_link (row, col, now ~= '' and now or nil)
+      end)
+    end
+    box:on ('keydown', function (ev)
+      if ev.key == 'Enter' then
+        pop.close (env)
+        return 'stop'
+      end
+      return nil
+    end)
+    local el = ui.div ({
+      class = 'sheet-pop-note',
+      ui.div ({
+        class = 'sheet-pop-note-head',
+        ui.icon ('link', 14),
+        ui.span ({ 'Link on ' .. model.address (row, col) }),
+      }),
+      box,
+      ui.div ({
+        class = 'sheet-pop-note-head',
+        'Ctrl+click the cell to follow it. Clear the box to remove it.',
+      }),
+    })
+    local anchor = ctl.cell_rect (row, col) or pop.cell_anchor (env)
+    pop.open (env, el, anchor, { side = 'right', on_close = save })
+    box:focus ()
+  end
+
   ---@type Sheet.FloatPanels
   local api = {
     find = open_find,
     note = open_note,
+    link = open_link,
     filter_menu = filter_menu,
   }
   return api
