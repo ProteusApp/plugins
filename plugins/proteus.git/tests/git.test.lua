@@ -1170,3 +1170,63 @@ test ('changes_html draws a long list up to its limit', function ()
   lacks (whole, 'show-all-u')
   eq ({ m.parse_item ('show-all-u') }, { 'show-all-u' })
 end)
+
+---------------------------------------------------------------------------------------------
+-- History
+---------------------------------------------------------------------------------------------
+
+test ('log_args pages, searches and follows one file', function ()
+  eq (m.log_args (200), { 'log', '-n', '200', '--decorate=full', m.LOG_FORMAT })
+  eq (
+    m.log_args (200, { skip = 400, search = '  fix bug ', path = 'src/a b.txt' }),
+    {
+      'log',
+      '-n',
+      '200',
+      '--decorate=full',
+      m.LOG_FORMAT,
+      '--skip=400',
+      '--regexp-ignore-case',
+      '--fixed-strings',
+      '--grep=fix bug',
+      '--follow',
+      '--',
+      'src/a b.txt',
+    }
+  )
+  eq (
+    m.search_args ('author: Ada'),
+    { '--regexp-ignore-case', '--fixed-strings', '--author=Ada' }
+  )
+  eq (m.search_args ('   '), {})
+  eq (#m.log_args (5, { skip = 0, search = '' }), 5)
+end)
+
+test ('append_commits adds a page without repeats', function ()
+  local log = m.parse_log (LOG_FULL)
+  local both = m.append_commits ({ log[1] }, log)
+  eq (#both, 2)
+  eq ({ both[1].short, both[2].short }, { '509d303', '6258eaf' })
+end)
+
+test (
+  'log_html ends in a Load More row, and says when nothing matches',
+  function ()
+    local log = m.parse_log (LOG_FULL)
+    has (m.log_html (log, nil, { more = true }), 'data-item="more"')
+    lacks (m.log_html (log, nil), 'data-item="more"')
+    has (
+      m.log_html ({}, nil, { empty = 'No commits match' }),
+      'No commits match'
+    )
+  end
+)
+
+test ('relative reads a full path from the repository root', function ()
+  eq (m.relative ('C:/work/repo', 'C:\\work\\repo\\src\\a.txt'), 'src/a.txt')
+  eq (m.relative ('/home/r/', '/home/r/a.txt'), 'a.txt')
+  eq (m.relative ('/home/r', '/home/rx/a.txt'), nil)
+  eq (m.relative ('/home/r', '/home/r'), nil)
+  eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'windows'), 'A.txt')
+  eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'linux'), nil)
+end)

@@ -110,6 +110,16 @@
 ---@field empty? string The text to show when there is no file.
 ---@field cut? boolean True when `parse_diff` stopped at `max_lines`, so there is more.
 
+---What the History view lists: every commit, the ones a search finds, or one file's.
+---@class Git.LogQuery
+---@field skip? integer Commits to leave out at the top, for the next page.
+---@field search? string Text to find in commit messages, or `author:<name>` for the author.
+---@field path? string A file, from the repository root, whose history to list.
+
+---@class Git.LogOptions
+---@field more? boolean Ends the list in a Load More row.
+---@field empty? string What to say when there is no commit.
+
 ---@class Git.ListOptions
 ---@field selected? string The key of the selected row, such as `'u:src/a.txt'`.
 ---@field icons? table<string, string> SVG for the row buttons: `stage`, `unstage` and `discard`.
@@ -853,10 +863,63 @@ function M.focus_gap (took)
   return math.min (60000, math.max (1000, took * 10))
 end
 
----@param n integer
+---What a search box's text adds to `git log`. Plain text is found in the message, and
+---`author:<name>` in the author's name or email. Both ignore case and read the text as it is,
+---not as a pattern.
+---@param text string
 ---@return string[]
-function M.log_args (n)
-  return { 'log', '-n', tostring (n), '--decorate=full', M.LOG_FORMAT }
+function M.search_args (text)
+  local query = trim (text)
+  if query == '' then
+    return {}
+  end
+  local author = query:match ('^author:%s*(.+)$')
+  if author then
+    return { '--regexp-ignore-case', '--fixed-strings', '--author=' .. author }
+  end
+  return { '--regexp-ignore-case', '--fixed-strings', '--grep=' .. query }
+end
+
+---`n` commits for the History view. A file's history follows it across renames.
+---@param n integer
+---@param query? Git.LogQuery
+---@return string[]
+function M.log_args (n, query)
+  local q = query or {}
+  local args = { 'log', '-n', tostring (n), '--decorate=full', M.LOG_FORMAT }
+  if q.skip and q.skip > 0 then
+    args[#args + 1] = '--skip=' .. q.skip
+  end
+  for _, a in ipairs (M.search_args (q.search or '')) do
+    args[#args + 1] = a
+  end
+  if q.path then
+    args[#args + 1] = '--follow'
+    args[#args + 1] = '--'
+    args[#args + 1] = q.path
+  end
+  return args
+end
+
+---Adds a page of commits to the list, leaving out any it has already, as when a commit
+---arrived between the two pages.
+---@param list Git.Commit[]
+---@param page Git.Commit[]
+---@return Git.Commit[]
+function M.append_commits (list, page)
+  local seen = {} ---@type table<string, boolean>
+  local out = {} ---@type Git.Commit[]
+  for _, c in ipairs (list) do
+    seen[c.hash] = true
+    out[#out + 1] = c
+  end
+  for _, c in ipairs (page) do
+    if not seen[c.hash] then
+      seen[c.hash] = true
+      out[#out + 1] = c
+    end
+  end
+  return out
 end
 
 ---@return string[]
@@ -1789,13 +1852,18 @@ function M.changes_html (st, opts)
   return table.concat (out)
 end
 
----The history list as one HTML string. Each row carries `data-item="<hash>"`.
+---The history list as one HTML string. Each row carries `data-item="<hash>"`, and the Load
+---More row `data-item="more"`.
 ---@param commits Git.Commit[]
 ---@param selected? string The hash of the selected commit.
+---@param opts? Git.LogOptions
 ---@return string
-function M.log_html (commits, selected)
+function M.log_html (commits, selected, opts)
+  local o = opts or {}
   if #commits == 0 then
-    return '<div class="ui-empty">No commits yet</div>'
+    return '<div class="ui-empty">'
+      .. esc (o.empty or 'No commits yet')
+      .. '</div>'
   end
   local out = {} ---@type string[]
   for _, c in ipairs (commits) do
@@ -1823,6 +1891,10 @@ function M.log_html (commits, selected)
       .. '</span><span>'
       .. esc (c.date)
       .. '</span></div></div>'
+  end
+  if o.more then
+    out[#out + 1] =
+      '<div class="git-row git-more" data-item="more">Load more commits</div>'
   end
   return table.concat (out)
 end
@@ -1880,6 +1952,26 @@ end
 function M.join (root, rel)
   local base = root:gsub ('[/\\]+$', '')
   return base .. '/' .. rel
+end
+
+---A full path as a path from the repository root, or nil when it is outside. Windows ignores
+---the case of letters in paths, so the comparison there does too.
+---@param root string
+---@param full string
+---@param os? string
+---@return string?
+function M.relative (root, full, os)
+  local base = root:gsub ('\\', '/'):gsub ('/+$', '')
+  local path = full:gsub ('\\', '/')
+  local head = path:sub (1, #base + 1)
+  local want = base .. '/'
+  if os == 'windows' then
+    head, want = head:lower (), want:lower ()
+  end
+  if head ~= want or #path <= #want then
+    return nil
+  end
+  return path:sub (#want + 1)
 end
 
 ---The folder that holds a path.

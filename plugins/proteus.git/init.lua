@@ -13,7 +13,8 @@
 local m = require ('git_parse') --[[@as Git.ParseModule]]
 
 local MAX_RECENT = 10
-local LOG_COUNT = 200
+-- How many commits the History view reads at a time.
+local LOG_PAGE = 200
 
 -- lang=css
 local CSS = [[
@@ -58,6 +59,11 @@ local CSS = [[
 .git-amend { display: inline-flex; align-items: center; gap: 5px; margin-right: auto; color: var(--fg-muted);
   font-size: 12px; cursor: pointer; }
 .git-amend input { margin: 0; accent-color: var(--accent); }
+.git-history-tools { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  border-bottom: 1px solid var(--border); }
+.git-search { width: 100%; }
+.git-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-muted); min-width: 0; }
+.git-filter-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-commit { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
 .git-commit:hover { background: var(--bg-hover); }
 .git-commit.active { background: var(--bg-active); }
@@ -181,6 +187,11 @@ return {
     local repo = nil ---@type string? The repository root, with forward slashes.
     local status = nil ---@type Git.Status?
     local commits = {} ---@type Git.Commit[]
+    -- True when the last page of history was full, so there may be more.
+    local log_more = false
+    -- The search box's text, and the file whose history the History view lists.
+    local log_search = ''
+    local log_path = nil ---@type string?
     local selection = nil ---@type Git.Selection?
     -- What the main area draws now. The hunk buttons point into `shown_files`.
     local shown_files = {} ---@type Git.FileDiff[]
@@ -402,6 +413,32 @@ return {
       }),
     })
     local history_list = ui.div ({ class = 'git-list' })
+    local history_search = ui.input ({
+      class = 'git-search',
+      placeholder = 'Search messages, or author:name',
+      spellcheck = false,
+    })
+    local filter_text = ui.span ({ class = 'git-filter-text' })
+    local history_filter = ui.div ({
+      class = 'git-filter',
+      ui.icon ('file-clock', 14),
+      filter_text,
+      ui.button ({
+        class = 'git-tool',
+        title = 'Show every commit',
+        ui.icon ('x', 14),
+        onclick = function ()
+          commands.run ('git.history_all')
+          return nil
+        end,
+      }),
+    })
+    history_filter:show (false)
+    local history_tools = ui.div ({
+      class = 'git-history-tools',
+      history_search,
+      history_filter,
+    })
     local main_body = ui.div ({ class = 'git-main-body' })
     local root = ui.div ({ class = 'git-main', main_body })
 
@@ -530,7 +567,11 @@ return {
       end
       local sel = selection
       local hash = sel and sel.kind == 'commit' and sel.hash or nil
-      history_list:html (m.log_html (commits, hash))
+      local filtered = log_path ~= nil or not blank (log_search)
+      history_list:html (m.log_html (commits, hash, {
+        more = log_more,
+        empty = filtered and 'No commits match' or nil,
+      }))
     end
 
     -- The side views with no repository open: a short reason and, when it can work, a button.
@@ -538,6 +579,7 @@ return {
       local open = repo ~= nil
       head:show (open)
       commit_box:show (open)
+      history_tools:show (open)
       if open then
         return
       end
@@ -731,23 +773,33 @@ return {
 
     -- Loading -------------------------------------------------------------------------------
 
-    local function load_history ()
+    ---Reads the history again: as many commits as are listed now, or a page when `more` asks
+    ---for the next one.
+    ---@param more? boolean
+    local function load_history (more)
       if not repo or not git_found then
         return
       end
       if status and status.initial then
-        commits = {}
+        commits, log_more = {}, false
         render_history ()
         return
       end
       log_seq = log_seq + 1
       local seq = log_seq
-      git (m.log_args (LOG_COUNT), nil, function (res, err)
+      local n = more and LOG_PAGE or math.max (LOG_PAGE, #commits)
+      ---@type Git.LogQuery
+      local query = {
+        skip = more and #commits or 0,
+        search = log_search,
+        path = log_path,
+      }
+      git (m.log_args (n, query), nil, function (res, err)
         if seq ~= log_seq then
           return
         end
         if not res or res.code ~= 0 then
-          commits = {}
+          commits, log_more = {}, false
           history_list:html (
             '<div class="ui-empty">'
               .. esc (m.error_text (res, err))
@@ -755,9 +807,24 @@ return {
           )
           return
         end
-        commits = m.parse_log (res.stdout)
+        local page = m.parse_log (res.stdout)
+        log_more = #page >= n
+        commits = more and m.append_commits (commits, page) or page
         render_history ()
       end)
+    end
+
+    ---Lists one file's history, or every commit again when `path` is nil.
+    ---@param path string?
+    local function history_of (path)
+      log_path = path
+      filter_text:text (path and ('History of ' .. path) or '')
+      filter_text:set ('title', path or '')
+      history_filter:show (path ~= nil)
+      commits, log_more = {}, false
+      history_list:html ('')
+      views.show ('git.history')
+      load_history ()
     end
 
     ---Tells other plugins, such as a file tree, what Git says about each changed file. A file
@@ -878,6 +945,9 @@ return {
           not_repo = false
           status, commits, selection, shown_key = nil, {}, nil, nil
           show_all = {}
+          log_more, log_path, log_search = false, nil, ''
+          history_search:value ('')
+          history_filter:show (false)
           if not embedded then
             recent = m.remember (recent, top, MAX_RECENT)
             app.store.set ('recent', recent)
@@ -1246,7 +1316,7 @@ return {
         title = 'History',
         icon = 'history',
         order = embedded and 21 or 2,
-        content = ui.div ({ class = 'git-side', history_list }),
+        content = ui.div ({ class = 'git-side', history_tools, history_list }),
         on_show = function ()
           history_open = true
           load_history ()
@@ -1298,8 +1368,49 @@ return {
       return true
     end)
 
+    -- The search runs a moment after typing stops, or at once on Enter.
+    local search_timer = nil ---@type fun()?
+    local function run_search ()
+      if search_timer then
+        search_timer ()
+        search_timer = nil
+      end
+      local text = history_search:value ()
+      if text == log_search then
+        return
+      end
+      log_search = text
+      commits, log_more = {}, false
+      load_history ()
+    end
+    history_search:on ('input', function ()
+      if search_timer then
+        search_timer ()
+      end
+      search_timer = app.timer.after (300, function ()
+        search_timer = nil
+        run_search ()
+      end)
+      return nil
+    end)
+    history_search:on ('keydown', function (ev)
+      if ev.key == 'Enter' then
+        run_search ()
+        return true
+      elseif ev.key == 'Escape' and history_search:value () ~= '' then
+        history_search:value ('')
+        run_search ()
+        return true
+      end
+      return nil
+    end)
+
     history_list:on ('click', function (ev)
       local hash = ev.item
+      if hash == 'more' then
+        load_history (true)
+        return true
+      end
       if hash and hash:find ('^%x+$') then
         select_commit (hash)
         return true
@@ -1449,6 +1560,14 @@ return {
                 fail (err)
               end
             end)
+          end,
+        }
+        items[#items + 1] = {
+          label = 'File History',
+          icon = 'file-clock',
+          disabled = e.kind == 'untracked' or e.kind == 'added',
+          run = function ()
+            history_of (e.path)
           end,
         }
         items[#items + 1] = {
@@ -1735,6 +1854,43 @@ return {
       icon = 'git-branch',
       run = function ()
         views.show ('git.changes')
+      end,
+    })
+    commands.register ({
+      id = 'git.history_all',
+      category = 'Git',
+      title = 'Show Every Commit',
+      icon = 'history',
+      when = function ()
+        return has_repo () and log_path ~= nil
+      end,
+      run = function ()
+        history_of (nil)
+      end,
+    })
+    -- Inside the Code Editor, the file in front.
+    ---@return string?
+    local function current_file ()
+      local doc = editor and editor.current ()
+      local top = repo
+      if not doc or not top then
+        return nil
+      end
+      return m.relative (top, doc.path, app.os)
+    end
+    commands.register ({
+      id = 'git.file_history',
+      category = 'Git',
+      title = 'Show File History',
+      icon = 'file-clock',
+      when = function ()
+        return has_repo () and current_file () ~= nil
+      end,
+      run = function ()
+        local path = current_file ()
+        if path then
+          history_of (path)
+        end
       end,
     })
     commands.register ({
