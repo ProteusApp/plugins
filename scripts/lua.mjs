@@ -92,7 +92,7 @@ function __declared (src, path)
   if not ok then return json ({ error = tostring (m) }) end
   if type (m) ~= 'table' then return json ({ error = path .. ' must return a table' }) end
   local out = {}
-  for _, k in ipairs ({ 'name', 'description', 'version', 'depends', 'optional', 'permissions', 'folders', 'exports', 'requires', 'plugins' }) do
+  for _, k in ipairs ({ 'name', 'description', 'version', 'depends', 'optional', 'permissions', 'folders', 'exports', 'requires', 'plugins', 'extends' }) do
     local v = m[k]
     if type (v) ~= 'function' then out[k] = v end
   end
@@ -123,8 +123,8 @@ export function reader(dir) {
 
 /**
  * What a plugin's init.lua or a profile's profile.lua declares: name, description, version,
- * depends, optional, permissions, folders, requires and plugins. `error` is set when the file
- * did not load.
+ * depends, optional, permissions, folders, requires, plugins and a profile's `extends`.
+ * `error` is set when the file did not load.
  */
 export async function declaredOf(dir, main, shown = main) {
   const lua = await engine();
