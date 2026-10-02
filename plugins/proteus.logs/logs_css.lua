@@ -1,5 +1,5 @@
 -- logs_css: the log viewer's styles: the bar with the filter and the level chips, the list
--- of lines with their colours, the detail panel, and the Sources view.
+-- of lines with their colours and columns, the detail panel, and the Sources view.
 
 -- lang=css
 return [[
@@ -408,6 +408,41 @@ return [[
 .logs-src-close:hover {
   color: var(--fg);
   background: var(--bg-hover);
+}
+.logs-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  white-space: pre;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+.logs-hcol,
+.logs-f {
+  flex: none;
+  box-sizing: content-box;
+  padding-right: 1ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.logs-hcol {
+  cursor: pointer;
+}
+.logs-hcol:hover {
+  color: var(--fg);
+}
+.logs-hcol.on {
+  color: var(--accent);
+}
+.logs-f {
+  color: var(--syn-property);
 }
 .logs-src-none {
   padding: 16px 8px;

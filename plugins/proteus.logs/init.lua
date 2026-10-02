@@ -12,12 +12,14 @@
 --
 -- This file puts the screen together and wires its events. The rest lives in modules that
 -- share one context, Logs.Ctx: logs_list draws the list of lines, logs_detail shows the line
--- picked in it, logs_marks keeps the bookmarks, logs_sources opens, runs and shows the
--- sources the lines come from, and logs_commands holds the right-click menus and the commands.
+-- picked in it, logs_marks keeps the bookmarks, logs_formats the formats whose fields show as
+-- columns, logs_sources opens, runs and shows the sources the lines come from, and
+-- logs_commands holds the right-click menus and the commands.
 
 local CSS = require ('logs_css') --[[@as string]]
 local commands_m = require ('logs_commands') --[[@as Logs.CommandsModule]]
 local detail_m = require ('logs_detail') --[[@as Logs.DetailModule]]
+local formats_m = require ('logs_formats') --[[@as Logs.FormatsModule]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 local marks_m = require ('logs_marks') --[[@as Logs.MarksModule]]
@@ -61,6 +63,13 @@ local LEVEL_PLURALS = {
 ---@field by_id table<integer, Logs.Line> The drawn lines by id.
 ---@field view_newest? number The time of the view's newest line, for a filter such as after:-15m.
 ---@field query Logs.Query
+---@field filter_text string What the filter box holds.
+---@field formats Logs.Format[] The formats the user defined.
+---@field col_names string[] The fields the formats of the view's sources show as columns.
+---@field cols_key string The column names, joined, to tell when they change.
+---@field known_fields table<string, string> The column names by their lower-case names, for `field:value`.
+---@field cols? Logs.Columns The columns of the drawn window, with their widths.
+---@field sort? Logs.Sort The column the list is sorted by, or nil for the order lines came in.
 ---@field hidden table<string, boolean> The levels the chips hide.
 ---@field follow boolean True while the list stays at the bottom as lines arrive.
 ---@field selected? Logs.Line The line the detail panel shows.
@@ -74,6 +83,7 @@ local LEVEL_PLURALS = {
 ---@field filter_box Proteus.El
 ---@field problem_el Proteus.El
 ---@field list Proteus.El
+---@field head_el Proteus.El The row of column names.
 ---@field rows_el Proteus.El
 ---@field earlier_bar Proteus.El
 ---@field earlier_text Proteus.El
@@ -98,6 +108,7 @@ local LEVEL_PLURALS = {
 ---@field update_counts fun()
 ---@field set_follow fun(on: boolean)
 ---@field reset_filter fun()
+---@field set_filter fun(text: string) Puts text in the filter box and filters by it.
 ---@field clear_lines fun()
 ---@field copy_matching fun()
 ---@field copy_selected fun()
@@ -105,6 +116,7 @@ local LEVEL_PLURALS = {
 ---@field toggle_wrap fun()
 ---@field focus_filter fun()
 ---@field redraw_list fun() From logs_list.
+---@field sort_by fun(field: string)
 ---@field show_window fun(from: integer)
 ---@field page fun(step: integer)
 ---@field reveal fun(id: integer)
@@ -123,6 +135,13 @@ local LEVEL_PLURALS = {
 ---@field next_mark fun(step: integer)
 ---@field list_marks fun()
 ---@field go_to_line fun(line: Logs.Line): boolean
+---@field parser_for fun(name?: string): Logs.Parser? From logs_formats.
+---@field set_format fun(src: Logs.Source, name?: string)
+---@field choose_format fun(src: Logs.Source)
+---@field new_format fun(src?: Logs.Source)
+---@field edit_format fun()
+---@field delete_format fun()
+---@field save_open fun() From logs_sources.
 ---@field find_source fun(id: number?): Logs.Source? From logs_sources.
 ---@field render_sources fun()
 ---@field show_source fun(src: Logs.Source?)
@@ -192,6 +211,11 @@ return {
       view_first = 1,
       by_id = {},
       query = lf.parse_query (''),
+      filter_text = '',
+      formats = {},
+      col_names = {},
+      cols_key = '',
+      known_fields = {},
       hidden = {},
       follow = true,
       marks = {},
@@ -326,9 +350,12 @@ return {
     earlier_bar:show (false)
     later_bar:show (false)
     local rows_el = ui.div ({ class = 'logs-rows' })
+    local head_el = ui.div ({ class = 'logs-head' })
+    head_el:show (false)
     local list = ui.div ({
       class = 'logs-list',
       attrs = { tabindex = '0' },
+      head_el,
       earlier_bar,
       rows_el,
       later_bar,
@@ -548,9 +575,16 @@ return {
       })
     end
 
+    ---@param text string
+    ---@return Logs.Query
+    local function parse (text)
+      return lf.parse_query (text, ctx.known_fields)
+    end
+
     local function reset_filter ()
       filter_box:value ('')
-      ctx.query = lf.parse_query ('')
+      ctx.filter_text = ''
+      ctx.query = parse ('')
       ctx.hidden = {}
       app.store.set ('hidden', {})
       render_chip_states ()
@@ -635,7 +669,7 @@ return {
     -- The line list -----------------------------------------------------------------------------
 
     ctx.filter_box, ctx.problem_el = filter_box, problem_el
-    ctx.list, ctx.rows_el = list, rows_el
+    ctx.list, ctx.rows_el, ctx.head_el = list, rows_el, head_el
     ctx.earlier_bar, ctx.earlier_text = earlier_bar, earlier_text
     ctx.later_bar, ctx.later_text = later_bar, later_text
     ctx.render_toggles, ctx.scroll_bottom = render_toggles, scroll_bottom
@@ -660,6 +694,10 @@ return {
     ctx.picker, ctx.say, ctx.say_error = picker, say, say_error
     marks_m.attach (ctx)
     local toggle_mark, forget_marks = ctx.toggle_mark, ctx.forget_marks
+
+    -- Formats ---------------------------------------------------------------------------------
+
+    formats_m.attach (ctx)
 
     -- Sources ---------------------------------------------------------------------------------
 
@@ -749,16 +787,29 @@ return {
       filter_box:select ()
     end
 
+    ---@param text string
+    local function set_filter (text)
+      if filter_cancel then
+        filter_cancel ()
+        filter_cancel = nil
+      end
+      filter_box:value (text)
+      ctx.filter_text = text
+      ctx.query = parse (text)
+      redraw_list ()
+    end
+
     -- Events ----------------------------------------------------------------------------------
 
     filter_box:on ('input', function (ev)
       local text = ev.value or ''
+      ctx.filter_text = text
       if filter_cancel then
         filter_cancel ()
       end
       filter_cancel = app.timer.after (FILTER_MS, function ()
         filter_cancel = nil
-        ctx.query = lf.parse_query (text)
+        ctx.query = parse (text)
         redraw_list ()
       end)
       return nil
@@ -766,14 +817,8 @@ return {
 
     filter_box:on ('keydown', function (ev)
       if ev.key == 'Escape' then
-        if filter_box:value () ~= '' then
-          if filter_cancel then
-            filter_cancel ()
-            filter_cancel = nil
-          end
-          filter_box:value ('')
-          ctx.query = lf.parse_query ('')
-          redraw_list ()
+        if filter_box:value () ~= '' or ctx.filter_text ~= '' then
+          set_filter ('')
         else
           list:focus ()
         end
@@ -860,7 +905,7 @@ return {
     -- Menus and commands ------------------------------------------------------------------------
 
     ctx.menus, ctx.level_plurals, ctx.here = menus, LEVEL_PLURALS, here
-    ctx.reset_filter = reset_filter
+    ctx.reset_filter, ctx.set_filter = reset_filter, set_filter
     ctx.clear_lines, ctx.copy_matching = clear_lines, copy_matching
     ctx.copy_selected, ctx.toggle_level = copy_selected, toggle_level
     ctx.toggle_wrap, ctx.focus_filter = toggle_wrap, focus_filter

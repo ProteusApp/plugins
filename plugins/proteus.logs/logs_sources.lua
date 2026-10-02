@@ -33,6 +33,7 @@ local KIND_ICONS = {
 ---@field count_el? Proteus.El The line count in the Sources view.
 ---@field counted integer The line count shown there now.
 ---@field last_time? number The time of the newest line that has one, for a line that says none.
+---@field parser? Logs.Parser The source's format, ready to read lines.
 
 ---@class Logs.SourcesViewModule
 local M = {}
@@ -167,6 +168,9 @@ function M.attach (ctx)
     line.src = src.id
     line.id = next_line_id
     next_line_id = next_line_id + 1
+    if src.parser then
+      lf.apply_format (line, src.parser)
+    end
     src.last_time = line.time
     src.next_n = src.next_n + 1
     local dropped = src.lines:push (line)
@@ -202,6 +206,7 @@ function M.attach (ctx)
       state = 'stopped',
       run = 0,
       counted = 0,
+      parser = ctx.parser_for (spec.format),
     }
     next_id = next_id + 1
     ctx.sources[#ctx.sources + 1] = src
@@ -602,6 +607,7 @@ function M.attach (ctx)
   end)
 
   ctx.find_source = find_source
+  ctx.save_open = save_open
   ctx.render_sources = render_sources
   ctx.show_source = show_source
   ctx.show_merged = show_merged

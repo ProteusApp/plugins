@@ -1,6 +1,7 @@
 -- logs_list: the log viewer's list of lines. It draws the window of lines that match, a chunk
--- of rows at a time, moves the window, adds the lines that arrive, and finds a line's row. The
--- log viewer's init.lua attaches it to the context its modules share.
+-- of rows at a time, with a column for each field the sources' formats show, sorts it by a
+-- column, moves the window, adds the lines that arrive, and finds a line's row. The log
+-- viewer's init.lua attaches it to the context its modules share.
 --
 -- Lines can arrive by the thousand, so the list is drawn from HTML strings instead of one
 -- element per row. Rows go into chunks of a few hundred, and each chunk is one element. New
@@ -11,6 +12,7 @@ local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local MAX_SHOWN = 5000 -- drawn at once
 local CHUNK_ROWS = 250
 local FLUSH_MS = 100
+local RESORT_MS = 1000 -- how often a sorted list takes in the lines that arrived
 
 ---Rows drawn as one element.
 ---@class Logs.Chunk
@@ -28,7 +30,7 @@ M.MAX_SHOWN = MAX_SHOWN
 function M.attach (ctx)
   local app, ui = ctx.app, ctx.ui
   local filter_box, problem_el = ctx.filter_box, ctx.problem_el
-  local list, rows_el = ctx.list, ctx.rows_el
+  local list, rows_el, head_el = ctx.list, ctx.rows_el, ctx.head_el
   local earlier_bar, earlier_text = ctx.earlier_bar, ctx.earlier_text
   local later_bar, later_text = ctx.later_bar, ctx.later_text
   local render_toggles, scroll_bottom = ctx.render_toggles, ctx.scroll_bottom
@@ -39,6 +41,7 @@ function M.attach (ctx)
   -- The chunk each drawn line sits in, by id.
   local where = {} ---@type table<integer, Logs.Chunk>
   local flush_cancel = nil ---@type fun()?
+  local resort_cancel = nil ---@type fun()?
 
   local function clear_list ()
     rows_el:clear ()
@@ -93,7 +96,8 @@ function M.attach (ctx)
       for k = i, last do
         local line = lines[k]
         local id = line.id or line.n
-        parts[#parts + 1] = lf.row_html (line, ctx.query, tag_of (line))
+        parts[#parts + 1] =
+          lf.row_html (line, ctx.query, tag_of (line), ctx.cols)
         chunk.ns[#chunk.ns + 1] = id
         ctx.by_id[id] = line
         where[id] = chunk
@@ -127,6 +131,17 @@ function M.attach (ctx)
     render_bars ()
   end
 
+  ---Draws the row of column names, or hides it when the formats show no fields.
+  local function render_head ()
+    local cols = ctx.cols
+    if not cols then
+      head_el:show (false)
+      return
+    end
+    head_el:html (lf.head_html (cols, ctx.sort))
+    head_el:show (true)
+  end
+
   ---Draws the window of matching lines that starts at `from`.
   ---@param from integer
   local function show_window (from)
@@ -137,6 +152,14 @@ function M.attach (ctx)
     for k = ctx.win_from, math.min (#ctx.view_all, ctx.win_from + MAX_SHOWN - 1) do
       lines[#lines + 1] = ctx.view_all[k]
     end
+    -- Each column is as wide as the widest value it shows in the window.
+    ctx.cols = #ctx.col_names > 0
+        and {
+          names = ctx.col_names,
+          widths = lf.column_widths (lines, ctx.col_names),
+        }
+      or nil
+    render_head ()
     draw_rows (lines)
   end
 
@@ -178,8 +201,11 @@ function M.attach (ctx)
     local bottom = top + row_height
     local scroll = tonumber (list:get ('scrollTop')) or 0
     local view = tonumber (list:get ('clientHeight')) or 0
-    if top < scroll then
-      list:set ('scrollTop', top)
+    -- The row of column names stays at the top, over the rows.
+    local head = ctx.cols and (tonumber (head_el:get ('offsetHeight')) or 0)
+      or 0
+    if top - head < scroll then
+      list:set ('scrollTop', top - head)
     elseif bottom > scroll + view then
       list:set ('scrollTop', bottom - view)
     end
@@ -200,7 +226,42 @@ function M.attach (ctx)
     return line.id or line.n
   end
 
+  ---Finds the fields the formats of the view's sources show. The filter reads `field:value`
+  ---only for those, so the query is read again when they change.
+  local function refresh_columns ()
+    local names, seen = {}, {} ---@type string[], table<string, boolean>
+    for _, src in ipairs (view_sources ()) do
+      local parser = src.parser
+      for _, name in ipairs (parser and parser.fields or {}) do
+        if not seen[name] then
+          seen[name] = true
+          names[#names + 1] = name
+        end
+      end
+    end
+    local key = table.concat (names, '\n')
+    if key == ctx.cols_key then
+      return
+    end
+    ctx.cols_key = key
+    ctx.col_names = names
+    local known = {} ---@type table<string, string>
+    for _, name in ipairs (names) do
+      known[name:lower ()] = name
+    end
+    ctx.known_fields = known
+    ctx.query = lf.parse_query (ctx.filter_text, known)
+    if ctx.sort and not seen[ctx.sort.field] then
+      ctx.sort = nil
+    end
+  end
+
   local function redraw_list ()
+    if resort_cancel then
+      resort_cancel ()
+      resort_cancel = nil
+    end
+    refresh_columns ()
     ctx.pending = {}
     ctx.matched = 0
     ctx.levels = lf.zero_levels ()
@@ -224,6 +285,9 @@ function M.attach (ctx)
       end
     end
     ctx.view_all = #lists == 1 and lists[1] or lf.merge (lists)
+    if ctx.sort then
+      ctx.view_all = lf.sort_lines (ctx.view_all, ctx.sort.field, ctx.sort.desc)
+    end
     ctx.view_first = 1
     ctx.matched = #ctx.view_all
     -- Following shows the newest lines. Otherwise the window keeps the selected line.
@@ -247,6 +311,32 @@ function M.attach (ctx)
       reveal (id_of (ctx.selected))
     end
   end
+
+  ---Sorts the list by a column: up, then down, then back to the order the lines came in.
+  ---@param field string
+  local function sort_by (field)
+    local sort = ctx.sort
+    if not sort or sort.field ~= field then
+      ctx.sort = { field = field, desc = false }
+    elseif not sort.desc then
+      ctx.sort = { field = field, desc = true }
+    else
+      ctx.sort = nil
+    end
+    redraw_list ()
+  end
+
+  head_el:on ('click', function (ev)
+    local field = (ev.item or ''):match ('^col:(.+)$')
+    if field then
+      for _, name in ipairs (ctx.col_names) do
+        if name == field then
+          sort_by (name)
+        end
+      end
+    end
+    return nil
+  end)
 
   ---Moves the window by `step` lines, earlier when it is below 0.
   ---@param step integer
@@ -291,6 +381,18 @@ function M.attach (ctx)
   local function flush ()
     flush_cancel = nil
     local batch = ctx.pending
+    if ctx.sort and #batch > 0 then
+      -- A sorted list sorts again to take in new lines, at most once a second.
+      if not resort_cancel then
+        resort_cancel = app.timer.after (RESORT_MS, function ()
+          resort_cancel = nil
+          redraw_list ()
+        end)
+      end
+      update_counts ()
+      update_status ()
+      return
+    end
     ctx.pending = {}
     if (ctx.shown or ctx.merged) and #batch > 0 then
       -- New lines show when the window has reached the end. Otherwise only the count of
@@ -334,6 +436,7 @@ function M.attach (ctx)
   end
 
   ctx.redraw_list = redraw_list
+  ctx.sort_by = sort_by
   ctx.show_window = show_window
   ctx.page = page
   ctx.reveal = reveal

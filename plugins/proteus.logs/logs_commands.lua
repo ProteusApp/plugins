@@ -31,6 +31,15 @@ function M.attach (ctx)
   local toggle_wrap, focus_filter = ctx.toggle_wrap, ctx.focus_filter
   local toggle_mark, next_mark = ctx.toggle_mark, ctx.next_mark
   local list_marks = ctx.list_marks
+  local choose_format, new_format = ctx.choose_format, ctx.new_format
+  local edit_format, delete_format = ctx.edit_format, ctx.delete_format
+
+  ---Adds a word to the filter, such as `user:"ann"`.
+  ---@param word string
+  local function add_filter_word (word)
+    local text = ctx.filter_text:gsub ('%s+$', '')
+    ctx.set_filter (text == '' and word or (text .. ' ' .. word))
+  end
 
   -- Export ----------------------------------------------------------------------------------
 
@@ -67,7 +76,8 @@ function M.attach (ctx)
           return tag and tag.name or nil
         end
       end
-      local text = lf.is_csv (path) and lf.as_csv (lines, source_of)
+      local text = lf.is_csv (path)
+          and lf.as_csv (lines, source_of, ctx.col_names)
         or lf.as_text (lines)
       app.fs.write_file (path, text, function (_, write_err)
         if write_err then
@@ -129,6 +139,28 @@ function M.attach (ctx)
             toggle_mark (line)
           end,
         }
+        -- Each column the line has a value in can keep the lines with that value.
+        local fields = line.fields or {}
+        for _, name in ipairs (ctx.col_names) do
+          local value = fields[name]
+          if
+            value
+            and value ~= ''
+            and #value <= 80
+            and not value:find ('[\r\n"]')
+          then
+            local word = name
+              .. ':'
+              .. (value:find ('%s') and ('"' .. value .. '"') or value)
+            items[#items + 1] = {
+              label = 'Keep ' .. name .. ' = ' .. value,
+              icon = 'filter',
+              run = function ()
+                add_filter_word (word)
+              end,
+            }
+          end
+        end
         items[#items + 1] = {
           label = 'Hide ' .. LEVEL_PLURALS[line.level],
           icon = 'eye-off',
@@ -226,6 +258,13 @@ function M.attach (ctx)
           end,
         }
       end
+      items[#items + 1] = {
+        label = 'Format…',
+        icon = 'table',
+        run = function ()
+          choose_format (s)
+        end,
+      }
       if s.spec.kind ~= 'paste' then
         items[#items + 1] = {
           label = 'Restart',
@@ -487,6 +526,63 @@ function M.attach (ctx)
     icon = 'clipboard-list',
     when = has_source,
     run = copy_matching,
+  })
+  commands.register ({
+    id = 'logs.format',
+    category = 'Logs',
+    title = 'Set Format',
+    icon = 'table',
+    when = function ()
+      return here () and ctx.shown ~= nil
+    end,
+    run = function ()
+      if ctx.shown then
+        choose_format (ctx.shown)
+      end
+    end,
+  })
+  commands.register ({
+    id = 'logs.new_format',
+    category = 'Logs',
+    title = 'New Format',
+    icon = 'plus',
+    when = here,
+    run = function ()
+      new_format (ctx.shown)
+    end,
+  })
+  commands.register ({
+    id = 'logs.edit_format',
+    category = 'Logs',
+    title = 'Change Format',
+    icon = 'pencil',
+    when = function ()
+      return here () and #ctx.formats > 0
+    end,
+    run = edit_format,
+  })
+  commands.register ({
+    id = 'logs.delete_format',
+    category = 'Logs',
+    title = 'Delete Format',
+    icon = 'trash-2',
+    when = function ()
+      return here () and #ctx.formats > 0
+    end,
+    run = delete_format,
+  })
+  commands.register ({
+    id = 'logs.unsort',
+    category = 'Logs',
+    title = 'Show Lines in the Order They Came',
+    icon = 'arrow-down-wide-narrow',
+    when = function ()
+      return here () and ctx.sort ~= nil
+    end,
+    run = function ()
+      ctx.sort = nil
+      ctx.redraw_list ()
+    end,
   })
   commands.register ({
     id = 'logs.export',

@@ -1,11 +1,12 @@
 -- log_export: the text the log viewer writes when it exports the lines that match. A log
 -- file gets each line as it reads, without colour codes. A CSV file gets a row for each line,
--- with its number, time and level, the source it came from in the merged view, and its text.
+-- with its number, time and level, the source it came from in the merged view, the fields its
+-- format shows as columns, and its text.
 
 ---@class Logs.ExportModule
 ---@field is_csv fun(path: string): boolean
 ---@field as_text fun(lines: Logs.Line[]): string
----@field as_csv fun(lines: Logs.Line[], source_of?: fun(line: Logs.Line): string?): string
+---@field as_csv fun(lines: Logs.Line[], source_of?: (fun(line: Logs.Line): string?), fields?: string[]): string
 ---@field time_text fun(ms: number): string
 
 ---True for a path that names a CSV file.
@@ -64,14 +65,18 @@ local function csv_row (values)
 end
 
 ---The lines as CSV, a header first. `source_of` names the source of a line, for the merged
----view, and adds a column for it.
+---view, and adds a column for it. `fields` adds a column for each field.
 ---@param lines Logs.Line[]
 ---@param source_of? fun(line: Logs.Line): string?
+---@param fields? string[]
 ---@return string
-local function as_csv (lines, source_of)
+local function as_csv (lines, source_of, fields)
   local header = { 'line', 'time', 'level' } ---@type string[]
   if source_of then
     header[#header + 1] = 'source'
+  end
+  for _, name in ipairs (fields or {}) do
+    header[#header + 1] = name
   end
   header[#header + 1] = 'text'
   local rows = { csv_row (header) } ---@type string[]
@@ -83,6 +88,9 @@ local function as_csv (lines, source_of)
     } ---@type string[]
     if source_of then
       values[#values + 1] = source_of (line) or ''
+    end
+    for _, name in ipairs (fields or {}) do
+      values[#values + 1] = line.fields and line.fields[name] or ''
     end
     values[#values + 1] = line.plain
     rows[#rows + 1] = csv_row (values)

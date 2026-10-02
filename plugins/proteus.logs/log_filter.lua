@@ -4,10 +4,12 @@
 -- its own, and this one hands out all of it, so the plugin and the tests need only this one:
 -- log_text holds small text helpers, log_ansi the colour codes, log_level a line's level,
 -- log_query the filter, log_ring the lines and the ring that holds them, log_sources where
--- lines come from, and log_export the text of the lines it exports. Regular expressions are
--- in log_regex.lua, and times in log_time.lua.
+-- lines come from, log_format the formats that take fields out of lines, and log_export the
+-- text of the lines it exports. Regular expressions are in log_regex.lua, and times in
+-- log_time.lua.
 
 local ansi = require ('log_ansi') --[[@as Logs.AnsiModule]]
+local lfmt = require ('log_format') --[[@as Logs.FormatModule]]
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
 local lq = require ('log_query') --[[@as Logs.QueryModule]]
 local lr = require ('log_ring') --[[@as Logs.RingModule]]
@@ -21,7 +23,7 @@ local highlight = lq.highlight
 
 ---@class Logs.FilterModule
 ---@field LEVELS Logs.Level[] Every level, worst first.
----@field parse_query fun(text: string): Logs.Query
+---@field parse_query fun(text: string, fields?: table<string, string>): Logs.Query
 ---@field is_empty fun(query: Logs.Query): boolean True when the query hides nothing.
 ---@field detect_level fun(line: string): Logs.Level
 ---@field matches fun(line: string, query: Logs.Query, level?: Logs.Level): boolean
@@ -30,7 +32,8 @@ local highlight = lq.highlight
 ---@field parse_ansi fun(text: string): Logs.Segment[]
 ---@field escape fun(text: string): string
 ---@field render_line fun(line: string, query: Logs.Query): string
----@field row_html fun(line: Logs.Line, query: Logs.Query, tag?: { name: string, n: integer }): string
+---@field row_html fun(line: Logs.Line, query: Logs.Query, tag?: { name: string, n: integer }, cols?: Logs.Columns): string
+---@field head_html fun(cols: Logs.Columns, sort?: Logs.Sort): string
 ---@field clip fun(text: string, max: integer): string
 ---@field find_json fun(line: string): string?
 ---@field pretty_json fun(text: string): string?
@@ -64,11 +67,32 @@ local highlight = lq.highlight
 ---@field clean_levels fun(value: any): Logs.Level[]
 ---@field is_csv fun(path: string): boolean
 ---@field as_text fun(lines: Logs.Line[]): string
----@field as_csv fun(lines: Logs.Line[], source_of?: fun(line: Logs.Line): string?): string
+---@field as_csv fun(lines: Logs.Line[], source_of?: (fun(line: Logs.Line): string?), fields?: string[]): string
 ---@field time_text fun(ms: number): string
+---@field FORMAT_KINDS table<Logs.FormatKind, string>
+---@field json_fields fun(plain: string): table<string, string>?, string[]?
+---@field logfmt_fields fun(plain: string): table<string, string>?, string[]?
+---@field compile_format fun(format: Logs.Format): Logs.Parser?, string?
+---@field apply_format fun(line: Logs.Line, parser?: Logs.Parser)
+---@field discover_fields fun(lines: Logs.Line[], kind: Logs.FormatKind, max: integer): string[]
+---@field split_names fun(text: string): string[]
+---@field clean_formats fun(value: any): Logs.Format[]
+---@field sort_lines fun(lines: Logs.Line[], field: string, desc: boolean): Logs.Line[]
+---@field column_widths fun(lines: Logs.Line[], fields: string[]): integer[]
 
 -- Lines longer than this show cut short in the list. The detail panel shows them whole.
 local MAX_ROW = 4000
+local MAX_CELL = 200 -- the most of a field a column shows
+
+---The columns the list shows: the fields of the formats of its sources.
+---@class Logs.Columns
+---@field names string[]
+---@field widths integer[] In characters.
+
+---How the list is sorted.
+---@class Logs.Sort
+---@field field string
+---@field desc boolean
 
 local MAX_JSON_DEPTH = 64
 
@@ -123,14 +147,68 @@ local function render_line (line, query)
   return table.concat (out)
 end
 
+---The cells of a row's columns.
+---@param line Logs.Line
+---@param cols? Logs.Columns
+---@return string
+local function cells_html (line, cols)
+  if not cols or #cols.names == 0 then
+    return ''
+  end
+  local out = {} ---@type string[]
+  local fields = line.fields or {}
+  for i, name in ipairs (cols.names) do
+    local value = fields[name] or ''
+    if #value > MAX_CELL then
+      value = clip (value, MAX_CELL)
+    end
+    out[#out + 1] = '<span class="logs-f" style="width:'
+      .. cols.widths[i]
+      .. 'ch">'
+      .. escape ((value:gsub ('[\r\n\t]', ' ')))
+      .. '</span>'
+  end
+  return table.concat (out)
+end
+
+---The HTML of the row of column names above the list. Each name carries `col:<name>` in
+---`data-item`, and the column the list is sorted by shows an arrow.
+---@param cols Logs.Columns
+---@param sort? Logs.Sort
+---@return string
+local function head_html (cols, sort)
+  local out = { '<span class="logs-n"></span>' } ---@type string[]
+  for i, name in ipairs (cols.names) do
+    local arrow = ''
+    if sort and sort.field == name then
+      arrow = sort.desc and ' ▼' or ' ▲'
+    end
+    out[#out + 1] = '<span class="logs-hcol'
+      .. (arrow ~= '' and ' on' or '')
+      .. '" data-item="col:'
+      .. escape (name)
+      .. '" title="Sort by '
+      .. escape (name)
+      .. '" style="width:'
+      .. cols.widths[i]
+      .. 'ch">'
+      .. escape (name)
+      .. arrow
+      .. '</span>'
+  end
+  out[#out + 1] = '<span class="logs-t">Line</span>'
+  return table.concat (out)
+end
+
 ---The HTML for one row of the list. The row carries the line's id in `data-item`, or its
 ---number when it has no id. In the merged view, `tag` names the source the line came from,
----and `n` picks its colour.
+---and `n` picks its colour. `cols` adds a cell for each field the formats show.
 ---@param line Logs.Line
 ---@param query Logs.Query
 ---@param tag? { name: string, n: integer }
+---@param cols? Logs.Columns
 ---@return string
-local function row_html (line, query, tag)
+local function row_html (line, query, tag, cols)
   local text = line.text
   local more = ''
   if #text > MAX_ROW then
@@ -146,6 +224,7 @@ local function row_html (line, query, tag)
     '"><span class="logs-n">',
     line.n,
     '</span>',
+    cells_html (line, cols),
     tag
         and ('<span class="logs-tag logs-tag-' .. (tag.n % 6) .. '">' .. escape (
           tag.name
@@ -368,6 +447,7 @@ local M = {
   escape = tx.escape,
   render_line = render_line,
   row_html = row_html,
+  head_html = head_html,
   clip = tx.clip,
   find_json = find_json,
   pretty_json = pretty_json,
@@ -403,6 +483,16 @@ local M = {
   as_text = lx.as_text,
   as_csv = lx.as_csv,
   time_text = lx.time_text,
+  FORMAT_KINDS = lfmt.KINDS,
+  json_fields = lfmt.json_fields,
+  logfmt_fields = lfmt.logfmt_fields,
+  compile_format = lfmt.compile,
+  apply_format = lfmt.apply,
+  discover_fields = lfmt.discover,
+  split_names = lfmt.split_names,
+  clean_formats = lfmt.clean_formats,
+  sort_lines = lfmt.sort_lines,
+  column_widths = lfmt.widths,
 }
 
 return M
