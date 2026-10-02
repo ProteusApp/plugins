@@ -133,7 +133,7 @@ test ('finish draws task boxes, and code keeps its text', function ()
   )
   eq (
     html,
-    '<li><span class="md-check done"></span> done</li>'
+    '<li class="md-task"><span class="md-check done"></span> done</li>'
       .. '<pre><code>[a](x&lt;y.md) [ ]</code></pre>'
   )
 end)
