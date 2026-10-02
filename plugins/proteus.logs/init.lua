@@ -9,15 +9,17 @@
 -- The list shows a window of up to 5,000 of the lines that match. Bars above and below it move
 -- the window, so every line that matches can be reached. The merged view shows the lines of
 -- every source in one list, in order of time.
+--
+-- This file puts the screen together and wires its events. The rest lives in modules that
+-- share one context, Logs.Ctx: logs_list draws the list of lines.
 
+local CSS = require ('logs_css') --[[@as string]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
+local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 
 local MAX_LINES = 50000 -- kept per source
 local MAX_WHOLE = 250000 -- kept for a whole file
-local MAX_SHOWN = 5000 -- drawn at once
 local PAGE_STEP = 2500 -- how far the window moves
-local CHUNK_ROWS = 250
-local FLUSH_MS = 100
 local FILTER_MS = 150
 local MAX_RECENT = 12
 local DESKTOP_ONLY =
@@ -48,8 +50,6 @@ local KIND_ICONS = {
   paste = 'clipboard-paste',
 }
 
-local CSS = require ('logs_css') --[[@as string]]
-
 ---A source open in the app.
 ---@class Logs.Source
 ---@field id integer
@@ -66,10 +66,54 @@ local CSS = require ('logs_css') --[[@as string]]
 ---@field counted integer The line count shown there now.
 ---@field last_time? number The time of the newest line that has one, for a line that says none.
 
----Rows drawn as one element.
----@class Logs.Chunk
----@field el Proteus.El
----@field ns integer[] The ids of the lines in its rows, in order.
+---What the log viewer's modules share. init.lua fills in the state, the screen parts and its
+---own helpers, and each module adds the functions it offers the others.
+---@class Logs.Ctx
+---@field app Proteus.App
+---@field ui Proteus.UI
+---@field commands Proteus.Commands
+---@field sources Logs.Source[]
+---@field shown? Logs.Source The source the list shows, or nil.
+---@field merged boolean True while the list shows every source, merged by time. Then `shown` is nil.
+---@field view_all Logs.Line[] Every line of the view that passes the filter and the chips.
+---@field win_from integer Where the window of drawn lines starts in view_all.
+---@field view_first integer Where the lines still held start in view_all. Lines a source let go are dropped from the front without moving the rest, and the list is packed now and then.
+---@field by_id table<integer, Logs.Line> The drawn lines by id.
+---@field view_newest? number The time of the view's newest line, for a filter such as after:-15m.
+---@field query Logs.Query
+---@field hidden table<string, boolean> The levels the chips hide.
+---@field follow boolean True while the list stays at the bottom as lines arrive.
+---@field selected? Logs.Line The line the detail panel shows.
+---@field pending Logs.Line[] Lines that arrived and are not drawn yet.
+---@field chunks Logs.Chunk[]
+---@field drawn integer Rows in the chunks.
+---@field matched integer Lines that pass the filter and the chips.
+---@field levels table<Logs.Level, integer> Lines of each level that pass the filter.
+---@field recent Logs.SourceSpec[]
+---@field filter_box Proteus.El
+---@field problem_el Proteus.El
+---@field list Proteus.El
+---@field rows_el Proteus.El
+---@field earlier_bar Proteus.El
+---@field earlier_text Proteus.El
+---@field later_bar Proteus.El
+---@field later_text Proteus.El
+---@field render_toggles fun()
+---@field scroll_bottom fun()
+---@field render_chip_counts fun()
+---@field render_empty fun()
+---@field update_status fun()
+---@field update_counts fun()
+---@field redraw_list fun() From logs_list.
+---@field show_window fun(from: integer)
+---@field page fun(step: integer)
+---@field reveal fun(id: integer)
+---@field locate fun(id: integer): integer?, integer?
+---@field view_sources fun(): Logs.Source[]
+---@field id_of fun(line: Logs.Line): integer
+---@field tag_of fun(line: Logs.Line): { name: string, n: integer }?
+---@field forget_line fun(line: Logs.Line)
+---@field schedule fun()
 
 ---@type Proteus.Plugin
 return {
@@ -108,38 +152,38 @@ return {
     ui.css (CSS)
     local desktop = app.platform ~= 'browser'
 
-    local sources = {} ---@type Logs.Source[]
-    local shown = nil ---@type Logs.Source?
-    -- True while the list shows every source, merged by time. Then `shown` is nil.
-    local merged = false
-    local next_line_id = 1
-    -- Every line of the view that passes the filter and the chips, and the window of them drawn.
-    local view_all = {} ---@type Logs.Line[]
-    local win_from = 1
-    -- The drawn lines by id, and the chunk each sits in.
-    local by_id = {} ---@type table<integer, Logs.Line>
-    local where = {} ---@type table<integer, Logs.Chunk>
-    -- The time of the view's newest line, for a filter such as after:-15m.
-    local view_newest = nil ---@type number?
-    local next_id = 1
-    local query = lf.parse_query ('')
-    local hidden = {} ---@type table<string, boolean>
-    for _, level in ipairs (lf.clean_levels (app.store.get ('hidden', {}))) do
-      hidden[level] = true
-    end
     local wrap = app.store.get ('wrap', false) == true
-    local follow = true
-    local selected = nil ---@type Logs.Line?
-    local pending = {} ---@type Logs.Line[]
-    local flush_cancel = nil ---@type fun()?
     local filter_cancel = nil ---@type fun()?
-    local chunks = {} ---@type Logs.Chunk[]
-    local drawn = 0 -- rows in the chunks
-    local matched = 0 -- lines that pass the filter and the chips
-    local levels = lf.zero_levels () -- lines of each level that pass the filter
     local empty_key = nil ---@type string?
-    local recent = lf.clean_specs (app.store.get ('recent', {}))
     local my_tab = nil ---@type Proteus.Tab?
+    local next_line_id = 1
+    local next_id = 1
+
+    -- What the modules share. Each adds its own functions to it.
+    local shared = {
+      app = app,
+      ui = ui,
+      commands = commands,
+      sources = {},
+      merged = false,
+      view_all = {},
+      win_from = 1,
+      view_first = 1,
+      by_id = {},
+      query = lf.parse_query (''),
+      hidden = {},
+      follow = true,
+      pending = {},
+      chunks = {},
+      drawn = 0,
+      matched = 0,
+      levels = lf.zero_levels (),
+      recent = lf.clean_specs (app.store.get ('recent', {})),
+    }
+    local ctx = shared --[[@as Logs.Ctx]]
+    for _, level in ipairs (lf.clean_levels (app.store.get ('hidden', {}))) do
+      ctx.hidden[level] = true
+    end
 
     ---@type fun(src: Logs.Source?)
     local show_source
@@ -147,8 +191,6 @@ return {
     local redraw_list
     ---@type fun()
     local render_sources
-    ---@type fun()
-    local flush
 
     local icon_cache = {} ---@type table<string, string>
     ---@param name string
@@ -390,7 +432,7 @@ return {
     -- Small screen updates --------------------------------------------------------------------
 
     local function render_toggles ()
-      follow_btn:class ('on', follow)
+      follow_btn:class ('on', ctx.follow)
       wrap_btn:class ('on', wrap)
     end
 
@@ -400,7 +442,7 @@ return {
 
     ---@param on boolean
     local function set_follow (on)
-      follow = on
+      ctx.follow = on
       render_toggles ()
       if on then
         scroll_bottom ()
@@ -409,7 +451,7 @@ return {
 
     local function render_chip_counts ()
       for _, level in ipairs (lf.LEVELS) do
-        local n = levels[level] or 0
+        local n = ctx.levels[level] or 0
         if chip_values[level] ~= n then
           chip_values[level] = n
           chip_counts[level]:text (lf.group (n))
@@ -419,7 +461,7 @@ return {
 
     local function render_chip_states ()
       for _, level in ipairs (lf.LEVELS) do
-        local off = hidden[level] == true
+        local off = ctx.hidden[level] == true
         chip_buttons[level]:class ('off', off)
         chip_buttons[level]:attr (
           'title',
@@ -431,45 +473,47 @@ return {
     ---How many lines the view holds, before the filter.
     ---@return integer
     local function view_total ()
-      if merged then
+      if ctx.merged then
         local n = 0
-        for _, src in ipairs (sources) do
+        for _, src in ipairs (ctx.sources) do
           n = n + src.lines:count ()
         end
         return n
       end
-      return shown and shown.lines:count () or 0
+      return ctx.shown and ctx.shown.lines:count () or 0
     end
 
     local function update_status ()
       if not st_state or not st_lines then
         return
       end
-      if merged then
+      if ctx.merged then
         st_state.set ('All sources, by time')
-      elseif not shown then
+      elseif not ctx.shown then
         st_state.set ('')
         st_lines.set ('')
         return
-      elseif shown.state == 'pasted' then
-        st_state.set (shown.name)
+      elseif ctx.shown.state == 'pasted' then
+        st_state.set (ctx.shown.name)
       else
         st_state.set (
-          shown.name .. ': ' .. lf.state_label (shown.state, shown.code)
+          ctx.shown.name
+            .. ': '
+            .. lf.state_label (ctx.shown.state, ctx.shown.code)
         )
       end
       local total = view_total ()
-      if lf.is_empty (query) and next (hidden) == nil then
+      if lf.is_empty (ctx.query) and next (ctx.hidden) == nil then
         st_lines.set (lf.group (total) .. (total == 1 and ' line' or ' lines'))
       else
         st_lines.set (
-          lf.group (matched) .. ' of ' .. lf.group (total) .. ' lines'
+          lf.group (ctx.matched) .. ' of ' .. lf.group (total) .. ' lines'
         )
       end
     end
 
     local function update_counts ()
-      for _, src in ipairs (sources) do
+      for _, src in ipairs (ctx.sources) do
         local n = src.lines:count ()
         if src.count_el and src.counted ~= n then
           src.counted = n
@@ -497,8 +541,8 @@ return {
 
     local function reset_filter ()
       filter_box:value ('')
-      query = lf.parse_query ('')
-      hidden = {}
+      ctx.query = lf.parse_query ('')
+      ctx.hidden = {}
       app.store.set ('hidden', {})
       render_chip_states ()
       redraw_list ()
@@ -508,15 +552,15 @@ return {
     ---when what it says changes.
     local function render_empty ()
       local key = nil ---@type string?
-      local src = shown
-      if merged then
+      local src = ctx.shown
+      if ctx.merged then
         key = view_total () == 0 and 'blank:merged'
-          or (matched == 0 and 'nomatch' or nil)
+          or (ctx.matched == 0 and 'nomatch' or nil)
       elseif not src then
         key = 'none'
       elseif src.lines:count () == 0 then
         key = table.concat ({ 'blank', src.id, src.state, src.code or '' }, ':')
-      elseif matched == 0 then
+      elseif ctx.matched == 0 then
         key = 'nomatch'
       end
       if key == empty_key then
@@ -581,321 +625,38 @@ return {
 
     -- The line list -----------------------------------------------------------------------------
 
-    -- Where the lines still held start in view_all. Lines a source let go are dropped from the
-    -- front without moving the rest, and the list is packed now and then.
-    local view_first = 1
-
-    local function clear_list ()
-      rows_el:clear ()
-      chunks = {}
-      drawn = 0
-      by_id = {}
-      where = {}
-    end
-
-    ---Shows how many matching lines lie before and after the window.
-    local function render_bars ()
-      local before = math.max (0, win_from - view_first)
-      local after = math.max (0, #view_all - (win_from + drawn - 1))
-      earlier_bar:show (before > 0)
-      later_bar:show (after > 0)
-      earlier_text:text (
-        lf.group (before)
-          .. (before == 1 and ' earlier line' or ' earlier lines')
-      )
-      later_text:text (
-        lf.group (after) .. (after == 1 and ' later line' or ' later lines')
-      )
-    end
-
-    ---The tag a row carries in the merged view.
-    ---@param line Logs.Line
-    ---@return { name: string, n: integer }?
-    local function tag_of (line)
-      if not merged then
-        return nil
-      end
-      for i, src in ipairs (sources) do
-        if src.id == line.src then
-          return { name = src.name, n = i }
-        end
-      end
-      return nil
-    end
-
-    ---Draws lines at the end of the list, then drops chunks off the top past the cap.
-    ---@param lines Logs.Line[]
-    local function draw_rows (lines)
-      local i = 1 ---@type integer
-      while i <= #lines do
-        local chunk = chunks[#chunks]
-        if not chunk or #chunk.ns >= CHUNK_ROWS then
-          chunk = { el = ui.div ({ class = 'logs-chunk' }), ns = {} }
-          rows_el:append (chunk.el)
-          chunks[#chunks + 1] = chunk
-        end
-        local last = math.min (#lines, i + CHUNK_ROWS - #chunk.ns - 1) ---@type integer
-        local parts = {} ---@type string[]
-        for k = i, last do
-          local line = lines[k]
-          local id = line.id or line.n
-          parts[#parts + 1] = lf.row_html (line, query, tag_of (line))
-          chunk.ns[#chunk.ns + 1] = id
-          by_id[id] = line
-          where[id] = chunk
-        end
-        -- Each batch of rows is an element of its own, which shows only its rows.
-        chunk.el:append (
-          ui.div ({ class = 'logs-batch', html = table.concat (parts) })
-        )
-        drawn = drawn + (last - i + 1)
-        i = last + 1
-      end
-      -- While the list is scrolled up, keep what is on screen still as rows go from the top.
-      local lost = 0
-      while #chunks > 1 and drawn - #chunks[1].ns >= MAX_SHOWN do
-        local first = table.remove (chunks, 1)
-        drawn = drawn - #first.ns
-        win_from = win_from + #first.ns
-        for _, id in ipairs (first.ns) do
-          by_id[id] = nil
-          where[id] = nil
-        end
-        if not follow then
-          lost = lost + (tonumber (first.el:get ('offsetHeight')) or 0)
-        end
-        first.el:remove ()
-      end
-      if lost > 0 then
-        local top = tonumber (list:get ('scrollTop')) or 0
-        list:set ('scrollTop', math.max (0, top - lost))
-      end
-      render_bars ()
-    end
-
-    ---Draws the window of matching lines that starts at `from`.
-    ---@param from integer
-    local function show_window (from)
-      clear_list ()
-      win_from =
-        math.max (view_first, math.min (from, #view_all - MAX_SHOWN + 1))
-      local lines = {} ---@type Logs.Line[]
-      for k = win_from, math.min (#view_all, win_from + MAX_SHOWN - 1) do
-        lines[#lines + 1] = view_all[k]
-      end
-      draw_rows (lines)
-    end
-
-    ---Where a line's row is: the chunk, and the row inside it.
-    ---@param id integer
-    ---@return integer? chunk
-    ---@return integer? row
-    local function locate (id)
-      local chunk = where[id]
-      if not chunk then
-        return nil, nil
-      end
-      for ci, c in ipairs (chunks) do
-        if c == chunk then
-          for ri, other in ipairs (c.ns) do
-            if other == id then
-              return ci, ri
-            end
-          end
-        end
-      end
-      return nil, nil
-    end
-
-    ---Scrolls the list so a line's row shows. Rows have no elements of their own, so the
-    ---row's place is worked out from its chunk. With wrapped lines of different heights,
-    ---this is close rather than exact.
-    ---@param id integer
-    local function reveal (id)
-      local ci, ri = locate (id)
-      if not ci or not ri then
-        return
-      end
-      local chunk = chunks[ci]
-      local chunk_top = tonumber (chunk.el:get ('offsetTop')) or 0
-      local chunk_height = tonumber (chunk.el:get ('offsetHeight')) or 0
-      local row_height = chunk_height / #chunk.ns
-      local top = chunk_top + (ri - 1) * row_height
-      local bottom = top + row_height
-      local scroll = tonumber (list:get ('scrollTop')) or 0
-      local view = tonumber (list:get ('clientHeight')) or 0
-      if top < scroll then
-        list:set ('scrollTop', top)
-      elseif bottom > scroll + view then
-        list:set ('scrollTop', bottom - view)
-      end
-    end
-
-    ---The sources the view shows.
-    ---@return Logs.Source[]
-    local function view_sources ()
-      if merged then
-        return sources
-      end
-      return shown and { shown } or {}
-    end
-
-    ---@param line Logs.Line
-    ---@return integer
-    local function id_of (line)
-      return line.id or line.n
-    end
-
-    redraw_list = function ()
-      pending = {}
-      matched = 0
-      levels = lf.zero_levels ()
-      problem_el:text (query.problem or '')
-      problem_el:show (query.problem ~= nil)
-      filter_box:class ('bad', query.problem ~= nil)
-      view_newest = nil
-      for _, src in ipairs (view_sources ()) do
-        local t = lf.newest (src.lines)
-        if t and (not view_newest or t > view_newest) then
-          view_newest = t
-        end
-      end
-      local lists = {} ---@type Logs.Line[][]
-      for _, src in ipairs (view_sources ()) do
-        local result = lf.scan (src.lines, query, hidden, 0, view_newest)
-        lists[#lists + 1] = result.all
-        for level, n in pairs (result.levels) do
-          levels[level] = levels[level] + n
-        end
-      end
-      view_all = #lists == 1 and lists[1] or lf.merge (lists)
-      view_first = 1
-      matched = #view_all
-      -- Following shows the newest lines. Otherwise the window keeps the selected line.
-      local from = #view_all - MAX_SHOWN + 1
-      if not follow and selected then
-        local want = id_of (selected)
-        for k, line in ipairs (view_all) do
-          if id_of (line) == want then
-            from = k - math.floor (MAX_SHOWN / 2)
-            break
-          end
-        end
-      end
-      show_window (from)
-      render_chip_counts ()
-      render_empty ()
-      update_status ()
-      if follow then
-        scroll_bottom ()
-      elseif selected then
-        reveal (id_of (selected))
-      end
-    end
-
-    ---Moves the window by `step` lines, earlier when it is below 0.
-    ---@param step integer
-    local function page (step)
-      if follow then
-        follow = false
-        render_toggles ()
-      end
-      local top_id = chunks[1] and chunks[1].ns[1]
-      show_window (win_from + step)
-      if step < 0 and top_id then
-        -- The line that was at the top stays in sight, below the new ones.
-        reveal (top_id)
-      elseif step > 0 then
-        list:set ('scrollTop', 0)
-      end
-    end
-
-    ---A line the source let go. The single view drops it from the front of its lines.
-    ---@param line Logs.Line
-    local function forget_line (line)
-      if merged then
-        return
-      end
-      if view_all[view_first] == line then
-        view_first = view_first + 1
-        matched = matched - 1
-      end
-      -- Pack the list now and then, so the lines let go do not pile up.
-      if view_first > 20000 then
-        local shift = view_first - 1
-        local packed = {} ---@type Logs.Line[]
-        for k = view_first, #view_all do
-          packed[#packed + 1] = view_all[k]
-        end
-        view_all = packed
-        view_first = 1
-        win_from = win_from - shift
-      end
-    end
-
-    flush = function ()
-      flush_cancel = nil
-      local batch = pending
-      pending = {}
-      if (shown or merged) and #batch > 0 then
-        -- New lines show when the window has reached the end. Otherwise only the count of
-        -- later lines grows.
-        local at_end = win_from + drawn - 1 >= #view_all
-        local fresh = {} ---@type Logs.Line[]
-        for _, line in ipairs (batch) do
-          local counted, visible =
-            lf.classify (line, query, hidden, view_newest)
-          if counted then
-            levels[line.level] = levels[line.level] + 1
-          end
-          if visible then
-            view_all[#view_all + 1] = line
-            matched = matched + 1
-            fresh[#fresh + 1] = line
-          end
-        end
-        if at_end and #fresh > MAX_SHOWN then
-          -- More new rows than the list holds, so the list starts again with the newest.
-          show_window (#view_all - MAX_SHOWN + 1)
-        elseif at_end and #fresh > 0 then
-          draw_rows (fresh)
-        else
-          render_bars ()
-        end
-        render_chip_counts ()
-        render_empty ()
-        if follow and #fresh > 0 then
-          scroll_bottom ()
-        end
-      end
-      update_counts ()
-      update_status ()
-    end
-
-    local function schedule ()
-      if not flush_cancel then
-        flush_cancel = app.timer.after (FLUSH_MS, flush)
-      end
-    end
+    ctx.filter_box, ctx.problem_el = filter_box, problem_el
+    ctx.list, ctx.rows_el = list, rows_el
+    ctx.earlier_bar, ctx.earlier_text = earlier_bar, earlier_text
+    ctx.later_bar, ctx.later_text = later_bar, later_text
+    ctx.render_toggles, ctx.scroll_bottom = render_toggles, scroll_bottom
+    ctx.render_chip_counts, ctx.render_empty = render_chip_counts, render_empty
+    ctx.update_status, ctx.update_counts = update_status, update_counts
+    list_m.attach (ctx)
+    redraw_list = ctx.redraw_list
+    local show_window, page, reveal, locate =
+      ctx.show_window, ctx.page, ctx.reveal, ctx.locate
+    local view_sources, id_of, tag_of = ctx.view_sources, ctx.id_of, ctx.tag_of
+    local forget_line, schedule = ctx.forget_line, ctx.schedule
 
     -- The detail panel ------------------------------------------------------------------------
 
     local function close_detail ()
-      selected = nil
+      ctx.selected = nil
       selection_css:set ('')
       detail:show (false)
     end
 
     ---@param line Logs.Line
     local function open_detail (line)
-      selected = line
+      ctx.selected = line
       selection_css:set (
         '.logs-list .logs-row[data-item="'
           .. id_of (line)
           .. '"] { background: var(--selection); }'
       )
       local from = nil ---@type string?
-      if merged then
+      if ctx.merged then
         local tag = tag_of (line)
         from = tag and tag.name or nil
       end
@@ -942,11 +703,11 @@ return {
 
     ---@param id integer
     local function select_line (id)
-      local line = by_id[id]
+      local line = ctx.by_id[id]
       if not line then
         return
       end
-      if follow then
+      if ctx.follow then
         set_follow (false)
       end
       open_detail (line)
@@ -955,17 +716,17 @@ return {
 
     ---@param step integer 1 moves down and -1 moves up.
     local function move_selection (step)
-      if #chunks == 0 then
+      if #ctx.chunks == 0 then
         return
       end
       local target = nil ---@type integer?
       local ci, ri = nil, nil ---@type integer?, integer?
-      if selected then
-        ci, ri = locate (id_of (selected))
+      if ctx.selected then
+        ci, ri = locate (id_of (ctx.selected))
       end
       if ci and ri then
-        local ns = chunks[ci].ns
-        local next_chunk, prev_chunk = chunks[ci + 1], chunks[ci - 1]
+        local ns = ctx.chunks[ci].ns
+        local next_chunk, prev_chunk = ctx.chunks[ci + 1], ctx.chunks[ci - 1]
         if ns[ri + step] then
           target = ns[ri + step]
         elseif step > 0 and next_chunk then
@@ -974,9 +735,9 @@ return {
           target = prev_chunk.ns[#prev_chunk.ns]
         end
       elseif step > 0 then
-        target = chunks[1].ns[1]
+        target = ctx.chunks[1].ns[1]
       else
-        local last = chunks[#chunks].ns
+        local last = ctx.chunks[#ctx.chunks].ns
         target = last[#last]
       end
       if target then
@@ -989,7 +750,7 @@ return {
     ---@param id number?
     ---@return Logs.Source?
     local function find_source (id)
-      for _, src in ipairs (sources) do
+      for _, src in ipairs (ctx.sources) do
         if src.id == id then
           return src
         end
@@ -999,7 +760,7 @@ return {
 
     local function save_open ()
       local open = {} ---@type Logs.SourceSpec[]
-      for _, src in ipairs (sources) do
+      for _, src in ipairs (ctx.sources) do
         if src.spec.kind ~= 'paste' then
           open[#open + 1] = src.spec
         end
@@ -1018,16 +779,16 @@ return {
 
     render_sources = function ()
       local rows = {} ---@type Proteus.El[]
-      if #sources >= 2 then
+      if #ctx.sources >= 2 then
         rows[1] = ui.div ({
-          class = 'logs-src merged' .. (merged and ' active' or ''),
+          class = 'logs-src merged' .. (ctx.merged and ' active' or ''),
           title = 'Every source in one list, in order of time',
           attrs = { ['data-item'] = 'merged' },
           ui.span ({ class = 'logs-src-icon', html = icon_svg ('git-merge') }),
           ui.span ({ class = 'logs-src-name', 'All sources, by time' }),
         })
       end
-      for _, src in ipairs (sources) do
+      for _, src in ipairs (ctx.sources) do
         local label = lf.state_label (src.state, src.code)
         local count = ui.span ({
           class = 'logs-src-count',
@@ -1037,7 +798,7 @@ return {
         src.counted = src.lines:count ()
         rows[#rows + 1] = ui.div ({
           class = 'logs-src'
-            .. ((src == shown and not merged) and ' active' or ''),
+            .. ((src == ctx.shown and not ctx.merged) and ' active' or ''),
           title = lf.source_title (src.spec)
             .. '\n'
             .. label
@@ -1070,7 +831,7 @@ return {
     ---@param src Logs.Source
     local function source_changed (src)
       render_sources ()
-      if src == shown or merged then
+      if src == ctx.shown or ctx.merged then
         render_empty ()
         update_status ()
       end
@@ -1087,12 +848,13 @@ return {
       src.last_time = line.time
       src.next_n = src.next_n + 1
       local dropped = src.lines:push (line)
-      if src == shown or merged then
-        pending[#pending + 1] = line
+      if src == ctx.shown or ctx.merged then
+        ctx.pending[#ctx.pending + 1] = line
         if dropped then
-          local counted = lf.classify (dropped, query, hidden, view_newest)
+          local counted =
+            lf.classify (dropped, ctx.query, ctx.hidden, ctx.view_newest)
           if counted then
-            levels[dropped.level] = levels[dropped.level] - 1
+            ctx.levels[dropped.level] = ctx.levels[dropped.level] - 1
           end
           forget_line (dropped)
         end
@@ -1115,7 +877,7 @@ return {
         counted = 0,
       }
       next_id = next_id + 1
-      sources[#sources + 1] = src
+      ctx.sources[#ctx.sources + 1] = src
       return src
     end
 
@@ -1210,7 +972,7 @@ return {
       halt (src)
       src.lines:clear ()
       src.last_time = nil
-      if src == shown or merged then
+      if src == ctx.shown or ctx.merged then
         close_detail ()
         redraw_list ()
       end
@@ -1218,11 +980,11 @@ return {
     end
 
     show_source = function (src)
-      if shown ~= src or merged then
+      if ctx.shown ~= src or ctx.merged then
         close_detail ()
-        shown = src
-        merged = false
-        follow = true
+        ctx.shown = src
+        ctx.merged = false
+        ctx.follow = true
         render_toggles ()
         app.store.set ('shown', src and lf.spec_key (src.spec) or nil)
       end
@@ -1232,15 +994,15 @@ return {
 
     ---Shows every source in one list, in order of time.
     local function show_merged ()
-      if #sources < 2 then
+      if #ctx.sources < 2 then
         say ('The merged view needs two sources or more.')
         return
       end
-      if not merged then
+      if not ctx.merged then
         close_detail ()
-        shown = nil
-        merged = true
-        follow = true
+        ctx.shown = nil
+        ctx.merged = true
+        ctx.follow = true
         render_toggles ()
         app.store.set ('shown', 'merged')
       end
@@ -1252,21 +1014,21 @@ return {
     local function remove_source (src)
       halt (src)
       local index = 1
-      for i, other in ipairs (sources) do
+      for i, other in ipairs (ctx.sources) do
         if other == src then
           index = i
-          table.remove (sources, i)
+          table.remove (ctx.sources, i)
           break
         end
       end
       save_open ()
-      if merged and #sources < 2 then
-        show_source (sources[1])
-      elseif merged then
+      if ctx.merged and #ctx.sources < 2 then
+        show_source (ctx.sources[1])
+      elseif ctx.merged then
         redraw_list ()
         render_sources ()
-      elseif shown == src then
-        show_source (sources[index] or sources[index - 1])
+      elseif ctx.shown == src then
+        show_source (ctx.sources[index] or ctx.sources[index - 1])
       else
         render_sources ()
       end
@@ -1294,10 +1056,10 @@ return {
         say (DESKTOP_ONLY)
         return
       end
-      recent = lf.remember (recent, spec, MAX_RECENT)
-      app.store.set ('recent', recent)
+      ctx.recent = lf.remember (ctx.recent, spec, MAX_RECENT)
+      app.store.set ('recent', ctx.recent)
       local key = lf.spec_key (spec)
-      for _, src in ipairs (sources) do
+      for _, src in ipairs (ctx.sources) do
         if lf.spec_key (src.spec) == key then
           show_source (src)
           if src.state ~= 'running' then
@@ -1413,7 +1175,7 @@ return {
         return
       end
       local items = {} ---@type Proteus.PickItem[]
-      for _, spec in ipairs (recent) do
+      for _, spec in ipairs (ctx.recent) do
         items[#items + 1] = {
           label = lf.source_name (spec)
             .. (spec.whole and ' (whole file)' or ''),
@@ -1433,7 +1195,7 @@ return {
     end
 
     local function clear_lines ()
-      if not shown and not merged then
+      if not ctx.shown and not ctx.merged then
         return
       end
       -- The merged view clears every source.
@@ -1446,12 +1208,12 @@ return {
     end
 
     local function copy_matching ()
-      if not shown and not merged then
+      if not ctx.shown and not ctx.merged then
         return
       end
       local texts = {} ---@type string[]
-      for k = view_first, #view_all do
-        texts[#texts + 1] = view_all[k].plain
+      for k = ctx.view_first, #ctx.view_all do
+        texts[#texts + 1] = ctx.view_all[k].plain
       end
       app.system.clipboard (table.concat (texts, '\n'))
       say (
@@ -1462,22 +1224,22 @@ return {
     end
 
     local function copy_selected ()
-      if selected then
-        app.system.clipboard (selected.plain)
+      if ctx.selected then
+        app.system.clipboard (ctx.selected.plain)
         say ('Copied the line.')
       end
     end
 
     ---@param level string
     local function toggle_level (level)
-      if hidden[level] then
-        hidden[level] = nil
+      if ctx.hidden[level] then
+        ctx.hidden[level] = nil
       else
-        hidden[level] = true
+        ctx.hidden[level] = true
       end
       local saved = {} ---@type string[]
       for _, name in ipairs (lf.LEVELS) do
-        if hidden[name] then
+        if ctx.hidden[name] then
           saved[#saved + 1] = name
         end
       end
@@ -1491,10 +1253,10 @@ return {
       app.store.set ('wrap', wrap)
       list:class ('logs-wrap', wrap)
       render_toggles ()
-      if follow then
+      if ctx.follow then
         scroll_bottom ()
-      elseif selected then
-        reveal (selected.n)
+      elseif ctx.selected then
+        reveal (ctx.selected.n)
       end
     end
 
@@ -1515,7 +1277,7 @@ return {
       end
       filter_cancel = app.timer.after (FILTER_MS, function ()
         filter_cancel = nil
-        query = lf.parse_query (text)
+        ctx.query = lf.parse_query (text)
         redraw_list ()
       end)
       return nil
@@ -1529,7 +1291,7 @@ return {
             filter_cancel = nil
           end
           filter_box:value ('')
-          query = lf.parse_query ('')
+          ctx.query = lf.parse_query ('')
           redraw_list ()
         else
           list:focus ()
@@ -1552,7 +1314,7 @@ return {
     end)
 
     follow_btn:on ('click', function ()
-      set_follow (not follow)
+      set_follow (not ctx.follow)
       return nil
     end)
     wrap_btn:on ('click', function ()
@@ -1590,7 +1352,7 @@ return {
         move_selection (-1)
         return true
       end
-      if ev.key == 'Escape' and selected then
+      if ev.key == 'Escape' and ctx.selected then
         close_detail ()
         return true
       end
@@ -1603,8 +1365,8 @@ return {
       local height = tonumber (list:get ('scrollHeight')) or 0
       local view = tonumber (list:get ('clientHeight')) or 0
       local at_bottom = top + view >= height - 8
-      if at_bottom ~= follow then
-        follow = at_bottom
+      if at_bottom ~= ctx.follow then
+        ctx.follow = at_bottom
         render_toggles ()
       end
       return nil
@@ -1637,7 +1399,7 @@ return {
         local picked = nil ---@type Logs.Line?
         local n = tonumber (ev.item or '')
         if n then
-          picked = by_id[math.floor (n)]
+          picked = ctx.by_id[math.floor (n)]
         end
         local selection = ev.selection or ''
         if selection ~= '' then
@@ -1678,14 +1440,14 @@ return {
         items[#items + 1] = {
           label = 'Copy Matching Lines',
           icon = 'clipboard-list',
-          disabled = matched == 0,
+          disabled = ctx.matched == 0,
           run = copy_matching,
         }
         items[#items + 1] = {
           label = 'Clear',
           icon = 'eraser',
           key = 'Ctrl+K',
-          disabled = shown == nil and not merged,
+          disabled = ctx.shown == nil and not ctx.merged,
           run = clear_lines,
         }
         return items
@@ -1713,7 +1475,7 @@ return {
             {
               label = 'All Sources, by Time',
               icon = 'git-merge',
-              disabled = #sources < 2,
+              disabled = #ctx.sources < 2,
               run = show_merged,
             },
             {
@@ -1791,18 +1553,18 @@ return {
 
     ---@return boolean
     local function has_source ()
-      return here () and (shown ~= nil or merged)
+      return here () and (ctx.shown ~= nil or ctx.merged)
     end
 
     ---@return boolean
     local function is_running ()
-      local src = shown
+      local src = ctx.shown
       return here () and src ~= nil and src.state == 'running'
     end
 
     ---@return boolean
     local function can_restart ()
-      local src = shown
+      local src = ctx.shown
       return here () and src ~= nil and src.spec.kind ~= 'paste'
     end
 
@@ -1835,7 +1597,7 @@ return {
       title = 'Show All Sources by Time',
       icon = 'git-merge',
       when = function ()
-        return here () and #sources >= 2
+        return here () and #ctx.sources >= 2
       end,
       run = show_merged,
     })
@@ -1846,7 +1608,7 @@ return {
       key = 'ctrl+pageup',
       icon = 'chevrons-up',
       when = function ()
-        return has_source () and win_from > view_first
+        return has_source () and ctx.win_from > ctx.view_first
       end,
       run = function ()
         page (-PAGE_STEP)
@@ -1859,7 +1621,7 @@ return {
       key = 'ctrl+pagedown',
       icon = 'chevrons-down',
       when = function ()
-        return has_source () and win_from + drawn - 1 < #view_all
+        return has_source () and ctx.win_from + ctx.drawn - 1 < #ctx.view_all
       end,
       run = function ()
         page (PAGE_STEP)
@@ -1873,7 +1635,7 @@ return {
       icon = 'arrow-down-to-line',
       when = has_source,
       run = function ()
-        show_window (#view_all - MAX_SHOWN + 1)
+        show_window (#ctx.view_all - list_m.MAX_SHOWN + 1)
         set_follow (true)
       end,
     })
@@ -1903,7 +1665,7 @@ return {
       icon = 'history',
       toolbar = 4,
       when = function ()
-        return here () and #recent > 0
+        return here () and #ctx.recent > 0
       end,
       run = open_recent,
     })
@@ -1915,8 +1677,8 @@ return {
       toolbar = 5,
       when = is_running,
       run = function ()
-        if shown then
-          stop (shown)
+        if ctx.shown then
+          stop (ctx.shown)
         end
       end,
     })
@@ -1928,8 +1690,8 @@ return {
       toolbar = 6,
       when = can_restart,
       run = function ()
-        if shown and shown.spec.kind ~= 'paste' then
-          restart (shown)
+        if ctx.shown and ctx.shown.spec.kind ~= 'paste' then
+          restart (ctx.shown)
         end
       end,
     })
@@ -1940,8 +1702,8 @@ return {
       icon = 'x',
       when = has_source,
       run = function ()
-        if shown then
-          close_source (shown)
+        if ctx.shown then
+          close_source (ctx.shown)
         end
       end,
     })
@@ -1979,7 +1741,7 @@ return {
       icon = 'arrow-down-to-line',
       when = here,
       run = function ()
-        set_follow (not follow)
+        set_follow (not ctx.follow)
       end,
     })
     commands.register ({
@@ -1988,7 +1750,7 @@ return {
       title = 'Copy Selected Line',
       icon = 'copy',
       when = function ()
-        return here () and selected ~= nil
+        return here () and ctx.selected ~= nil
       end,
       run = copy_selected,
     })
@@ -2062,13 +1824,13 @@ return {
         start (new_source (spec))
       end
     end
-    local first = sources[1]
-    for _, src in ipairs (sources) do
+    local first = ctx.sources[1]
+    for _, src in ipairs (ctx.sources) do
       if lf.spec_key (src.spec) == last_shown then
         first = src
       end
     end
-    if last_shown == 'merged' and #sources >= 2 then
+    if last_shown == 'merged' and #ctx.sources >= 2 then
       show_merged ()
     else
       show_source (first)
