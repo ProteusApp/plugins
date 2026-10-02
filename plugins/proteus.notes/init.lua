@@ -10,7 +10,7 @@ local GRAPH_FILE = 'notes.ndg'
 return {
   name = NAME,
   description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.',
-  version = '1.2.1',
+  version = '1.3.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
