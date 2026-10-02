@@ -123,12 +123,11 @@ local CSS = [[
 .git-hunk-btn:hover { background: var(--bg-hover); }
 .git-hunk-btn.git-lines-btn { display: none; margin-left: auto; }
 .git-hunk-btn.git-lines-btn + .git-hunk-btn { margin-left: 0; }
-.git-hunk:has(.git-pick:checked) .git-lines-btn { display: inline-block; }
+.git-hunk-picked .git-lines-btn { display: inline-block; }
 .git-gutter { display: flex; flex: none; cursor: pointer; }
 .git-gutter:hover .git-ln { color: var(--fg); }
-.git-pick { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
-.git-line:has(.git-pick:checked) .git-gutter { background: var(--accent); }
-.git-line:has(.git-pick:checked) .git-gutter span { color: var(--accent-fg); }
+.git-picked .git-gutter { background: var(--accent); }
+.git-picked .git-gutter span { color: var(--accent-fg); }
 .git-line { display: flex; font-family: var(--font-mono); line-height: 19px; white-space: pre; }
 .git-ln { flex: none; width: 48px; padding-right: 8px; text-align: right; color: var(--fg-faint); user-select: none; }
 .git-sign { flex: none; width: 16px; text-align: center; color: var(--fg-faint); user-select: none; }
@@ -149,8 +148,6 @@ local CSS = [[
 .git-half.git-l-add .git-sign { color: var(--success); }
 .git-half.git-l-del .git-sign { color: var(--danger); }
 .git-half-empty { background: var(--bg-alt); }
-.git-half:has(.git-pick:checked) .git-gutter { background: var(--accent); }
-.git-half:has(.git-pick:checked) .git-gutter span { color: var(--accent-fg); }
 .git-blame { display: inline-block; min-width: 100%; padding-bottom: 24px; font-size: 12px; }
 .git-blame-line { display: flex; font-family: var(--font-mono); line-height: 19px; white-space: pre; }
 .git-blame-first { border-top: 1px solid var(--border); }
@@ -260,6 +257,9 @@ return {
     local split_view = app.store.get ('split', false) == true
     -- The lines picked in the diff, by `'<file>:<hunk>'`, then by line position.
     local picked = {} ---@type table<string, table<integer, boolean>>
+    -- How the file diff on show was drawn, to draw it again when a line is picked.
+    local shown_opts = nil ---@type Git.DiffOptions?
+    local shown_top = ''
     local shown_key = nil ---@type string?
     local busy = nil ---@type string? Such as 'Pushing…' while a remote command runs.
     local refreshing = false
@@ -726,6 +726,7 @@ return {
     -- The main area when no file or commit is picked.
     local function show_placeholder ()
       shown_files, shown_key = {}, nil
+      shown_opts = nil
       if not desktop then
         show_main (
           m.message_html (
@@ -775,7 +776,9 @@ return {
       shown_staged = opts.staged == true
       shown_key = key
       picked = {}
-      show_main ((top or '') .. m.diff_html (files, opts), same_file)
+      opts.picked = picked
+      shown_opts, shown_top = opts, top or ''
+      show_main (shown_top .. m.diff_html (files, opts), same_file)
     end
 
     ---@param e Git.Entry
@@ -808,6 +811,7 @@ return {
         .. '\n'
       if e.kind == 'untracked' and e.path:sub (-1) == '/' then
         shown_files, shown_key = {}, nil
+        shown_opts = nil
         show_main (
           m.message_html ('A new folder', 'Stage it to add every file in it.')
         )
@@ -881,6 +885,7 @@ return {
         end
         local show = m.parse_show (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = show.files, false, 'c:' .. hash
+        shown_opts = nil
         local top = show.commit and m.commit_html (show.commit) or ''
         show_main (top .. m.diff_html (show.files, {
           empty = 'This commit changes no files.',
@@ -912,6 +917,7 @@ return {
         end
         local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = files, false, 'z:' .. st.ref
+        shown_opts = nil
         show_main (m.stash_html (st) .. m.diff_html (files, {
           empty = 'This stash holds no changes.',
           cut = cut,
@@ -926,6 +932,7 @@ return {
       show_root ()
       selection = { kind = 'blame', path = path }
       shown_files, shown_key = {}, nil
+      shown_opts = nil
       render_changes ()
       render_history ()
       diff_seq = diff_seq + 1
@@ -2375,17 +2382,24 @@ return {
         end
         return true
       end
-      -- A click on a line's numbers ticks its hidden checkbox. The tick must go through, so
-      -- this returns nil.
+      -- A click on a line's numbers picks it, or puts it back, and draws the diff again with
+      -- the line marked.
       local pf, ph, pl = item:match ('^line:(%d+):(%d+):(%d+)$')
       if pf then
-        if ev.checked ~= nil then
+        local opts = shown_opts
+        if opts then
           local key = pf .. ':' .. ph
           local set = picked[key] or {}
           picked[key] = set
-          set[math.floor (tonumber (pl) or 0)] = ev.checked or nil
+          local li = math.floor (tonumber (pl) or 0)
+          set[li] = not set[li] or nil
+          if not next (set) then
+            picked[key] = nil
+          end
+          opts.picked = picked
+          show_main (shown_top .. m.diff_html (shown_files, opts), true)
         end
-        return nil
+        return true
       end
       local lf, lh = item:match ('^lines:(%d+):(%d+)$')
       if lf then

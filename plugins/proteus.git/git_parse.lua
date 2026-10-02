@@ -111,6 +111,7 @@
 ---@class Git.DiffOptions
 ---@field buttons? boolean Adds a Stage Hunk or Unstage Hunk button to each hunk.
 ---@field lines? boolean With `buttons`, each added or removed line can be picked, and a Stage Lines or Unstage Lines button stages the picked ones.
+---@field picked? table<string, table<integer, boolean>> The picked lines, by `'<file>:<hunk>'`, then by line position. A hunk with any shows its Stage Lines button.
 ---@field staged? boolean The buttons unstage instead of stage.
 ---@field max_lines? integer How many diff lines to draw. 5,000 when nil.
 ---@field label? string A tag beside each file path, such as `'Staged'`.
@@ -2254,13 +2255,14 @@ local function code_html (l, words)
   return table.concat (out)
 end
 
----One diff line. With `pick`, its line numbers are a label around a hidden checkbox that
----carries `data-item="<pick>"`, so a click on them picks the line.
+---One diff line. With `pick`, its line numbers carry `data-item="<pick>"`, so a click on
+---them picks the line, and `on` marks it picked.
 ---@param l Git.Line
 ---@param pick? string
 ---@param words? Git.Segment[]
+---@param on? boolean
 ---@return string
-local function line_html (l, pick, words)
+local function line_html (l, pick, words, on)
   local gutter = '<span class="git-ln">'
     .. (l.old or '')
     .. '</span><span class="git-ln">'
@@ -2269,15 +2271,15 @@ local function line_html (l, pick, words)
     .. SIGN[l.kind]
     .. '</span>'
   if pick then
-    gutter = '<label class="git-gutter" title="Pick this line">'
-      .. '<input type="checkbox" class="git-pick" data-item="'
+    gutter = '<span class="git-gutter" data-item="'
       .. pick
-      .. '">'
+      .. '" title="Pick this line">'
       .. gutter
-      .. '</label>'
+      .. '</span>'
   end
   return '<div class="git-line git-l-'
     .. l.kind
+    .. (on and ' git-picked' or '')
     .. '">'
     .. gutter
     .. '<span class="git-code">'
@@ -2290,8 +2292,9 @@ end
 ---@param side 'old'|'new'
 ---@param pick? string
 ---@param words? Git.Segment[]
+---@param on? boolean
 ---@return string
-local function half_html (l, side, pick, words)
+local function half_html (l, side, pick, words, on)
   if not l then
     return '<div class="git-half git-half-empty"></div>'
   end
@@ -2301,15 +2304,15 @@ local function half_html (l, side, pick, words)
     .. SIGN[l.kind]
     .. '</span>'
   if pick then
-    gutter = '<label class="git-gutter" title="Pick this line">'
-      .. '<input type="checkbox" class="git-pick" data-item="'
+    gutter = '<span class="git-gutter" data-item="'
       .. pick
-      .. '">'
+      .. '" title="Pick this line">'
       .. gutter
-      .. '</label>'
+      .. '</span>'
   end
   return '<div class="git-half git-l-'
     .. l.kind
+    .. (on and ' git-picked' or '')
     .. '">'
     .. gutter
     .. '<span class="git-code">'
@@ -2397,14 +2400,17 @@ function M.diff_html (files, opts)
         cut = true
         break
       end
-      out[#out + 1] = '<div class="git-hunk"><div class="git-hunk-head"><span class="git-hunk-text">'
-        .. esc (h.header)
-        .. '</span>'
       local stageable = opts.buttons
         and not f.combined
         and not f.binary
         and not h.partial
       local pickable = stageable and opts.lines
+      local on = pickable and opts.picked and opts.picked[fi .. ':' .. hi] or {}
+      out[#out + 1] = '<div class="git-hunk'
+        .. (next (on) and ' git-hunk-picked' or '')
+        .. '"><div class="git-hunk-head"><span class="git-hunk-text">'
+        .. esc (h.header)
+        .. '</span>'
       if pickable then
         out[#out + 1] = '<button class="git-hunk-btn git-lines-btn" data-item="lines:'
           .. fi
@@ -2448,13 +2454,15 @@ function M.diff_html (files, opts)
               left,
               'old',
               a ~= b and a and pick_of (a) or nil,
-              a and words[a]
+              a and words[a],
+              a and on[a]
             )
             .. half_html (
               right,
               'new',
               a ~= b and b and pick_of (b) or nil,
-              b and words[b]
+              b and words[b],
+              b and on[b]
             )
             .. '</div>'
           shown = shown + ((a and b and a ~= b) and 2 or 1)
@@ -2465,7 +2473,7 @@ function M.diff_html (files, opts)
             cut = true
             break
           end
-          out[#out + 1] = line_html (l, pick_of (li), words[li])
+          out[#out + 1] = line_html (l, pick_of (li), words[li], on[li])
           shown = shown + 1
         end
       end

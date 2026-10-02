@@ -1572,16 +1572,34 @@ test ('diff_html lets added and removed lines be picked', function ()
   has (html, 'data-item="lines:1:1">Stage Lines</button>')
   has (
     html,
-    '<label class="git-gutter" title="Pick this line"><input type="checkbox" class="git-pick" data-item="line:1:1:2">'
+    '<span class="git-gutter" data-item="line:1:1:2" title="Pick this line">'
   )
   has (html, 'data-item="line:1:2:5"')
   lacks (html, 'data-item="line:1:1:1"')
-  eq (count (html, 'class="git-pick"'), 4)
+  eq (count (html, 'class="git-gutter"'), 4)
+  lacks (html, 'git-picked')
+  lacks (html, 'git-hunk-picked')
+  -- Picked lines are marked, and their hunk shows its Stage Lines button.
+  local marked = m.diff_html (files, {
+    buttons = true,
+    lines = true,
+    picked = { ['1:2'] = { [5] = true } },
+  })
+  eq (count (marked, 'git-line git-l-add git-picked'), 1)
+  eq (count (marked, '<div class="git-hunk git-hunk-picked">'), 1)
+  eq (count (marked, '<div class="git-hunk">'), 1)
+  local split = m.diff_html (files, {
+    buttons = true,
+    lines = true,
+    split = true,
+    picked = { ['1:1'] = { [2] = true } },
+  })
+  eq (count (split, 'git-half git-l-del git-picked'), 1)
   has (
     m.diff_html (files, { buttons = true, lines = true, staged = true }),
     'Unstage Lines'
   )
-  lacks (m.diff_html (files, { buttons = true }), 'git-pick')
+  lacks (m.diff_html (files, { buttons = true }), 'git-gutter')
 end)
 
 ---------------------------------------------------------------------------------------------
