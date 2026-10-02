@@ -2,7 +2,7 @@
   "id": "shader.core",
   "name": "Shader core",
   "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "depends": [],
   "optional": [],
   "permissions": [],
@@ -20,6 +20,7 @@
   "issue": null,
   "files": [
     "README.md",
+    "handbook/core.md",
     "init.lua",
     "shader_build.lua",
     "shader_compile.lua",
