@@ -6,7 +6,7 @@ Each submission becomes a pull request labeled `[AUTOMATED] Plugin Request`, wit
 
 A profile is one `profile.lua` that lists plugins and settings. Check that every plugin it names ships with Proteus or is listed here, and that its settings hold nothing personal.
 
-The check workflow has run first: the rules, the plugin's tests, StyLua and selene, and a comparison of what `init.lua` declares with `proteus.json`. The pull request lists the plugin's permissions. Proteus enforces them, so a plugin without any cannot reach the network, run programs or touch files outside the workspace folders it claims.
+The check workflow runs on each version: the rules, the plugin's tests, StyLua and selene, a comparison of what `init.lua` declares with `proteus.json`, and each vendored file against its published package. GitHub starts no workflow for a pull request the submission workflow opens, so the submission workflow starts the check on the branch itself. It shows on the pull request's commit. The pull request lists the plugin's permissions. Proteus enforces them, so a plugin without any cannot reach the network, run programs or touch files outside the workspace folders it claims.
 
 Check that:
 
@@ -18,21 +18,24 @@ Check that:
 - it holds no secrets, tokens or personal data
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
 
-Approve a submission by commenting `/approve` on its issue. Text after the command on the same line is fine, such as `/approve thanks!`. The workflow checks three things first:
+Approve a submission by commenting `/approve <commit>` on its issue, with the first seven or more characters of the commit you read. The bot's comment on the issue names the current one, such as `/approve 1a2b3c4`. Text after the commit on the same line is fine, such as `/approve 1a2b3c4 thanks!`. The workflow checks four things first:
 
 - the person commenting can write to this repository
 - the pull request is the one the workflow opened for that issue
-- the pull request has not changed since the comment, so an approval covers only code that was there to read
+- its head is the commit the comment names, so an approval covers only the code that was read
+- the check workflow passed on that commit
 
-It then merges the pull request, rebuilds the index and closes the issue. A reaction on the comment shows the result: a rocket for merged, and a confused face with a reply when it could not merge. Merging the pull request by hand works too.
+It then merges exactly that commit, rebuilds the index and closes the issue. A reaction on the comment shows the result: a rocket for merged, and a confused face with a reply when it could not merge. Merging the pull request by hand works too.
 
 Close the pull request to turn a submission down, with a comment that says why. The author can publish a fixed version, which opens a new submission.
 
-To take a plugin or profile down, delete its folder in a pull request. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
+To take a plugin or profile down, delete its folder in a pull request, and add its id to `removed.json` with its owner's login and GitHub user id, from its `proteus.json`. The check refuses the pull request without that entry. The id then stays with its owner: nobody else can publish under it, so the marketplace never offers their code as an update to people who installed the old one. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
+
+Leave `index.json` out of pull requests. The index workflow writes it after each merge, and the check refuses a pull request that changes it. The app installs each entry's files from the commit it names and shows its permissions before the install, so the check also holds every entry to that commit.
 
 ## Set up the repository
 
-The workflows need three things, set once.
+The workflows need four things, set once.
 
 ### 1. Let the workflows open pull requests
 
@@ -64,3 +67,13 @@ A user's token from this app can open issues and comment on this repository, and
 ### 3. Keep the label
 
 The label `[AUTOMATED] Plugin Request` marks submissions and their pull requests. The workflow puts it on, since GitHub drops a label that an author without push access asks for.
+
+### 4. Protect main
+
+In **Settings > Rules > Rulesets**, add a branch ruleset for `main` with:
+
+- **Require status checks to pass**, with the check `check` from GitHub Actions. A merge by hand then waits for the check too, as `/approve` does.
+- **Require a pull request before merging**, with **Require review from Code Owners**. `.github/CODEOWNERS` names who reviews changes to `index.json`, `removed.json`, `reserved.json`, the workflows and the scripts, since the app trusts what they say. A submission's pull request touches only its own folder, so `/approve` still merges it.
+- **Block force pushes**.
+
+Give the `github-actions` app no bypass. The index workflow commits `index.json` straight to main, so either let it bypass the pull request rule alone, or turn that rule off and keep the other two.

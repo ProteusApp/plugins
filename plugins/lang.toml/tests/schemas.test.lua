@@ -56,3 +56,33 @@ test (
     eq (schemas.for_taplo ({ schemas = 'nope' }).schemas, {})
   end
 )
+
+test ('allowed takes a schema only from a plugin with the network', function ()
+  local plugins = {
+    ['proteus.lang.x'] = { trusted = true, permissions = {} },
+    ['lang.rust'] = { trusted = false, permissions = { 'process', 'net' } },
+    ['sneaky'] = { trusted = false, permissions = { 'clipboard' } },
+  }
+  ---@param id string
+  ---@return Proteus.PluginInfo?
+  local function plugin_of (id)
+    return plugins[id] --[[@as Proteus.PluginInfo?]]
+  end
+  ---@param owner string?
+  ---@param value any
+  ---@return boolean
+  local function allowed (owner, value)
+    return schemas.allowed ({
+      kind = 'schema',
+      pattern = 'Cargo.toml',
+      value = value,
+      owner = owner,
+    }, plugin_of)
+  end
+  eq (allowed ('proteus.lang.x', 'https://example.com/a.json'), true)
+  eq (allowed ('lang.rust', 'https://example.com/a.json'), true)
+  eq (allowed ('sneaky', 'https://example.com/?data=secret'), false)
+  eq (allowed ('missing', 'https://example.com/a.json'), false)
+  eq (allowed (nil, 'https://example.com/a.json'), false)
+  eq (allowed ('lang.rust', { type = 'object' }), false)
+end)

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   LABEL,
+  approvedCommit,
   branchFor,
   buildIndex,
   canApprove,
@@ -10,6 +11,7 @@ import {
   commandOf,
   compareVersions,
   folderFor,
+  indexProblems,
   isSubmission,
   kindOf,
   manifestFor,
@@ -18,6 +20,7 @@ import {
   vendorOf,
   sha256,
   pullRequestBody,
+  RESERVED_FOLDERS,
   validate,
 } from '../scripts/registry.mjs';
 
@@ -243,6 +246,61 @@ test('compareVersions compares each part as a number', () => {
   assert.equal(compareVersions('0.9.0', '1.0.0'), -1);
 });
 
+test('compareVersions follows semver for pre-release tags and build metadata', () => {
+  assert.equal(compareVersions('1.0.0', '1.0.0-beta.1'), 1);
+  assert.equal(compareVersions('1.0.0-2', '1.0.0'), -1);
+  const order = ['1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta', '1.0.0-beta.2', '1.0.0-beta.11', '1.0.0-rc.1', '1.0.0'];
+  for (let i = 1; i < order.length; i++) assert.equal(compareVersions(order[i - 1], order[i]), -1, `${order[i - 1]} < ${order[i]}`);
+  assert.equal(compareVersions('1.0.0+build.5', '1.0.0'), 0);
+  const existing = { id: 'hello.world', version: '1.0.0-beta.1', author: { login: 'ann', id: 1 } };
+  assert.deepEqual(validate(good(), { existing, author: { login: 'ann', id: 1 } }), []);
+});
+
+test('validate reports a manifest without a string id instead of throwing', () => {
+  const sub = good({ id: undefined });
+  assert.match(validate(sub, { reserved: { ids: [], prefixes: ['core.'] } })[0], /id must be lower case/);
+  assert.match(validate(good({ id: 42 }), { reserved: { ids: [], prefixes: ['core.'] } })[0], /id must be lower case/);
+});
+
+test('approvedCommit reads the commit after /approve', () => {
+  assert.equal(approvedCommit('/approve 1A2b3c4 thanks!'), '1a2b3c4');
+  assert.equal(approvedCommit('/approve thanks!'), null);
+  assert.equal(approvedCommit('/approve 12345'), null);
+  assert.equal(approvedCommit('/approve\n1a2b3c4'), null);
+});
+
+test('a name or a description cannot hide the rest of the pull request', () => {
+  for (const [field, value] of [
+    ['description', 'Says hello. <!--'],
+    ['name', 'Hello\n### Permissions'],
+    ['name', 'Hello ```'],
+    ['description', 'Fine -->'],
+  ]) {
+    assert.ok(validate(good({ [field]: value })).some((p) => p.startsWith(`The ${field} `)), `${field}: ${JSON.stringify(value)}`);
+  }
+  const sub = good({ name: 'Hello *World* [x](y)' });
+  assert.deepEqual(validate(sub), []);
+  const body = pullRequestBody(manifestFor(sub, { login: 'ann', id: 1 }, 7), sub, 7, false);
+  assert.match(body, /\*\*Hello \\\*World\\\* \\\[x\\\]\(y\)\*\*/);
+});
+
+test('file paths that differ only in case are refused', () => {
+  const problems = validate(good({ files: { 'init.lua': 'return {}', 'INIT.lua': 'return 1' } }));
+  assert.ok(problems.some((p) => /differ only in case/.test(p)));
+  assert.ok(validate(good({ files: { 'init.lua': 'return {}', 'lib/A.lua': '', 'Lib/a.lua': '' } })).some((p) => /differ only in case/.test(p)));
+});
+
+test('a taken-down id stays with its owner', () => {
+  const removed = { login: 'ann', id: 1 };
+  assert.deepEqual(validate(good(), { removed, author: { login: 'ann', id: 1 } }), []);
+  assert.match(validate(good(), { removed, author: { login: 'eve', id: 9 } })[0], /taken down, and its id stays with @ann/);
+});
+
+test('Proteus keeps its tooling folder', () => {
+  assert.ok(RESERVED_FOLDERS.includes('tooling'));
+  assert.match(validate(good({ folders: ['tooling'] })).join(' '), /belongs to Proteus/);
+});
+
 test('manifestFor records the author and the sorted files', () => {
   const m = manifestFor(good(), { login: 'ann', id: 1, type: 'User' }, 7);
   assert.deepEqual(m.author, { login: 'ann', id: 1 });
@@ -378,6 +436,7 @@ test('a vendored file may have long lines, when vendor.json vouches for it', () 
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, license: '' }) }).problems[0], /license/);
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'file:///etc/passwd' }) }).problems[0], /source/);
   assert.match(vendorOf({ 'vendor.json': '{' }).problems[0], /not valid JSON/);
+  assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'https://example.com/lib.js' }) }).problems[0], /source/);
   assert.equal(textProblem('lib/built.js', built.replace('1;', '\u0000;'), { vendored: true }) !== null, true, 'control characters still count');
 });
 
@@ -407,4 +466,61 @@ test('init.lua must write its permissions as a literal list', () => {
     /not the ones the plugin declares/,
   );
   assert.match(validate(withInit("return { name = 'x' } --[[ open", []), { reserved }).join('\n'), /does not end/);
+});
+
+test('only built JavaScript or CSS from a package the registry takes can be vendored', () => {
+  const lua = 'return {}\n';
+  const entry = (path, text, source = 'npm:@webaudiomodules/sdk@0.0.12/dist/index.js') => ({
+    [path]: text,
+    'vendor.json': JSON.stringify({ files: { [path]: { source, license: 'MIT', sha256: sha256(text) } } }),
+  });
+  for (const path of ['init.lua', 'lib/util.lua', 'page/index.html']) {
+    const got = vendorOf(entry(path, lua));
+    assert.equal(got.vendored.size, 0, path);
+    assert.match(got.problems[0], /only for built JavaScript or CSS/);
+  }
+  const stranger = vendorOf(entry('lib/x.js', 'x', 'npm:left-pad@1.3.0/index.js'));
+  assert.equal(stranger.vendored.size, 0);
+  assert.match(stranger.problems[0], /left-pad is not a package/);
+  for (const source of ['npm:@webaudiomodules/sdk@^0.0.12/dist/index.js', 'npm:@webaudiomodules/sdk@0.0.12/../x.js']) {
+    assert.match(vendorOf(entry('lib/x.js', 'x', source)).problems[0], /exact version/, source);
+  }
+  assert.equal(vendorOf(entry('lib/x.css', 'x')).vendored.size, 1);
+});
+
+test('buildIndex carries what a plugin exports', () => {
+  const m = manifestFor(good({ exports: ['wam'], files: { 'init.lua': '', 'wam/a.js': '' } }), { login: 'ann', id: 1 }, 1);
+  assert.deepEqual(buildIndex([{ manifest: m, commit: 'aaa', updated: '' }]).plugins[0].exports, ['wam']);
+  const plain = manifestFor(good(), { login: 'ann', id: 1 }, 1);
+  assert.equal('exports' in buildIndex([{ manifest: plain, commit: 'aaa', updated: '' }]).plugins[0], false);
+});
+
+test('indexProblems holds each entry to the commit it names', () => {
+  const commit = 'a'.repeat(40);
+  const manifest = manifestFor(good({ permissions: ['net'] }), { login: 'ann', id: 1 }, 1);
+  const history = { manifest, files: ['README.md', 'init.lua', 'lib/util.lua'], last: commit, updated: '2026-01-01T00:00:00+00:00' };
+  const at = (kind, id, c) => (kind === 'plugin' && id === 'hello.world' && c === commit ? history : null);
+  const index = buildIndex([{ manifest, commit, updated: '2026-01-01T00:00:00Z' }]);
+  assert.deepEqual(indexProblems(index, at), []);
+
+  const wider = structuredClone(index);
+  wider.plugins[0].permissions = [];
+  assert.match(indexProblems(wider, at)[0], /permissions of plugins\/hello\.world is \[\]/);
+
+  const forked = structuredClone(index);
+  forked.plugins[0].commit = 'b'.repeat(40);
+  assert.match(indexProblems(forked, at)[0], /not in the history of main/);
+
+  const untouched = (kind, id, c) => ({ ...history, last: 'c'.repeat(40), c });
+  assert.match(indexProblems(index, untouched)[0], /did not change that folder/);
+
+  const extra = structuredClone(index);
+  extra.plugins[0].files.push('evil.lua');
+  assert.ok(indexProblems(extra, at).some((p) => /files of plugins\/hello\.world/.test(p)));
+
+  const older = structuredClone(index);
+  delete older.plugins[0].optional;
+  assert.deepEqual(indexProblems(older, at), [], 'an index from before a field was added still holds');
+  delete older.plugins[0].permissions;
+  assert.match(indexProblems(older, at)[0], /no permissions/);
 });
