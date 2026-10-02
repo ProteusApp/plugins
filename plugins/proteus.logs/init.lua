@@ -714,7 +714,7 @@ return {
       if ctx.follow then
         scroll_bottom ()
       elseif ctx.selected then
-        reveal (ctx.selected.n)
+        reveal (ctx.id_of (ctx.selected))
       end
     end
 
