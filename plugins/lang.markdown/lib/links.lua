@@ -225,7 +225,13 @@ function M.finish (html, targets)
       .. '</span>'
   end)
 
+  -- A list item that starts with a box shows no bullet. The class marks it, since a
+  -- restricted plugin's style sheet cannot ask what an element holds with :has().
   html = html
+    :gsub ('<li><p>(' .. M.TASK_OPEN .. ')', '<li class="md-task"><p>%1')
+    :gsub ('<li><p>(' .. M.TASK_DONE .. ')', '<li class="md-task"><p>%1')
+    :gsub ('<li>(' .. M.TASK_OPEN .. ')', '<li class="md-task">%1')
+    :gsub ('<li>(' .. M.TASK_DONE .. ')', '<li class="md-task">%1')
     :gsub (M.TASK_OPEN, '<span class="md-check"></span>')
     :gsub (M.TASK_DONE, '<span class="md-check done"></span>')
   return as_written (html)

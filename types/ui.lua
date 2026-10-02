@@ -459,6 +459,7 @@ function El:widget (method, ...) end
 ---@field program? string The system shell when empty.
 ---@field args? string[]
 ---@field cwd? string The home folder when empty.
+---@field env? table<string, string> Variables added to the app's own.
 ---@field font_size? number
 ---@field autostart? boolean Starts once it has a size. True when nil.
 ---@field on_started? fun()

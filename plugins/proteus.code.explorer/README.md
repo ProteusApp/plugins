@@ -7,10 +7,11 @@ A file tree of the folder open in the Code Editor, in the left dock (**Ctrl+Shif
 - **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste files. **F2** renames, and typed letters jump to a name.
 - **Ctrl+Z** in the tree takes back the last rename, move, paste, drop, new file or delete. A delete comes back from the Recycle Bin or Trash, on Windows and Linux. Taking back a copy or a new file moves it to the trash, after asking.
 - A letter after a name shows what Git sees, from `proteus.git`. A dot marks a file with unsaved edits. What `.gitignore` leaves out shows dimmed.
-- **Find in Folder…** in the right-click menu opens Search, from `proteus.code.search`, kept to that folder. **Open in Terminal** opens a terminal there, from `proteus.terminal`.
+- **Find in Folder…** in the right-click menu opens Search, from `proteus.code.search`, kept to that folder.
+- **Open in Terminal** in a folder's right-click menu opens a terminal there, from `proteus.terminal`.
 - The tree follows the tab in front. **Reveal Active File in Explorer** finds it again after the tree moved on.
 
-When it moves a file, open tabs follow it, and it sends `code:disk_renamed` with the old and the new full path. **Find in Folder** sends `code:search_folder` and **Open in Terminal** sends `code:open_terminal`, each with the folder's full path. All three need `files` to hear.
+When it moves a file, open tabs follow it, and it sends `code:disk_renamed` with the old and the new full path. **Find in Folder** sends `code:search_folder` with the folder's full path. Both need `files` to hear.
 
 Other plugins add sections under the tree through the `code.explorer` service, as `proteus.code.plugins` does:
 

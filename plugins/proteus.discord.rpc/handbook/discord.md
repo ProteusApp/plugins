@@ -9,9 +9,9 @@ keywords: discord rich presence rpc status activity playing details state vars b
 
 The `proteus.discord.rpc` plugin shows what is happening in Proteus on the user's Discord profile, the way the Discord extensions for VS Code do. Each app shows its own lines: the editor shows the file being edited, Git shows the branch, and Todo shows how much is left.
 
-It stays off until the user switches it on. It needs the desktop app on Windows, with the Discord desktop app running. A small PowerShell script carries the messages to Discord, and when Discord is closed it tries again every 15 seconds.
+It stays off until the user switches it on. It needs the desktop app on Windows, with the Discord desktop app running. A small PowerShell script carries the messages to Discord, and when Discord is closed it tries again every 15 seconds. On other systems it never starts the script, and its commands say it works on Windows only.
 
-The marketplace installs it from the registry. It asks for two permissions: `process` to start the PowerShell script, and `files` to follow the editor, so it can show the file being edited and open its settings file.
+The marketplace installs it from the registry. It asks for two permissions: `process` to start the PowerShell script, and `files` to follow the editor, so it can show the file being edited.
 
 ## Switching it on
 
@@ -21,30 +21,21 @@ Three commands in the **Discord** category change it:
 |---------|--------------|
 | **Discord: Turn Rich Presence On or Off** (`discord.toggle`) | Shows or stops showing what you are doing. |
 | **Discord: Show or Hide Names in Rich Presence** (`discord.names`) | Keeps file, plugin, repository, branch and project names off Discord, or shows them again. |
-| **Discord: Open Rich Presence Settings** (`discord.settings`) | Opens the settings file in the editor, writing it first when it is missing. It shows while the editor runs. |
+| **Discord: Open Rich Presence Settings** (`discord.settings`) | Opens Settings, where its settings are under **discord**. |
 
-## The settings file
+## Settings
 
-The settings live in `data/proteus.discord.rpc/discord.json`, which every profile shares. Proteus moves an older `data/discord.json` there when it starts. A change to the file applies as soon as it is saved.
+Its settings live in Settings under `discord.`, so each profile keeps its own and a project folder's `.proteus/settings.json` can set them. A change applies at once.
 
-```json
-{
-  "enabled": true,
-  "show_names": true,
-  "idle_minutes": 10,
-  "images": {
-    "default": "https://example.com/proteus.png"
-  }
-}
-```
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `discord.enabled` | `false` | Shows the presence. |
+| `discord.client_id` | `''`, the Proteus application | The Discord application whose name shows after "Playing". Set it to your own application's id to show another name. |
+| `discord.show_names` | `true` | False keeps the words `file`, `plugin`, `repo`, `branch` and `project` off Discord, so lines that use them are skipped. |
+| `discord.idle_minutes` | `10` | Minutes without activity before the first line says **Idle**. `0` never does. |
+| `discord.images` | `{}` | The large image, by app id such as `editor` or `git`, or `default` for every app. A value is an art asset name from the Discord application, or an image address. |
 
-| Key | Default | What it does |
-|-----|---------|--------------|
-| `enabled` | `false` | Shows the presence. |
-| `client_id` | The Proteus application | The Discord application whose name shows after "Playing". Set it to your own application's id to show another name. |
-| `show_names` | `true` | False keeps the words `file`, `plugin`, `repo`, `branch` and `project` off Discord, so lines that use them are skipped. |
-| `idle_minutes` | `10` | Minutes without activity before the first line says **Idle**. `0` never does. |
-| `images` | `{}` | The large image, by app id such as `editor` or `git`, or `default` for every app. A value is an art asset name from the Discord application, or an image address. |
+Older versions kept these in `data/proteus.discord.rpc/discord.json`, shared by every profile. The first profile that starts this version moves that file's values into its own settings, for each setting not set there yet, and deletes the file.
 
 Typing, saving, switching tabs, showing a panel or running a command counts as activity.
 
