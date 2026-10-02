@@ -10,6 +10,7 @@
 -- git_parse holds the parsing, the command lines and the HTML, so its tests reach them. This
 -- file holds the screen, the commands and the calls to git.
 
+local blame = require ('git_blame') --[[@as Git.BlameModule]]
 local graph = require ('git_graph') --[[@as Git.GraphModule]]
 local m = require ('git_parse') --[[@as Git.ParseModule]]
 
@@ -150,6 +151,15 @@ local CSS = [[
 .git-half-empty { background: var(--bg-alt); }
 .git-half:has(.git-pick:checked) .git-gutter { background: var(--accent); }
 .git-half:has(.git-pick:checked) .git-gutter span { color: var(--accent-fg); }
+.git-blame { display: inline-block; min-width: 100%; padding-bottom: 24px; font-size: 12px; }
+.git-blame-line { display: flex; font-family: var(--font-mono); line-height: 19px; white-space: pre; }
+.git-blame-first { border-top: 1px solid var(--border); }
+.git-blame-info { flex: none; display: flex; gap: 8px; width: 300px; padding: 0 8px 0 12px; overflow: hidden;
+  font-family: var(--font-ui); color: var(--fg-muted); }
+.git-blame-hash { color: var(--accent); cursor: pointer; }
+.git-blame-hash:hover { text-decoration: underline; }
+.git-blame-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.git-blame-day { flex: none; color: var(--fg-faint); }
 .git-l-meta .git-code { color: var(--fg-faint); font-style: italic; }
 .git-note { padding: 12px 16px; color: var(--fg-muted); }
 .git-commit-view { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
@@ -173,7 +183,7 @@ local CSS = [[
 
 ---What the main area shows.
 ---@class Git.Selection
----@field kind 'file'|'commit'|'stash'
+---@field kind 'file'|'commit'|'stash'|'blame'
 ---@field group? string `'s'` for the Staged list, `'u'` for the Changes list.
 ---@field path? string
 ---@field hash? string
@@ -907,6 +917,31 @@ return {
           cut = cut,
           split = split_view,
         }))
+      end)
+    end
+
+    ---Shows who last changed each line of a file, as it is on disk now.
+    ---@param path string From the repository root.
+    local function show_blame (path)
+      show_root ()
+      selection = { kind = 'blame', path = path }
+      shown_files, shown_key = {}, nil
+      render_changes ()
+      render_history ()
+      diff_seq = diff_seq + 1
+      local seq = diff_seq
+      show_main (m.message_html ('Reading the blame…', path))
+      git (blame.args (path), nil, function (res, err)
+        if seq ~= diff_seq then
+          return
+        end
+        if not res or res.code ~= 0 then
+          show_main (
+            m.message_html ('Could not show the blame', m.error_text (res, err))
+          )
+          return
+        end
+        show_main (blame.html (path, blame.parse (res.stdout)))
       end)
     end
 
@@ -2086,6 +2121,11 @@ return {
       if not item then
         return nil
       end
+      local blamed = item:match ('^blame:(%x+)$')
+      if blamed then
+        select_commit (blamed)
+        return true
+      end
       local how = item:match ('^conflict:(%a+)$')
       if how then
         local sel = selection
@@ -2284,6 +2324,17 @@ return {
           disabled = e.kind == 'untracked' or e.kind == 'added',
           run = function ()
             history_of (e.path)
+          end,
+        }
+        items[#items + 1] = {
+          label = 'Blame',
+          icon = 'user-round-pen',
+          disabled = e.kind == 'untracked'
+            or e.kind == 'added'
+            or e.kind == 'deleted'
+            or e.kind == 'conflicted',
+          run = function ()
+            show_blame (e.path)
           end,
         }
         items[#items + 1] = {
@@ -2777,19 +2828,56 @@ return {
       end
       return m.relative (top, doc.path, app.os)
     end
+    ---Calls `fn` with the file in front in the Code Editor, or else one picked in the
+    ---system's dialog, as a path from the repository root.
+    ---@param fn fun(path: string)
+    local function with_file (fn)
+      local path = current_file ()
+      local top = repo
+      if path or not top then
+        if path then
+          fn (path)
+        end
+        return
+      end
+      app.fs.pick_open ({
+        title = 'Pick a file in the repository',
+        default_path = m.native (top, app.os),
+      }, function (paths, err)
+        if err then
+          fail (err)
+          return
+        end
+        local picked_path = paths and paths[1]
+        if not picked_path then
+          return
+        end
+        local rel = m.relative (top, picked_path, app.os)
+        if rel then
+          fn (rel)
+        else
+          fail ('That file is not in this repository.')
+        end
+      end)
+    end
     commands.register ({
       id = 'git.file_history',
       category = 'Git',
       title = 'Show File History',
       icon = 'file-clock',
-      when = function ()
-        return has_repo () and current_file () ~= nil
-      end,
+      when = has_repo,
       run = function ()
-        local path = current_file ()
-        if path then
-          history_of (path)
-        end
+        with_file (history_of)
+      end,
+    })
+    commands.register ({
+      id = 'git.blame',
+      category = 'Git',
+      title = 'Blame File',
+      icon = 'user-round-pen',
+      when = has_repo,
+      run = function ()
+        with_file (show_blame)
       end,
     })
     commands.register ({

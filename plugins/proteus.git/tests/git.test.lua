@@ -1669,3 +1669,113 @@ test ('diff_html draws the old and new file side by side', function ()
     'git-split"'
   )
 end)
+
+---------------------------------------------------------------------------------------------
+-- Blame
+---------------------------------------------------------------------------------------------
+
+local blame = require ('git_blame') --[[@as Git.BlameModule]]
+
+-- Real `git blame --porcelain` output from git 2.43: two commits and a line not committed.
+local BLAME = table.concat ({
+  'f6651fb7cd516e8cacfbf35b546f336fd5d5100e 1 1 1\n',
+  'author Ada\n',
+  'author-mail <ada@example.com>\n',
+  'author-time 1788249600\n',
+  'author-tz +0200\n',
+  'committer Ada\n',
+  'committer-mail <ada@example.com>\n',
+  'committer-time 1788249600\n',
+  'committer-tz +0200\n',
+  'summary First lines\n',
+  'boundary\n',
+  'filename a.txt\n',
+  '\tone\n',
+  '871dbdb9dd191177cd1b01882f965074fb817ce3 2 2 2\n',
+  'author Ada\n',
+  'author-mail <ada@example.com>\n',
+  'author-time 1788361200\n',
+  'author-tz -0500\n',
+  'committer Ada\n',
+  'committer-mail <ada@example.com>\n',
+  'committer-time 1788361200\n',
+  'committer-tz -0500\n',
+  'summary Change two\n',
+  'previous f6651fb7cd516e8cacfbf35b546f336fd5d5100e a.txt\n',
+  'filename a.txt\n',
+  '\tTWO\n',
+  '871dbdb9dd191177cd1b01882f965074fb817ce3 3 3\n',
+  '\tthree\n',
+  '0000000000000000000000000000000000000000 4 4 1\n',
+  'author Not Committed Yet\n',
+  'author-mail <not.committed.yet>\n',
+  'author-time 1790922076\n',
+  'author-tz +0000\n',
+  'committer Not Committed Yet\n',
+  'committer-mail <not.committed.yet>\n',
+  'committer-time 1790922076\n',
+  'committer-tz +0000\n',
+  'summary Version of a.txt from a.txt\n',
+  'previous 871dbdb9dd191177cd1b01882f965074fb817ce3 a.txt\n',
+  'filename a.txt\n',
+  '\tfour\n',
+})
+
+test ('blame reads who last changed each line', function ()
+  eq (
+    blame.args ('src/a b.txt'),
+    { 'blame', '--porcelain', '--', 'src/a b.txt' }
+  )
+  local b = blame.parse (BLAME)
+  eq (#b.lines, 4)
+  eq (b.lines[1], {
+    hash = 'f6651fb7cd516e8cacfbf35b546f336fd5d5100e',
+    line = 1,
+    text = 'one',
+  })
+  eq (
+    { b.lines[2].text, b.lines[3].text, b.lines[3].line },
+    { 'TWO', 'three', 3 }
+  )
+  eq (b.lines[3].hash, b.lines[2].hash)
+  local c = b.commits[b.lines[2].hash]
+  eq (
+    { c.author, c.time, c.tz, c.summary },
+    { 'Ada', 1788361200, '-0500', 'Change two' }
+  )
+  eq (blame.uncommitted (b.lines[4].hash), true)
+  eq (blame.uncommitted (c.hash), false)
+  eq (b.cut, false)
+  local short = blame.parse (BLAME, 2)
+  eq ({ #short.lines, short.cut }, { 2, true })
+end)
+
+test ("blame day is the author's own day", function ()
+  local b = blame.parse (BLAME)
+  -- 2026-09-02 10:00 at -0500 is 15:00 UTC.
+  eq (blame.day (b.commits[b.lines[2].hash]), '2026-09-02')
+  eq (
+    blame.day ({ hash = 'x', author = '', time = 0, tz = '-0100', summary = '' }),
+    '1969-12-31'
+  )
+  eq (
+    blame.day ({ hash = 'x', author = '', time = 0, tz = 'odd', summary = '' }),
+    '1970-01-01'
+  )
+end)
+
+test ('blame html shows each commit where its lines start', function ()
+  local html = blame.html ('a.txt', blame.parse (BLAME))
+  has (html, '<span class="git-file-path">a.txt</span>')
+  eq (count (html, 'git-blame-first'), 3)
+  has (html, 'data-item="blame:871dbdb9dd191177cd1b01882f965074fb817ce3"')
+  has (html, '>871dbdb</span><span class="git-blame-who">Ada</span>')
+  has (html, '<span class="git-blame-day">2026-09-01</span>')
+  has (html, 'Not committed yet')
+  has (html, '<span class="git-ln">3</span><span class="git-code">three</span>')
+  has (blame.html ('e.txt', blame.parse ('')), 'The file is empty.')
+  has (
+    blame.html ('a.txt', blame.parse (BLAME, 2)),
+    'Showing the first 2 lines.'
+  )
+end)

@@ -37,6 +37,7 @@
   "issue": null,
   "files": [
     "README.md",
+    "git_blame.lua",
     "git_graph.lua",
     "git_parse.lua",
     "init.lua",
