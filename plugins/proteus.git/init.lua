@@ -1990,6 +1990,239 @@ return {
       end)
     end
 
+    -- Tags and remotes ----------------------------------------------------------------------
+
+    ---@param c Git.Commit
+    local function tag_here (c)
+      if not picker then
+        fail ('Create Tag needs the command palette.')
+        return
+      end
+      picker.input ({
+        prompt = 'Name of the new tag on ' .. c.short,
+        placeholder = 'v1.0.0',
+        select = false,
+        validate = m.check_tag_name,
+        on_submit = function (name)
+          picker.input ({
+            prompt = 'A message for ' .. name .. ', or nothing for a plain tag',
+            select = false,
+            on_submit = function (text)
+              act (m.tag_args (name, c.hash, text), nil, function ()
+                done ('Tagged ' .. c.short .. ' as ' .. name .. '.')
+              end)
+            end,
+          })
+        end,
+      })
+    end
+
+    ---Lists the tags, then calls `fn` with the one picked. `all` adds an item for every tag,
+    ---which passes nil.
+    ---@param placeholder string
+    ---@param all boolean
+    ---@param fn fun(name: string?)
+    local function pick_tag (placeholder, all, fn)
+      if not picker then
+        fail ('This needs the command palette.')
+        return
+      end
+      git (m.tag_list_args (), nil, function (res, err)
+        if not res or res.code ~= 0 then
+          fail (m.error_text (res, err))
+          return
+        end
+        local tags = m.parse_tags (res.stdout)
+        if #tags == 0 then
+          tell ('There are no tags.')
+          return
+        end
+        local items = {} ---@type Proteus.PickItem[]
+        if all then
+          items[1] = { label = 'Every tag', icon = 'tags', value = false }
+        end
+        for _, t in ipairs (tags) do
+          items[#items + 1] = { label = t, icon = 'tag', value = t }
+        end
+        picker.pick ({
+          items = items,
+          placeholder = placeholder,
+          on_pick = function (item)
+            fn (item.value or nil)
+          end,
+        })
+      end)
+    end
+
+    ---Lists the remotes, then calls `fn` with the one picked. With `only_one`, a repository
+    ---with a single remote picks it without asking.
+    ---@param placeholder string
+    ---@param only_one boolean
+    ---@param fn fun(r: Git.Remote)
+    local function pick_remote (placeholder, only_one, fn)
+      git ({ 'remote', '-v' }, nil, function (res, err)
+        if not res or res.code ~= 0 then
+          fail (m.error_text (res, err))
+          return
+        end
+        local remotes = m.parse_remotes (res.stdout)
+        if #remotes == 0 then
+          tell ('This repository has no remote.')
+          return
+        end
+        if only_one and #remotes == 1 then
+          fn (remotes[1])
+          return
+        end
+        if not picker then
+          fail ('This needs the command palette.')
+          return
+        end
+        local items = {} ---@type Proteus.PickItem[]
+        for _, r in ipairs (remotes) do
+          items[#items + 1] =
+            { label = r.name, detail = r.url, icon = 'cloud', value = r }
+        end
+        picker.pick ({
+          items = items,
+          placeholder = placeholder,
+          on_pick = function (item)
+            fn (item.value --[[@as Git.Remote]])
+          end,
+        })
+      end)
+    end
+
+    local function delete_tag ()
+      pick_tag ('Delete a tag', false, function (name)
+        if not name then
+          return
+        end
+        confirm (
+          'Delete the tag '
+            .. name
+            .. '? A copy already pushed stays on the remote.',
+          'Delete',
+          function ()
+            act ({ 'tag', '-d', name }, nil, function ()
+              done ('Deleted the tag ' .. name .. '.')
+            end)
+          end
+        )
+      end)
+    end
+
+    local function push_tag ()
+      pick_tag ('Push a tag', true, function (name)
+        pick_remote ('Push it to', true, function (r)
+          if busy then
+            return
+          end
+          run_remote (
+            'Pushing…',
+            m.push_tag_args (r.name, name),
+            repo,
+            function (res, err)
+              if not res or res.code ~= 0 then
+                fail (m.error_text (res, err))
+              else
+                done (
+                  'Pushed ' .. (name or 'every tag') .. ' to ' .. r.name .. '.'
+                )
+              end
+              refresh ()
+            end
+          )
+        end)
+      end)
+    end
+
+    local function add_remote ()
+      if not picker then
+        fail ('Add Remote needs the command palette.')
+        return
+      end
+      picker.input ({
+        prompt = 'Name of the new remote',
+        placeholder = 'upstream',
+        select = false,
+        validate = m.check_remote_name,
+        on_submit = function (name)
+          picker.input ({
+            prompt = 'Address of ' .. name,
+            placeholder = 'https://github.com/owner/repo.git',
+            select = false,
+            validate = function (text)
+              return blank (text) and 'Type an address' or nil
+            end,
+            on_submit = function (url)
+              local address = url:match ('^%s*(.-)%s*$') or url
+              act ({ 'remote', 'add', '--', name, address }, nil, function ()
+                done ('Added the remote ' .. name .. '.')
+              end)
+            end,
+          })
+        end,
+      })
+    end
+
+    local function remove_remote ()
+      pick_remote ('Remove a remote', false, function (r)
+        confirm (
+          'Remove the remote '
+            .. r.name
+            .. '? Its branches here go too, but nothing on the remote changes.',
+          'Remove',
+          function ()
+            act ({ 'remote', 'remove', r.name }, nil, function ()
+              done ('Removed the remote ' .. r.name .. '.')
+            end)
+          end
+        )
+      end)
+    end
+
+    local function rename_remote ()
+      pick_remote ('Rename a remote', false, function (r)
+        if not picker then
+          return
+        end
+        picker.input ({
+          prompt = 'New name for ' .. r.name,
+          value = r.name,
+          validate = m.check_remote_name,
+          on_submit = function (name)
+            if name ~= r.name then
+              act ({ 'remote', 'rename', r.name, name }, nil, function ()
+                done ('Renamed the remote ' .. r.name .. ' to ' .. name .. '.')
+              end)
+            end
+          end,
+        })
+      end)
+    end
+
+    local function set_remote_url ()
+      pick_remote ('Change the address of a remote', false, function (r)
+        if not picker then
+          return
+        end
+        picker.input ({
+          prompt = 'New address of ' .. r.name,
+          value = r.url,
+          validate = function (text)
+            return blank (text) and 'Type an address' or nil
+          end,
+          on_submit = function (url)
+            local address = url:match ('^%s*(.-)%s*$') or url
+            act ({ 'remote', 'set-url', '--', r.name, address }, nil, function ()
+              done ('Changed the address of ' .. r.name .. '.')
+            end)
+          end,
+        })
+      end)
+    end
+
     -- Views and events ----------------------------------------------------------------------
 
     -- Inside the Code Editor the views come after the file tree and Search, and with no
@@ -2388,6 +2621,16 @@ return {
             end,
           },
           {
+            label = 'Create Tag Here…',
+            icon = 'tag',
+            disabled = not c,
+            run = function ()
+              if c then
+                tag_here (c)
+              end
+            end,
+          },
+          {
             label = 'Create Branch Here…',
             icon = 'git-branch-plus',
             disabled = not c,
@@ -2736,6 +2979,54 @@ return {
           show_stash (sel.stash)
         end
       end,
+    })
+    commands.register ({
+      id = 'git.delete_tag',
+      category = 'Git',
+      title = 'Delete Tag…',
+      icon = 'tag',
+      when = has_repo,
+      run = delete_tag,
+    })
+    commands.register ({
+      id = 'git.push_tag',
+      category = 'Git',
+      title = 'Push Tag…',
+      icon = 'tag',
+      when = idle,
+      run = push_tag,
+    })
+    commands.register ({
+      id = 'git.add_remote',
+      category = 'Git',
+      title = 'Add Remote…',
+      icon = 'cloud',
+      when = has_repo,
+      run = add_remote,
+    })
+    commands.register ({
+      id = 'git.remove_remote',
+      category = 'Git',
+      title = 'Remove Remote…',
+      icon = 'cloud-off',
+      when = has_repo,
+      run = remove_remote,
+    })
+    commands.register ({
+      id = 'git.rename_remote',
+      category = 'Git',
+      title = 'Rename Remote…',
+      icon = 'cloud',
+      when = has_repo,
+      run = rename_remote,
+    })
+    commands.register ({
+      id = 'git.set_remote_url',
+      category = 'Git',
+      title = 'Change Remote Address…',
+      icon = 'cloud',
+      when = has_repo,
+      run = set_remote_url,
     })
     commands.register ({
       id = 'git.stash',

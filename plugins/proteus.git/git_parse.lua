@@ -810,15 +810,17 @@ function M.switch_args (choice, branches)
   return nil
 end
 
----A reason a new branch name is not allowed, or nil when it is fine.
+---A reason a new branch, tag or remote name is not allowed, or nil when it is fine.
 ---@param name string
+---@param what string Such as `'branch'`.
 ---@return string?
-function M.check_branch_name (name)
+local function check_ref_name (name, what)
+  local a = 'A ' .. what .. ' name'
   if name == '' then
-    return 'Type a name for the branch.'
+    return 'Type a name for the ' .. what .. '.'
   end
   if name:find ('[%s~^:?*%[\\%c]') then
-    return 'A branch name cannot hold spaces or any of ~ ^ : ? * [ \\'
+    return a .. ' cannot hold spaces or any of ~ ^ : ? * [ \\'
   end
   if
     name:find ('%.%.')
@@ -826,7 +828,7 @@ function M.check_branch_name (name)
     or name:find ('@{', 1, true)
     or name == '@'
   then
-    return 'A branch name cannot hold .., // or @{'
+    return a .. ' cannot hold .., // or @{'
   end
   if
     name:find ('^[%-/.]')
@@ -834,9 +836,33 @@ function M.check_branch_name (name)
     or name:find ('%.lock$')
     or name:find ('/%.')
   then
-    return 'A branch name cannot start with - / or . or end with / . or .lock'
+    return a .. ' cannot start with - / or . or end with / . or .lock'
   end
   return nil
+end
+
+---A reason a new branch name is not allowed, or nil when it is fine.
+---@param name string
+---@return string?
+function M.check_branch_name (name)
+  return check_ref_name (name, 'branch')
+end
+
+---@param name string
+---@return string?
+function M.check_tag_name (name)
+  return check_ref_name (name, 'tag')
+end
+
+---A remote's name becomes part of its branches' names, such as `origin/main`, so it holds
+---no `/` either.
+---@param name string
+---@return string?
+function M.check_remote_name (name)
+  if name:find ('/', 1, true) then
+    return 'A remote name cannot hold /'
+  end
+  return check_ref_name (name, 'remote')
 end
 
 ---------------------------------------------------------------------------------------------
@@ -1406,6 +1432,74 @@ function M.conflict_html (e)
   end
   out[#out + 1] = '</div></div>'
   return table.concat (out)
+end
+
+---------------------------------------------------------------------------------------------
+-- Tags and remotes
+---------------------------------------------------------------------------------------------
+
+---@class Git.Remote
+---@field name string
+---@field url string The address it fetches from.
+
+---Makes a tag on a commit: an annotated one with a message, or a lightweight one without.
+---@param name string
+---@param hash string
+---@param message string
+---@return string[]
+function M.tag_args (name, hash, message)
+  local text = trim (message)
+  if text == '' then
+    return { 'tag', name, hash }
+  end
+  return { 'tag', '-a', name, '-m', text, hash }
+end
+
+---Every tag, newest first.
+---@return string[]
+function M.tag_list_args ()
+  return { 'tag', '--list', '--sort=-creatordate' }
+end
+
+---Reads `git tag --list`, one name a line.
+---@param text string
+---@return string[]
+function M.parse_tags (text)
+  local out = {} ---@type string[]
+  for _, raw in ipairs (lines_of (text)) do
+    local name = trim (strip_cr (raw))
+    if name ~= '' then
+      out[#out + 1] = name
+    end
+  end
+  return out
+end
+
+---Pushes one tag to a remote, or every tag when `name` is nil.
+---@param remote string
+---@param name? string
+---@return string[]
+function M.push_tag_args (remote, name)
+  if name then
+    return { 'push', remote, 'refs/tags/' .. name }
+  end
+  return { 'push', remote, '--tags' }
+end
+
+---Reads `git remote -v`: each remote once, with the address it fetches from.
+---@param text string
+---@return Git.Remote[]
+function M.parse_remotes (text)
+  local out = {} ---@type Git.Remote[]
+  local seen = {} ---@type table<string, boolean>
+  for _, raw in ipairs (lines_of (text)) do
+    local name, url = strip_cr (raw):match ('^(%S+)%s+(.-)%s+%((%a+)%)$')
+    if name and not seen[name] then
+      seen[name] = true
+      out[#out + 1] = { name = name, url = url }
+    end
+  end
+  return out
 end
 
 ---------------------------------------------------------------------------------------------

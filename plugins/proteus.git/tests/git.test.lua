@@ -1779,3 +1779,40 @@ test ('blame html shows each commit where its lines start', function ()
     'Showing the first 2 lines.'
   )
 end)
+
+---------------------------------------------------------------------------------------------
+-- Tags and remotes
+---------------------------------------------------------------------------------------------
+
+test ('tag command lines and names', function ()
+  eq (m.tag_args ('v1.0', 'abc', '  '), { 'tag', 'v1.0', 'abc' })
+  eq (
+    m.tag_args ('v1.0', 'abc', ' First release '),
+    { 'tag', '-a', 'v1.0', '-m', 'First release', 'abc' }
+  )
+  eq (m.tag_list_args (), { 'tag', '--list', '--sort=-creatordate' })
+  eq (m.parse_tags ('v1\r\nv0\n\n'), { 'v1', 'v0' })
+  eq (m.push_tag_args ('origin', 'v1'), { 'push', 'origin', 'refs/tags/v1' })
+  eq (m.push_tag_args ('origin'), { 'push', 'origin', '--tags' })
+  eq (m.check_tag_name ('v1.0.0'), nil)
+  eq (
+    m.check_tag_name ('v1 0'),
+    'A tag name cannot hold spaces or any of ~ ^ : ? * [ \\'
+  )
+  eq (m.check_tag_name (''), 'Type a name for the tag.')
+  eq (m.check_branch_name (''), 'Type a name for the branch.')
+end)
+
+test ('parse_remotes reads git remote -v', function ()
+  -- Real output from git 2.43.
+  local text = 'fork\t/tmp/a b (fetch)\nfork\t/tmp/a b (push)\n'
+    .. 'origin\thttps://x/y.git (fetch)\r\norigin\thttps://x/y.git (push)\n'
+  eq (m.parse_remotes (text), {
+    { name = 'fork', url = '/tmp/a b' },
+    { name = 'origin', url = 'https://x/y.git' },
+  })
+  eq (m.parse_remotes (''), {})
+  eq (m.check_remote_name ('upstream'), nil)
+  eq (m.check_remote_name ('my/fork'), 'A remote name cannot hold /')
+  ok (m.check_remote_name ('my fork'))
+end)
