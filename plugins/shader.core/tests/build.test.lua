@@ -144,6 +144,8 @@ test ('every example code shader and template compiles', function ()
     'shadertoy.frag',
     'weather.frag',
     'tunnel.wgsl',
+    'ink.frag',
+    'ink.buffer-a.frag',
   }) do
     local lang = source.kind_of (name) --[[@as Shader.Lang]]
     program_compiles (name, (source.program (lang, read (EXAMPLES .. name))))
@@ -154,7 +156,7 @@ test ('every example code shader and template compiles', function ()
         'the vertex template',
         (source.glsl_program (source.TEMPLATES.glsl, text))
       )
-    elseif key == 'wgsl' then
+    elseif key == 'wgsl' or key == 'buffer_wgsl' then
       program_compiles ('the WGSL template', (source.wgsl_program (text)))
     else
       program_compiles (
@@ -172,3 +174,60 @@ test ('a broken shader does not compile', function ()
   good = shader_check ('wgsl', 'fragment', 'fn f() -> f32 { return y; }\n')
   ok (good ~= true)
 end)
+
+test (
+  'a shader with buffers builds every pass, with what its channels show',
+  function ()
+    local buffer = source.glsl_program (
+      (source.TEMPLATES.buffer:gsub ('{{BUFFER}}', 'buffer-a'))
+    )
+    local image = source.glsl_program (
+      '// @channel 0 buffer-a\nvoid mainImage(out vec4 c, in vec2 f) { c = texture(iChannel0, f / iResolution.xy) + texture(iChannel1, vec2(0.0)); }\n'
+    )
+    local files = build.files ({
+      name = 'Ink',
+      glsl = image,
+      channels = {
+        [0] = { kind = 'buffer', buffer = 'a' },
+        [1] = { kind = 'image', grant = 'f3', name = 'wood.png' },
+      },
+      buffers = {
+        {
+          id = 'a',
+          glsl = buffer,
+          channels = { [0] = { kind = 'buffer', buffer = 'a' } },
+        },
+      },
+    })
+    eq (files['ink.buffer-a.frag'], buffer.source)
+    eq (files['ink.wgsl'], nil, 'the code is GLSL only')
+    local page = files['index.html']
+    ok (has (page, '"id": "a"'))
+    ok (has (page, '"name": "wood.png"'))
+    ok (not has (page, 'f3'), 'a grant means nothing beside the page')
+    local readme = files['README.md']
+    ok (has (readme, '## Passes and channels'))
+    ok (has (readme, '| Buffer A | `iChannel0` | `iChannel0` | Buffer A |'))
+    ok (
+      has (
+        readme,
+        '| Image | `iChannel1` | `iChannel1` | `wood.png`, which goes beside the page |'
+      )
+    )
+    local data = assert (file.decode (files['uniforms.json']))
+    eq (data.buffers[1].id, 'a')
+    eq (data.channels[2].source, { kind = 'image', name = 'wood.png' })
+    -- A graph image with a GLSL buffer builds GLSL only.
+    local graph_image =
+      compile.compile (examples.build ('plasma') --[[@as Shader.Doc]])
+    local mixed = build.files ({
+      name = 'Mixed',
+      glsl = graph_image.glsl,
+      wgsl = graph_image.wgsl,
+      buffers = { { id = 'a', glsl = buffer } },
+    })
+    ok (mixed['mixed.frag'])
+    eq (mixed['mixed.wgsl'], nil)
+    eq (mixed['webgpu.html'], nil)
+  end
+)

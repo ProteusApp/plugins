@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -35,6 +35,8 @@
   "files": [
     "examples/cells.shader.json",
     "examples/clouds.shader.json",
+    "examples/ink.buffer-a.frag",
+    "examples/ink.frag",
     "examples/plasma.shader.json",
     "examples/raymarch.frag",
     "examples/shadertoy.frag",
@@ -55,6 +57,7 @@
     "handbook/shapes.md",
     "handbook/shaping.md",
     "handbook/space.md",
+    "handbook/textures.md",
     "handbook/volumes.md",
     "handbook/weather.md",
     "handbook/wgsl.md",
