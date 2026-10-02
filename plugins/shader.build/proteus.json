@@ -2,7 +2,7 @@
   "id": "shader.build",
   "name": "Shader build",
   "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "depends": [
     "shader.core",
     "shader.docs",

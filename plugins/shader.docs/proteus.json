@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -58,6 +58,7 @@
     "handbook/volumes.md",
     "handbook/weather.md",
     "handbook/wgsl.md",
-    "init.lua"
+    "init.lua",
+    "tests/docs.test.lua"
   ]
 }

@@ -2,7 +2,7 @@
   "id": "shader.core",
   "name": "Shader core",
   "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-  "version": "1.0.1",
+  "version": "1.2.0",
   "depends": [],
   "optional": [],
   "permissions": [],
@@ -25,6 +25,7 @@
     "shader_compile.lua",
     "shader_examples.lua",
     "shader_file.lua",
+    "shader_format.lua",
     "shader_graph.lua",
     "shader_helpers.lua",
     "shader_history.lua",
@@ -34,6 +35,7 @@
     "shader_types.lua",
     "tests/core.test.lua",
     "tests/examples.test.lua",
+    "tests/format.test.lua",
     "tests/source.test.lua",
     "types/shader.lua"
   ]

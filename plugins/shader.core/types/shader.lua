@@ -109,6 +109,34 @@
 ---@field preview? Shader.Lang The language the Preview runs.
 ---@field nodes Shader.Node[]
 ---@field edges Shader.Edge[]
+---@field canvas? Shader.CanvasData The canvas's frames and reroute points. The compiler never reads it.
+
+---A titled box on the canvas behind nodes. Moving it moves the nodes inside.
+---@class Shader.Frame
+---@field id string Such as `'f1'`.
+---@field x number
+---@field y number
+---@field w number Above 0.
+---@field h number Above 0.
+---@field title string
+---@field color? string Such as `'#4f8ef7'`.
+
+---The points the wire into one input passes through, in order from its source.
+---@class Shader.Route
+---@field to string
+---@field input string
+---@field points { x: number, y: number }[] At least one, at most 32.
+
+---@class Shader.CanvasData
+---@field frames Shader.Frame[]
+---@field routes Shader.Route[]
+
+---Nodes copied from a graph, with the wires between them, so they paste into any graph.
+---@class Shader.Fragment
+---@field nodes Shader.Node[]
+---@field edges Shader.Edge[]
+---@field frames Shader.Frame[]
+---@field routes table<string, { x: number, y: number }[]> Reroute points by wire id.
 
 ---@class Shader.LayoutField
 ---@field name string
@@ -237,9 +265,18 @@
 ---@field disconnect fun(doc: Shader.Doc, to: string, input: string): Shader.Doc?, string?
 ---@field set_input fun(doc: Shader.Doc, id: string, key: string, values: number[]?): Shader.Doc?, string?
 ---@field set_setting fun(doc: Shader.Doc, id: string, key: string, value: any): Shader.Doc?, string?
----@field duplicate fun(doc: Shader.Doc, ids: string[]): Shader.Doc?, string[]
+---@field duplicate fun(doc: Shader.Doc, ids: string[]): Shader.Doc?, string[]|string
 ---@field rename fun(doc: Shader.Doc, name: string): Shader.Doc
 ---@field parameter fun(doc: Shader.Doc, name: string): Shader.Node?
+---@field wire_id fun(to: string, input: string): string
+---@field set_canvas fun(doc: Shader.Doc, data: Shader.CanvasData?): Shader.Doc?, string?
+---@field frames fun(doc: Shader.Doc): Shader.Frame[]
+---@field routes fun(doc: Shader.Doc): table<string, { x: number, y: number }[]>
+---@field with_canvas fun(doc: Shader.Doc, frames: Shader.Frame[], routes: table<string, { x: number, y: number }[]>): Shader.Doc
+---@field next_frame_id fun(frames: Shader.Frame[]): string
+---@field copy_nodes fun(doc: Shader.Doc, ids: string[], frame_ids?: string[]): Shader.Fragment
+---@field paste fun(doc: Shader.Doc, fragment: Shader.Fragment, dx: number, dy: number): Shader.Doc?, string[], string[]
+---@field insert fun(doc: Shader.Doc, id: string, wire: string): Shader.Doc?
 
 ---@class Shader.CompileModule
 ---@field GLSL_VERTEX string
@@ -273,6 +310,11 @@
 ---@field decode fun(text: string): any, string?
 ---@field load fun(text: string): Shader.Doc?, string?
 
+---@class Shader.FormatModule
+---@field fmt fun(v: number, places?: integer): string A number without the zeros at its end.
+---@field to_hex fun(rgb: number[]): string A colour as #rrggbb from numbers from 0 to 1.
+---@field from_hex fun(hex: string): number[]? Numbers from 0 to 1 from #rrggbb.
+
 ---@class Shader.HistoryModule
 ---@field new fun(doc: Shader.Doc): Shader.History
 ---@field push fun(h: Shader.History, doc: Shader.Doc, key?: string, now?: number)
@@ -303,6 +345,7 @@
 ---@field layout Shader.LayoutModule
 ---@field source Shader.SourceModule
 ---@field file Shader.FileModule
+---@field format Shader.FormatModule
 ---@field history Shader.HistoryModule
 ---@field examples Shader.ExamplesModule
 ---@field build Shader.BuildModule
@@ -321,8 +364,10 @@
 ---@field stage 'fragment'|'vertex' For code.
 ---@field title string
 ---@field text string For code: the text now.
----@field saved string The text last saved.
+---@field saved string The file's text as last read or written.
+---@field saved_doc? Shader.Doc For a graph: the document as last read or written.
 ---@field dirty boolean
+---@field missing boolean True once its file was deleted. It stays open, unsaved, until a save writes the file again.
 ---@field version integer Goes up with each change.
 ---@field history? Shader.History For a graph: its document and undo.
 ---@field selection string[] For a graph: the picked nodes.
@@ -339,7 +384,7 @@
 ---@field get fun(path: string): Shader.OpenDoc?
 ---@field active fun(): Shader.OpenDoc? The shader whose tab was in front last.
 ---@field list fun(): Shader.OpenDoc[]
----@field files fun(): string[] Every shader in shaders/, apart from builds.
+---@field files fun(): string[] Every shader in shaders/, apart from builds. Kept until a file there changes, so do not change the list.
 ---@field change fun(path: string, doc: Shader.Doc, key?: string) Records a new graph. Quick changes with the same key merge into one undo step.
 ---@field set_text fun(path: string, text: string)
 ---@field undo fun(path: string): boolean
@@ -350,6 +395,8 @@
 ---@field program fun(path: string, lang?: Shader.Lang): Shader.Program?, Shader.CompileError[] What the Preview runs.
 ---@field set_language fun(path: string, lang: Shader.Lang)
 ---@field set_uniform fun(path: string, key: string, value: number[])
+---@field remove fun(path: string): boolean Deletes a shader's file and closes its tab. A changed example goes back to the original, and its tab shows that.
+---@field rename fun(path: string, to: string): boolean, string? Renames a shader's file. An open shader moves to a new tab with its undo and unsaved changes. False and why when it cannot.
 ---@field new_graph fun(name?: string): Shader.OpenDoc?
 ---@field new_code fun(lang: Shader.Lang|'vertex', name?: string, template?: string): Shader.OpenDoc?
 
@@ -358,17 +405,6 @@
 ---@field add fun(type_id: string): boolean Adds a node to the graph in front.
 ---@field fit fun()
 ---@field select fun(path: string, ids: string[])
-
----@class ShaderCanvas.Drag
----@field kind 'pan'|'move'|'wire'
----@field x number
----@field y number
----@field moved boolean
----@field pan? { x: number, y: number }
----@field origins? table<string, { x: number, y: number }>
----@field node? string
----@field output? string
----@field type? Shader.Type
 
 ---What a node shows beside the document.
 ---@class ShaderCanvas.NodeInfo
@@ -379,15 +415,109 @@
 ---@field error? string
 ---@field gen? Shader.Type
 
----@class ShaderCanvas.Instance
+---What is picked on a shader canvas. Several nodes, frames and reroute points can be picked.
+---@class ShaderCanvas.Picked
+---@field nodes table<string, boolean>
+---@field frames table<string, boolean>
+---@field points table<string, boolean> By point key, `<wire>#<index>`.
+
+---One open shader's canvas: what its modules share. Each module adds its own functions.
+---@class ShaderCanvas.Ctx
+---@field app Proteus.App
+---@field ui Proteus.UI
+---@field nc NodeCanvas
+---@field core Shader.Core
+---@field docs Shader.Docs
+---@field commands Proteus.Commands
+---@field catalog Shader.NodesModule
+---@field html ShaderCanvas.Html
+---@field html_m { TYPE_COLORS: table<string, string> }
+---@field refuse fun(text: string)
+---@field doc Shader.OpenDoc
+---@field path string
+---@field view NodeCanvas.View
+---@field picked ShaderCanvas.Picked
+---@field live table<string, NodeCanvas.Point> Nodes' places during a drag or a tidy.
+---@field live_frames table<string, NodeCanvas.Box>
+---@field live_points table<string, NodeCanvas.Point> By point key.
+---@field routes table<string, { x: number, y: number }[]> Each wire's reroute points.
+---@field elements table<string, Proteus.El> Each node's element.
+---@field drawn table<string, string> What each node's element was drawn from.
+---@field shown table<string, { placed?: string, picked?: boolean, bad?: boolean }>
+---@field heights table<string, number> Each node's measured height, in world units.
+---@field held? string A node whose colour is being picked, so it does not draw again.
+---@field drag? NodeCanvas.Gesture
+---@field selected_wire? string
+---@field insert_wire? string The wire a dragged node would go into.
+---@field snap_grid fun(): boolean
 ---@field root Proteus.El
----@field add fun(type_id: string)
+---@field viewport Proteus.El
+---@field world Proteus.El
+---@field frames_el Proteus.El
+---@field wires_svg Proteus.El
+---@field temp_wire Proteus.El
+---@field marquee Proteus.El
+---@field zoom_label Proteus.El
+---@field minimap NodeCanvas.Minimap
+---@field wire_layer NodeCanvas.WireLayer
+---@field point_layer NodeCanvas.PointLayer
+---@field frame_layer NodeCanvas.FrameLayer
+---@field current fun(): Shader.Doc
+---@field node fun(id: string): Shader.Node?
+---@field save_view fun()
+---@field apply_view fun()
+---@field set_view fun(view: NodeCanvas.View)
+---@field to_world fun(x: number, y: number): number, number
+---@field position fun(n: Shader.Node): NodeCanvas.Point
+---@field height fun(n: Shader.Node): number
+---@field box fun(n: Shader.Node): NodeCanvas.Box
+---@field boxes fun(picked_only?: boolean): NodeCanvas.Box[]
+---@field port_point fun(n: Shader.Node, side: 'in'|'out', key: string): number, number
+---@field view_center fun(): number, number
 ---@field fit fun()
----@field tidy fun()
----@field delete fun()
+---@field center_on fun(id: string)
+---@field edges_of fun(id: string): Shader.Edge[]
+---@field wire fun(id: string): Shader.Edge?
+---@field route_of fun(e: Shader.Edge): NodeCanvas.Point[]?
+---@field out_type fun(from: string, output: string): Shader.Type
+---@field draw_wires fun(nodes?: table<string, boolean>, wires?: table<string, boolean>)
+---@field draw_points fun()
+---@field show_insert fun(wire?: string)
+---@field wire_at fun(box: NodeCanvas.Box, skip: string): string?
+---@field point_index fun(e: Shader.Edge, x: number, y: number): integer
+---@field find_targets fun(from: string, output: string)
+---@field snap_target fun(x: number, y: number): NodeCanvas.Target?
+---@field frames fun(): Shader.Frame[]
+---@field frame_box fun(id: string): NodeCanvas.Box?
+---@field draw_frames fun()
+---@field place_frames fun(ids: table<string, boolean>)
+---@field set_picked fun(nodes: table<string, boolean>, frames?: table<string, boolean>, points?: table<string, boolean>)
+---@field nothing_picked fun(): boolean
+---@field picked_nodes fun(): string[]
+---@field commit fun(doc: Shader.Doc?, refusal?: any, key?: string): boolean
+---@field add_node fun(type_id: string, at?: NodeCanvas.Point, from?: { node: string, output: string, type: Shader.Type }): string?
+---@field ask_add fun(at?: NodeCanvas.Point, from?: { node: string, output: string, type: Shader.Type })
+---@field copy fun(): boolean
+---@field can_paste fun(): boolean
+---@field paste fun()
+---@field cut fun()
 ---@field duplicate fun()
+---@field delete_picked fun()
 ---@field select_all fun()
----@field select fun(ids: string[])
+---@field finish_move fun(nodes: table<string, NodeCanvas.Point>, frames: table<string, NodeCanvas.Box>, points: table<string, NodeCanvas.Point>, insert?: string)
+---@field align fun(edge: NodeCanvas.Edge)
+---@field distribute fun(axis: 'x'|'y')
+---@field tidy fun()
+---@field add_frame fun(box: NodeCanvas.Box)
+---@field frame_picked fun()
+---@field set_frame_title fun(id: string, title: string)
+---@field add_point fun(wire: string, x: number, y: number)
+---@field remove_point fun(wire: string, index: integer)
+---@field on_move fun(ev: Proteus.DomEvent): Proteus.EventResult
+---@field on_up fun(ev: Proteus.DomEvent): Proteus.EventResult
+---@field draw_minimap fun()
+---@field place fun(id: string)
+---@field show_picked fun()
 ---@field render fun()
 
 ---@class ShaderPreview.Instance

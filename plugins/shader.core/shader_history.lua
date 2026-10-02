@@ -1,7 +1,8 @@
--- Undo and redo for a shader graph. The history keeps whole documents, which are small.
+-- Undo and redo for a shader graph. The history keeps whole documents, and each shares the
+-- nodes it did not change with the one before, so a step costs only what changed.
 -- Quick changes with the same key, such as the steps of one slider drag, make one step.
 
-local LIMIT = 200
+local LIMIT = 100
 local MERGE_MS = 800
 
 local M = {}

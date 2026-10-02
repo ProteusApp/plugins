@@ -5,7 +5,7 @@
 return {
   name = 'Shader Builder',
   description = 'Build GLSL and WGSL shaders from nodes or code, with a live preview.',
-  version = '1.1.0',
+  version = '1.2.0',
   plugins = {
     'theme.midnight',
     'theme.daylight',
@@ -22,6 +22,8 @@ return {
     'ui.settings',
     'core.profiles',
     'proteus.handbook',
+    -- The marketplace, for more plugins and profiles.
+    'proteus.marketplace',
     'shader.core',
     'shader.docs',
     'shader.canvas',
@@ -29,8 +31,9 @@ return {
     'shader.preview',
     'shader.library',
     'shader.build',
-    'discord.rpc',
   },
+  -- Plugins installed from the marketplace stay on.
+  extensible = true,
   settings = {
     theme = 'midnight',
   },

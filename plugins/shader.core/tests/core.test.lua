@@ -407,3 +407,89 @@ test ('generated code opened as code keeps its controls', function ()
   eq (wgsl.uniforms[1].offset, 32)
   eq (wgsl.uniforms[1].value, { 2 })
 end)
+
+test ('a change shares every node it did not touch', function ()
+  local doc = graph.new ()
+  local moved = graph.move (doc, { n1 = { x = 1, y = 2 } })
+  ok (moved.nodes[2] == doc.nodes[2], 'the output node is the same table')
+  ok (moved.nodes[1] ~= doc.nodes[1])
+  ok (moved.edges == doc.edges, 'a move keeps the list of wires')
+  local set = assert (graph.set_input (doc, 'n2', 'color', { 1, 0, 0 }))
+  ok (set.nodes[1] == doc.nodes[1])
+  eq (doc.nodes[2].inputs, {}, 'the old node keeps its inputs')
+  eq (select (2, graph.duplicate (doc, { 'n2' })), 'Nothing to duplicate.')
+end)
+
+test ('copy and paste brings nodes, wires and frames into any graph', function ()
+  local doc = graph.new ()
+  local t, s
+  doc, t = add (doc, 'time')
+  doc, s = add (doc, 'sin')
+  doc = wire (doc, t, 'time', s, 'x')
+  doc = graph.with_canvas (doc, {
+    { id = 'f1', x = -10, y = -40, w = 300, h = 200, title = 'Wave' },
+  }, { [graph.wire_id (s, 'x')] = { { x = 100, y = 20 } } })
+  local fragment = graph.copy_nodes (doc, { t, s, 'n2' }, { 'f1' })
+  eq (#fragment.nodes, 3)
+  eq (#fragment.edges, 1)
+  -- A new graph has its own Output, so the copied one stays behind.
+  local pasted, ids, frames = graph.paste (graph.new (), fragment, 50, 0)
+  pasted = assert (pasted, 'the fragment pastes')
+  eq (#ids, 2)
+  eq (#pasted.nodes, 4)
+  local e = graph.edge_into (pasted, ids[2], 'x')
+  eq (e and e.from, ids[1])
+  eq (frames, { 'f1' })
+  eq (graph.frames (pasted)[1].x, 40)
+  eq (
+    graph.routes (pasted)[graph.wire_id (ids[2], 'x')],
+    { { x = 150, y = 20 } }
+  )
+  eq (compile.compile (pasted).ok, true)
+end)
+
+test (
+  'the file keeps frames and reroute points, and drops those of gone wires',
+  function ()
+    local doc = graph.new ()
+    doc = graph.with_canvas (doc, {
+      {
+        id = 'f1',
+        x = 0,
+        y = 0,
+        w = 300,
+        h = 200,
+        title = 'All',
+        color = '#4f8ef7',
+      },
+    }, { [graph.wire_id ('n2', 'color')] = { { x = 200, y = 90 } } })
+    local text = file.save (doc)
+    ok (has (text, '"canvas": {'))
+    local back = assert (file.load (text))
+    eq (back.canvas, doc.canvas)
+    eq (file.save (back), text)
+    local cut = assert (graph.disconnect (doc, 'n2', 'color'))
+    eq (assert (file.load (file.save (cut))).canvas.routes, {})
+    ok (not has (file.save (graph.new ()), 'canvas'), 'no canvas data, no key')
+    eq (
+      select (2, graph.set_canvas (doc, { frames = { { id = 'f1' } } })),
+      'The canvas data is not right.'
+    )
+  end
+)
+
+test ('a node dropped onto a wire goes into it', function ()
+  local doc = graph.new ()
+  local s
+  doc, s = add (doc, 'sin')
+  local into = assert (graph.insert (doc, s, graph.wire_id ('n2', 'color')))
+  local a = graph.edge_into (into, s, 'x')
+  local b = graph.edge_into (into, 'n2', 'color')
+  eq (a and a.from, 'n1')
+  eq (b and b.from, s)
+  eq (
+    graph.insert (doc, 'n1', graph.wire_id ('n2', 'color')),
+    nil,
+    'not into its own wire'
+  )
+end)

@@ -27,7 +27,7 @@ local FIRST_EXAMPLES = {
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },
@@ -59,6 +59,10 @@ return {
     local active_path = nil ---@type string?
     local openers = {} ---@type table<Shader.DocKind, fun(doc: Shader.OpenDoc): Proteus.El>
     local cache = {} ---@type table<string, { version: integer, result: Shader.CompileResult }>
+    -- Every shader in shaders/, kept until a file there changes.
+    local file_list = nil ---@type string[]?
+    -- The documents a question about their file is open for.
+    local asking = {} ---@type table<Shader.OpenDoc, boolean>
 
     ---@param text string
     local function say (text)
@@ -96,6 +100,35 @@ return {
       return nil
     end
 
+    ---The ending a rename keeps, such as `.shader.json` or `.frag`.
+    ---@param path string
+    ---@return string
+    local function ending (path)
+      local lower = path:lower ()
+      if lower:sub (-#core.file.EXTENSION) == core.file.EXTENSION then
+        return core.file.EXTENSION
+      end
+      return lower:match ('%.[%w]+$') or ''
+    end
+
+    ---The tab's title: the file name, without the ending for a graph.
+    ---@param path string
+    ---@param kind Shader.DocKind
+    ---@return string
+    local function title_of (path, kind)
+      if kind == 'graph' then
+        return base_name (path):sub (1, -#core.file.EXTENSION - 1)
+      end
+      return base_name (path)
+    end
+
+    ---True for shaders/ and every path inside it.
+    ---@param path string
+    ---@return boolean
+    local function in_folder (path)
+      return path == FOLDER or path:sub (1, #FOLDER + 1) == FOLDER .. '/'
+    end
+
     local function remember ()
       app.store.set ('open', order)
       app.store.set ('active', active_path)
@@ -109,11 +142,15 @@ return {
       end
     end
 
+    ---Works out whether a document has unsaved changes. A graph compares its document with the
+    ---one last saved. Undo brings that back as the same table.
     ---@param doc Shader.OpenDoc
     local function mark (doc)
       local dirty ---@type boolean
-      if doc.kind == 'graph' then
-        dirty = core.file.save (doc.history.doc) ~= doc.saved
+      if doc.missing then
+        dirty = true
+      elseif doc.kind == 'graph' then
+        dirty = doc.history.doc ~= doc.saved_doc
       else
         dirty = doc.text ~= doc.saved
       end
@@ -159,10 +196,11 @@ return {
         kind = kind,
         language = 'glsl',
         stage = 'fragment',
-        title = base_name (path),
+        title = title_of (path, kind),
         text = '',
         saved = text,
         dirty = false,
+        missing = false,
         version = 1,
         selection = {},
         values = {},
@@ -173,11 +211,10 @@ return {
           return nil, base_name (path) .. ': ' .. tostring (err)
         end
         doc.history = core.history.new (graph_doc)
-        doc.saved = core.file.save (graph_doc)
+        doc.saved_doc = graph_doc
         doc.language = graph_doc.preview
           or (settings and settings.get ('shader.language') == 'wgsl' and 'wgsl')
           or 'glsl'
-        doc.title = base_name (path):sub (1, -#core.file.EXTENSION - 1)
       else
         local lang, stage = core.source.kind_of (path)
         doc.language = lang or 'glsl'
@@ -195,7 +232,10 @@ return {
     ---@param path string
     local function forget (path)
       local d = open[path]
-      if d and d.dirty then
+      if not d then
+        return
+      end
+      if d.dirty then
         app.emit ('shader:dirty', path, false)
       end
       open[path] = nil
@@ -213,9 +253,12 @@ return {
       remember ()
     end
 
+    ---Opens a shader in a tab, or brings its tab to the front. `carry` is a document that was
+    ---open under another path, and it keeps its undo and unsaved changes in the new tab.
     ---@param path string
+    ---@param carry? Shader.OpenDoc
     ---@return Shader.OpenDoc?
-    local function open_path (path)
+    local function open_path (path, carry)
       local existing = open[path]
       if existing then
         if existing.tab then
@@ -224,15 +267,28 @@ return {
         set_active (path)
         return existing
       end
-      local text = app.fs.read (path)
-      if not text then
-        warn ('There is no file at ' .. path .. '.')
-        return nil
-      end
-      local doc, err = make (path, text)
-      if not doc then
-        warn (err or 'That file cannot open here.')
-        return nil
+      local doc ---@type Shader.OpenDoc
+      if carry then
+        doc = carry
+        doc.path = path
+        doc.title = title_of (path, doc.kind)
+        doc.tab = nil
+        doc.version = doc.version + 1
+        if doc.kind == 'code' and next (doc.values) then
+          app.store.set ('values:' .. path, doc.values)
+        end
+      else
+        local text = app.fs.read (path)
+        if not text then
+          warn ('There is no file at ' .. path .. '.')
+          return nil
+        end
+        local made, err = make (path, text)
+        if not made then
+          warn (err or 'That file cannot open here.')
+          return nil
+        end
+        doc = made
       end
       local opener = openers[doc.kind]
       if not opener then
@@ -252,6 +308,9 @@ return {
           set_active (path)
         end,
         on_close = function ()
+          if open[path] ~= doc then
+            return true
+          end
           if doc.dirty and picker then
             picker.confirm ({
               message = doc.title
@@ -271,6 +330,10 @@ return {
           return true
         end,
       })
+      if doc.dirty then
+        refresh_tab (doc)
+        app.emit ('shader:dirty', path, true)
+      end
       app.emit ('shader:opened', path)
       set_active (path)
       remember ()
@@ -313,6 +376,196 @@ return {
       return app.fs.read (vert)
     end
 
+    ---The text a save writes.
+    ---@param d Shader.OpenDoc
+    ---@return string
+    local function body_of (d)
+      if d.kind == 'graph' then
+        return core.file.save (d.history.doc)
+      end
+      return d.text
+    end
+
+    ---Closes a document's tab without asking.
+    ---@param d Shader.OpenDoc
+    local function close_doc (d)
+      forget (d.path)
+      if d.tab then
+        d.tab.close (true)
+      end
+    end
+
+    ---Puts the file's text in place of what is open. For a graph it is one undo step, so undo
+    ---brings back what was here.
+    ---@param d Shader.OpenDoc
+    ---@param text string
+    local function reload (d, text)
+      d.saved = text
+      d.missing = false
+      local fresh, err = make (d.path, text)
+      if not fresh then
+        -- What is here stays, unsaved, and the next save writes over the file.
+        d.saved_doc = nil
+        mark (d)
+        warn (err or (d.title .. ' cannot open now.'))
+        return
+      end
+      if d.kind == 'graph' and fresh.history then
+        core.history.push (d.history, fresh.history.doc)
+        d.saved_doc = d.history.doc
+        d.language = fresh.language
+      else
+        d.text = fresh.text
+      end
+      changed (d)
+      app.emit ('shader:reloaded', d.path)
+    end
+
+    ---Follows an open file after something changed it. A shader without unsaved changes loads
+    ---the file again, and one with changes asks first. A deleted file is never written back on
+    ---its own: the shader stays open, unsaved, until a save writes it again.
+    ---@param path string
+    local function check_disk (path)
+      local d = open[path]
+      if not d or asking[d] then
+        return
+      end
+      local text = app.fs.read (path)
+      if text == nil then
+        if not d.missing then
+          d.missing = true
+          mark (d)
+          say (d.title .. ' was deleted. Save writes it again.')
+        end
+        return
+      end
+      if d.missing then
+        d.missing = false
+        mark (d)
+      end
+      if text == d.saved then
+        return
+      end
+      if text == body_of (d) then
+        -- The file holds what is here already.
+        d.saved = text
+        if d.history then
+          d.saved_doc = d.history.doc
+        end
+        mark (d)
+        return
+      end
+      if not d.dirty then
+        reload (d, text)
+        return
+      end
+      if not picker then
+        -- Nothing can ask, so what is here stays, and the next save writes over the file.
+        d.saved = text
+        mark (d)
+        warn (d.title .. ' changed outside the builder. The shader here stays as it is.')
+        return
+      end
+      picker.pick ({
+        prompt = d.title
+          .. ' changed outside the builder, and the shader here has changes that are not saved.',
+        items = {
+          {
+            label = 'Load the file',
+            detail = d.kind == 'graph' and 'Undo brings back the graph here'
+              or 'The changes here are lost',
+            icon = 'file-down',
+            value = 'load',
+          },
+          {
+            label = 'Keep the shader here',
+            detail = 'The next save writes over the file',
+            icon = 'pencil',
+            value = 'keep',
+          },
+        },
+        on_pick = function (item)
+          asking[d] = nil
+          local now = open[d.path] == d and app.fs.read (d.path)
+          if not now then
+            return
+          end
+          if item.value == 'load' then
+            reload (d, now)
+          else
+            d.saved = now
+            mark (d)
+          end
+        end,
+        on_cancel = function ()
+          asking[d] = nil
+        end,
+      })
+      -- After `pick`, which cancels any question open before it.
+      asking[d] = true
+    end
+
+    local checking = {} ---@type table<string, boolean>
+
+    ---Checks a file a moment later, because a rename sends the old path's change before the
+    ---rename itself.
+    ---@param path string
+    local function check_soon (path)
+      if checking[path] then
+        return
+      end
+      checking[path] = true
+      app.timer.after (0, function ()
+        checking[path] = nil
+        check_disk (path)
+      end)
+    end
+
+    ---Moves the shaders open at `from`, or inside it, to `to`. Each opens in a new tab and keeps
+    ---its undo and unsaved changes.
+    ---@param from string
+    ---@param to string
+    local function follow (from, to)
+      local front = active_path
+      local paths = {} ---@type string[]
+      for i, p in ipairs (order) do
+        paths[i] = p
+      end
+      for _, p in ipairs (paths) do
+        local target = nil ---@type string?
+        if p == from then
+          target = to
+        elseif p:sub (1, #from + 1) == from .. '/' then
+          target = to .. p:sub (#from + 1)
+        end
+        local d = open[p]
+        if target and d and not open[target] then
+          close_doc (d)
+          open_path (target, d)
+          if front == p then
+            front = target
+          end
+        end
+      end
+      if front and front ~= active_path and open[front] then
+        open_path (front)
+      end
+    end
+
+    ---Why `to` cannot be the new name of the shader at `path`, or nil when it can.
+    ---@param path string
+    ---@param to string
+    ---@return string?
+    local function rename_problem (path, to)
+      if ending (to) ~= ending (path) then
+        return 'Keep the ending ' .. ending (path) .. '.'
+      end
+      if to ~= path and app.fs.exists (to) then
+        return 'A file has that name already.'
+      end
+      return nil
+    end
+
     api = {
       folder = FOLDER,
       extensions = EXTENSIONS,
@@ -341,6 +594,9 @@ return {
       end,
 
       files = function ()
+        if file_list then
+          return file_list
+        end
         local out = {} ---@type string[]
         local seen = {} ---@type table<string, boolean>
         for _, path in ipairs (app.fs.files ()) do
@@ -356,6 +612,7 @@ return {
           end
         end
         table.sort (out)
+        file_list = out
         return out
       end,
 
@@ -411,14 +668,17 @@ return {
         if not d then
           return false
         end
-        local text = d.kind == 'graph' and core.file.save (d.history.doc)
-          or d.text
+        local text = body_of (d)
         local ok, err = pcall (app.fs.write, path, text)
         if not ok then
           warn ('Could not save ' .. d.title .. ': ' .. tostring (err))
           return false
         end
         d.saved = text
+        d.missing = false
+        if d.history then
+          d.saved_doc = d.history.doc
+        end
         mark (d)
         app.emit ('shader:saved', path)
         return true
@@ -532,6 +792,44 @@ return {
         end
       end,
 
+      remove = function (path)
+        local d = open[path]
+        local ok, err = pcall (app.fs.remove, path)
+        if not ok then
+          warn ('Could not delete ' .. path .. ': ' .. tostring (err))
+          return false
+        end
+        file_list = nil
+        if d and open[path] == d then
+          local text = app.fs.read (path)
+          if text then
+            -- The example underneath shows again in place of the changed copy.
+            reload (d, text)
+          else
+            close_doc (d)
+          end
+        end
+        return true
+      end,
+
+      rename = function (path, to)
+        if to == path then
+          return true
+        end
+        local problem = rename_problem (path, to)
+        if problem then
+          return false, problem
+        end
+        local ok, err = pcall (app.fs.rename, path, to)
+        if not ok then
+          return false, tostring (err)
+        end
+        file_list = nil
+        -- The rename event has moved the open shader already, unless the host sent none.
+        follow (path, to)
+        return true
+      end,
+
       new_graph = function (name)
         local path = free_path (name or 'graph', core.file.EXTENSION)
         local doc = core.graph.new (name or 'Untitled')
@@ -557,28 +855,22 @@ return {
 
     app.provide ('shader.docs', api)
 
-    -- Files changed by another window or program load again, unless they have edits.
-    app.on ('fs:changed', function (path, remote)
-      local d = open[path]
-      if not d or not remote or d.dirty then
-        return
+    -- A shader whose file changed loads it again, unless it has edits, and then it asks. Its
+    -- own saves change nothing, since the file then holds what was saved.
+    app.on ('fs:changed', function (changed_path)
+      local p = tostring (changed_path)
+      if in_folder (p) then
+        file_list = nil
       end
-      local text = app.fs.read (path)
-      if not text or text == d.saved then
-        return
+      for _, each in ipairs (order) do
+        if each == p or each:sub (1, #p + 1) == p .. '/' then
+          check_soon (each)
+        end
       end
-      local fresh = make (path, text)
-      if not fresh then
-        return
-      end
-      d.saved = fresh.saved
-      if d.kind == 'graph' and fresh.history then
-        core.history.push (d.history, fresh.history.doc)
-      else
-        d.text = fresh.text
-      end
-      changed (d)
-      app.emit ('shader:reloaded', path)
+    end)
+    app.on ('fs:renamed', function (from, to)
+      file_list = nil
+      follow (tostring (from), tostring (to))
     end)
 
     -- Commands ---------------------------------------------------------------------------------
@@ -794,14 +1086,44 @@ return {
             return nil
           end,
           on_submit = function (text)
-            local body = d.kind == 'graph' and core.file.save (d.history.doc)
-              or d.text
+            local body = body_of (d)
             local ok, err = pcall (app.fs.write, text, body)
             if not ok then
               warn ('Could not save ' .. text .. ': ' .. tostring (err))
               return
             end
             open_path (text)
+          end,
+        })
+      end,
+    })
+    commands.register ({
+      id = 'shader.rename',
+      category = 'Shader',
+      title = 'Rename...',
+      menu = 'File',
+      group = '3-save',
+      icon = 'pencil',
+      when = function ()
+        return api.active () ~= nil and picker ~= nil
+      end,
+      run = function ()
+        local d = api.active ()
+        if not d or not picker then
+          return
+        end
+        local path = d.path
+        picker.input ({
+          prompt = 'Rename ' .. base_name (path) .. ' to',
+          value = path,
+          validate = function (text)
+            return rename_problem (path, text)
+          end,
+          on_submit = function (text)
+            local ok, err = api.rename (path, text)
+            if not ok then
+              warn ('Could not rename ' .. path .. ': ' .. tostring (err))
+            end
           end,
         })
       end,

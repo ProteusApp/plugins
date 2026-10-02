@@ -53,39 +53,6 @@ local CSS = [[
 
 local SCALES = { 0.5, 1, 2 }
 
----@param v number
----@return string
-local function fmt (v)
-  if v == math.floor (v) and math.abs (v) < 1e9 then
-    return string.format ('%d', v)
-  end
-  return (string.format ('%.3f', v):gsub ('0+$', ''):gsub ('%.$', ''))
-end
-
----@param rgb number[]
----@return string
-local function to_hex (rgb)
-  local parts = {} ---@type string[]
-  for i = 1, 3 do
-    local v = math.max (0, math.min (1, tonumber (rgb[i]) or 0))
-    parts[i] = string.format ('%02x', math.floor (v * 255 + 0.5))
-  end
-  return '#' .. table.concat (parts)
-end
-
----@param hex string
----@return number[]?
-local function from_hex (hex)
-  local r, g, b = tostring (hex):match ('^#(%x%x)(%x%x)(%x%x)$')
-  if not r then
-    return nil
-  end
-  local function part (h)
-    return math.floor (tonumber (h, 16) / 255 * 1000 + 0.5) / 1000
-  end
-  return { part (r), part (g), part (b) }
-end
-
 local DIMS =
   { float = 1, int = 1, uint = 1, bool = 1, vec2 = 2, vec3 = 3, vec4 = 4 }
 
@@ -93,7 +60,7 @@ local DIMS =
 return {
   name = 'Shader preview',
   description = 'Runs the shader in front live, on WebGL 2 or WebGPU, with its problems and a control for every uniform.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'webview' } },
   permissions = {},
   depends = {
@@ -106,6 +73,7 @@ return {
   optional = { 'ui.tabs', 'shader.canvas', 'ui.statusbar', 'ui.notify' },
   activate = function (app)
     local ui = app.use ('ui')
+    local core = app.use ('shader') --[[@as Shader.Core]]
     local docs = app.use ('shader.docs') --[[@as Shader.Docs]]
     local views = app.use ('views')
     local commands = app.use ('commands')
@@ -113,6 +81,14 @@ return {
     local canvas = app.try_use ('shader.canvas') --[[@as Shader.CanvasService?]]
     local status = app.try_use ('status')
     ui.css (CSS)
+    local to_hex, from_hex = core.format.to_hex, core.format.from_hex
+
+    ---A number for a control, with up to three digits after the point.
+    ---@param v number
+    ---@return string
+    local function fmt (v)
+      return core.format.fmt (v, 3)
+    end
 
     local status_item = status
       and status.add ({

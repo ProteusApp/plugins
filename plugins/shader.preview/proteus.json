@@ -2,7 +2,7 @@
   "id": "shader.preview",
   "name": "Shader preview",
   "description": "Runs the shader in front live, on WebGL 2 or WebGPU, with its problems and a control for every uniform.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "lib.ui",
     "shader.core",
