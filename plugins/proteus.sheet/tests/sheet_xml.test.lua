@@ -52,6 +52,14 @@ test (
       'a literal escape stays as typed'
     )
     eq (xml.formula_text ('A1<"x"\7'), 'A1&lt;"x"')
+    eq (
+      xml.formula_text ('"a\rb"&1'),
+      '"a&#13;b"&amp;1',
+      'a CR is a reference, not escaped text'
+    )
+    local back =
+      assert (xml.parse_xml ('<f>' .. xml.formula_text ('"a\rb"') .. '</f>'))
+    eq (back.text, '"a\rb"', 'a CR reads back')
     eq (xml.utf8_only ('ok \255!'), 'ok \239\191\189!')
     eq (xml.utf8_only ('été'), 'été')
   end

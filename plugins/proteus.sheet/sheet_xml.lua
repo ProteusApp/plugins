@@ -332,8 +332,9 @@ end
 ---@return string
 local function formula_text (s)
   s = string.gsub (utf8_only (s), '[%z\1-\8\11\12\14-\31]', '')
-  s = string.gsub (s, '\r', '&#13;')
-  return (string.gsub (s, '[&<>]', TEXT_ESCAPES))
+  s = string.gsub (s, '[&<>]', TEXT_ESCAPES)
+  -- After the escapes, so the reference itself is not escaped again.
+  return (string.gsub (s, '\r', '&#13;'))
 end
 
 M.bare = bare
