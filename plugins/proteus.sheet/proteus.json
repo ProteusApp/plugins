@@ -47,6 +47,7 @@
     "sheet_fn_arrays.lua",
     "sheet_fn_finance.lua",
     "sheet_fn_logic_info.lua",
+    "sheet_fn_lookup.lua",
     "sheet_fn_math.lua",
     "sheet_fn_more.lua",
     "sheet_fn_stats.lua",
