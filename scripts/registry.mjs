@@ -213,7 +213,7 @@ export function collectSubmission(texts) {
       pieces.push(entry.pieces.get(part));
     }
     if (!entry || pieces.length !== entry.of) missing.push(name);
-    else files[name] = pieces.join('');
+    else files[name] = isImage(name) ? imageFromBase64(pieces.join('')) : pieces.join('');
   }
   const complete = names.length > 0 && missing.length === 0;
   return { complete, missing, sub: complete ? { ...manifest, files } : null };
@@ -302,6 +302,79 @@ export function textProblem(path, text, { vendored = false } = {}) {
     if ([...lines[i]].length > MAX_LINE) return `${path} has a line longer than ${MAX_LINE} characters, at line ${i + 1}`;
   }
   return null;
+}
+
+/**
+ * The pictures a plugin may hold besides text, such as a sprite sheet. A reviewer looks at a
+ * picture in the pull request instead of reading it, so only formats GitHub shows count.
+ */
+export const IMAGE_EXTENSIONS = ['.png'];
+
+/** The feature a plugin with a picture requires, so a Proteus that would save it as text refuses it. */
+export const IMAGE_FEATURE = 'png';
+
+/** The widest and tallest a picture may be, so a small file cannot unpack to gigabytes. */
+export const MAX_IMAGE_SIDE = 4096;
+
+/** True when `path` names a picture rather than text. */
+export function isImage(path) {
+  const lower = String(path).toLowerCase();
+  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10];
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+/** The CRC-32 that a PNG chunk ends with, over its type and data. */
+function crc32(bytes, from, to) {
+  let c = 0xffffffff;
+  for (let i = from; i < to; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * Why a picture cannot go in the registry, or null. A PNG must be exactly one whole PNG: the
+ * signature, the header chunk first, every chunk intact, and the end chunk last with nothing
+ * after it, so no other file hides inside a picture.
+ */
+export function imageProblem(path, bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length < 8 || PNG_SIGNATURE.some((b, i) => bytes[i] !== b)) {
+    return `${path} is not a PNG`;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let at = 8;
+  while (at + 12 <= bytes.length) {
+    const length = view.getUint32(at);
+    const type = String.fromCharCode(...bytes.subarray(at + 4, at + 8));
+    const end = at + 12 + length;
+    if (end > bytes.length) break;
+    if (crc32(bytes, at + 4, end - 4) !== view.getUint32(end - 4)) return `${path} has a damaged ${type} chunk`;
+    if (at === 8) {
+      if (type !== 'IHDR' || length !== 13) return `${path} does not start with a PNG header`;
+      const width = view.getUint32(at + 8);
+      const height = view.getUint32(at + 12);
+      if (width > MAX_IMAGE_SIDE || height > MAX_IMAGE_SIDE) {
+        return `${path} is ${width} by ${height} pixels, and a picture may be at most ${MAX_IMAGE_SIDE} on a side`;
+      }
+    }
+    if (type === 'IEND') return end === bytes.length ? null : `${path} holds more after the end of the PNG`;
+    at = end;
+  }
+  return `${path} is cut off before the end of the PNG`;
+}
+
+/**
+ * A picture's bytes from the base64 text an issue carries it as, or the text unchanged when it
+ * is not base64, for the rules to refuse.
+ */
+function imageFromBase64(text) {
+  const plain = text.replace(/\s+/g, '');
+  return /^[A-Za-z0-9+/]*={0,2}$/.test(plain) && plain.length % 4 === 0 ? Buffer.from(plain, 'base64') : text;
 }
 
 /** The SHA-256 of a file's text or bytes, as hex. */
@@ -540,9 +613,18 @@ export function validate(
     if (lower.has(key)) problems.push(`${lower.get(key)} and ${name} differ only in case. Rename one.`);
     else lower.set(key, name);
   }
+  const images = names.filter(isImage);
+  const features = Array.isArray(sub.requires?.features) ? sub.requires.features : [];
+  if (images.length > 0 && !features.includes(IMAGE_FEATURE)) {
+    problems.push(
+      `A ${noun} with a PNG needs '${IMAGE_FEATURE}' in requires.features, so a Proteus that cannot install pictures refuses it.`,
+    );
+  }
   let total = 0;
   for (const name of names) {
-    const problem = pathProblem(name) ?? textProblem(name, files[name], { vendored: vendor.vendored.has(name) });
+    const problem =
+      pathProblem(name) ??
+      (isImage(name) ? imageProblem(name, files[name]) : textProblem(name, files[name], { vendored: vendor.vendored.has(name) }));
     if (problem) problems.push(problem[0].toUpperCase() + problem.slice(1) + '.');
     if (typeof files[name] !== 'string' && !(files[name] instanceof Uint8Array)) {
       problems.push(`${name} is not text.`);
@@ -1003,6 +1085,9 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] A setting that names a program to run, or where code comes from, is defined with `sensitive = true`.',
           '- [ ] Every vendored file comes from the source vendor.json names, under a license that lets it be shared, and `node scripts/vendor.mjs verify` agrees.',
         ];
+  if ((manifest.files ?? []).some(isImage)) {
+    review.push('- [ ] Every picture is one its author may share, and shows nothing personal.');
+  }
   lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);
   return lines.join('\n');
 }

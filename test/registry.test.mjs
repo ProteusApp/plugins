@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import {
   LABEL,
   approvedCommit,
@@ -11,6 +12,7 @@ import {
   commandOf,
   compareVersions,
   folderFor,
+  imageProblem,
   historyOf,
   indexProblems,
   MAX_VERSIONS,
@@ -644,4 +646,74 @@ test('indexProblems holds each past version to its commit', () => {
   const taken = [top, step('b', '1.1.0', { author: { login: 'eve', id: 2 } }), log[2]];
   const atTaken = (kind, id, c) => ({ ...at(kind, id, c), history: taken });
   assert.ok(indexProblems(index, atTaken).some((p) => /"1\.1\.0" as a past version/.test(p)));
+});
+
+/** A whole PNG of one see-through pixel, or of the size given. */
+function png(width = 1, height = 1) {
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([head, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.alloc(5))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('imageProblem takes one whole PNG', () => {
+  assert.equal(imageProblem('a.png', png()), null);
+});
+
+test('imageProblem refuses what is not exactly one whole PNG', () => {
+  const whole = png();
+  assert.match(imageProblem('a.png', 'not bytes'), /not a PNG/);
+  assert.match(imageProblem('a.png', Buffer.from('hello, world')), /not a PNG/);
+  assert.match(imageProblem('a.png', Buffer.concat([whole, Buffer.from('more')])), /more after the end/);
+  assert.match(imageProblem('a.png', whole.subarray(0, whole.length - 6)), /cut off/);
+  const damaged = Buffer.from(whole);
+  damaged[40] ^= 0xff;
+  assert.match(imageProblem('a.png', damaged), /damaged/);
+  assert.match(imageProblem('a.png', png(5000, 10)), /at most 4096/);
+});
+
+test('a PNG in an issue reads back to its bytes from base64 across lines and parts', () => {
+  const text = png().toString('base64');
+  const half = Math.floor(text.length / 8) * 4;
+  const texts = [
+    manifestBlock(['sheet.png']),
+    block('sheet.png', 1, 2, text.slice(0, half).replace(/(.{20})/g, '$1\n')),
+    block('sheet.png', 2, 2, text.slice(half)),
+  ];
+  const got = collectSubmission(texts);
+  assert.equal(got.complete, true);
+  assert.deepEqual(Buffer.from(got.sub.files['sheet.png']), png());
+});
+
+test('a plugin with a PNG needs the png feature', () => {
+  const files = { 'init.lua': 'return {}', 'page/sheet.png': png() };
+  assert.deepEqual(validate(good({ files, requires: { features: ['png'] } }), { reserved }), []);
+  assert.match(validate(good({ files }), { reserved }).join('\n'), /'png' in requires\.features/);
+});
+
+test('a PNG that is not one is refused by name', () => {
+  const files = { 'init.lua': 'return {}', 'sheet.png': 'iVBORw0KGgo but not really' };
+  assert.match(validate(good({ files, requires: { features: ['png'] } }), { reserved }).join('\n'), /sheet\.png is not a PNG/i);
+});
+
+test('the pull request asks the reviewer to look at the pictures', () => {
+  const sub = good({ files: { 'init.lua': 'return {}', 'sheet.png': png() } });
+  const manifest = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.match(pullRequestBody(manifest, sub, 7, false), /Every picture is one its author may share/);
+  assert.doesNotMatch(pullRequestBody(manifestFor(good(), { login: 'ann', id: 1 }, 7), good(), 7, false), /picture/);
 });

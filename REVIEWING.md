@@ -16,6 +16,7 @@ Check that:
 - it sends nothing over the network, and runs no programs, beyond what its purpose needs
 - a web view page loads nothing from elsewhere. Proteus blocks it anyway, but code that tries is a warning sign
 - it holds no secrets, tokens or personal data
+- every PNG is a picture its author may share, such as their own art, and shows nothing personal
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
 - a setting that names a program to run, a path to one, or a place code comes from is defined with `sensitive = true`, so a profile or a folder's `.proteus/settings.json` cannot choose it
 - it runs nothing from the open folder, such as its build scripts, its Git hooks or a program in `node_modules`, until the user trusts the folder (`app.kernel.project ().trusted`)

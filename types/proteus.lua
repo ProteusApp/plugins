@@ -54,6 +54,7 @@
 ---| 'windows' # Floating windows on a desktop, from `proteus.ui.windows` and the `windows` service.
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
+---| 'png' # PNG pictures in a plugin's folder: `fs.read_base64`, `fs.write_base64`, and installs and publishing that keep their bytes.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
 ---| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
 ---| 'grants-read' # `app.grants.read`, the text of a file the user picked.
@@ -366,6 +367,21 @@ function Fs.read (path, layer) end
 ---@param text string
 ---@param layer? 'user'|'project'
 function Fs.write (path, text, layer) end
+
+---Writes a PNG picture from its bytes, given as base64, to the layer `write` would pick.
+---The workspace lists the picture like any file, and `read` gives nil for it, since it holds
+---no text. Only paths that end in `.png` take bytes.
+---@param path string
+---@param data string The picture's bytes as base64.
+---@param layer? 'user'|'project'
+function Fs.write_base64 (path, data, layer) end
+
+---Reads a file's bytes from disk, as base64, from the layer that holds it. `cb` gets the
+---base64, or nil and an error.
+---@param path string
+---@param layer? Proteus.Layer
+---@param cb fun(data: string?, err: string?)
+function Fs.read_base64 (path, layer, cb) end
 
 ---Removes a workspace file, or a folder and everything in it.
 ---A builtin file underneath becomes visible again.
