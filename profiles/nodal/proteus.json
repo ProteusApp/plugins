@@ -25,7 +25,7 @@
     "proteus.discord.rpc"
   ],
   "requires": {
-    "proteus": ">=0.3.0",
+    "proteus": ">=0.3.1",
     "features": [
       "profile-extends"
     ]

@@ -6,7 +6,7 @@ return {
   description = 'Markdown notes, saved as files in data/notes.',
   version = '1.1.0',
   -- It runs plugins by the ids they took in Proteus 0.3.0.
-  requires = { proteus = '>=0.3.0', features = { 'profile-extends' } },
+  requires = { proteus = '>=0.3.1', features = { 'profile-extends' } },
   -- The themes, keys, menus, status bar, side panels, palette, messages, Settings and
   -- Profiles come from the app's shell, profiles/base/shell.lua.
   extends = 'shell',
