@@ -42,6 +42,7 @@ local SCHEMAS = {
 ---@field desktop boolean True in the desktop app, which can run programs.
 ---@field workspace string The workspace folder, with `/`.
 ---@field project_root? string The folder open in the Code Editor.
+---@field untrusted boolean True while the open folder is not trusted. Cargo, rustc and rustfmt can run programs a crate names, through build scripts, proc macros and rust-toolchain.toml, so nothing runs in it until then.
 ---@field crates LangRust.Crates
 ---@field full_path fun(doc: Proteus.DocInfo): string A document's full path on disk.
 ---@field notify fun(level: 'info'|'warn'|'error', text: string) A pop-up, when ui.notify runs.
@@ -50,7 +51,7 @@ local SCHEMAS = {
 return {
   name = 'Rust',
   description = 'Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.',
-  version = '1.0.4',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   -- The language server and Cargo are programs it runs and downloads, on files anywhere on disk.
   permissions = { 'net', 'files', 'process' },
@@ -78,6 +79,7 @@ return {
       type = 'string',
       default = '',
       description = 'Leave empty to use the one on the PATH, or else a download.',
+      sensitive = true,
     })
     settings.define ('rust.check_command', {
       title = 'Check on save with',
@@ -108,6 +110,9 @@ return {
       desktop = app.platform == 'tauri',
       workspace = workspace,
       project_root = project and project.root () or nil,
+      untrusted = project ~= nil
+        and project.root () ~= nil
+        and app.kernel.project ().trusted ~= true,
       crates = crates_module.new (app),
       full_path = function (doc)
         return doc.external and disk.normalize (doc.path)
