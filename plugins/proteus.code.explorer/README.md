@@ -31,6 +31,8 @@ The tree leaves out what the `project.exclude` setting of `proteus.code.project`
 
 Its commands are `code.explorer.refresh`, `code.explorer.collapse`, `code.explorer.reveal_active` and `code.explorer.undo_last`, and the tree's keys run hidden `code.explorer.*` commands while the tree has the focus.
 
+The tree itself, with its selection, keys, typed names, dragging and clipboard, is `lib/file_tree.lua` in Proteus, which the Plugin Editor's Plugins panel draws too. So this plugin needs the `file-tree` feature.
+
 ## Permissions
 
 - `files` reads and changes the folder on disk, and reveals items in the file manager. The `project` and `editor` services need it too, and so do the `editor:*` and `git:status` events it follows.
