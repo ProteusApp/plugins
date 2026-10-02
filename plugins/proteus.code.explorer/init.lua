@@ -6,9 +6,13 @@
 -- to the Recycle Bin. A letter after a name shows what Git sees: M changed, U new, A added,
 -- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits.
 --
+-- Files that belong with another file, such as package-lock.json with package.json, sit
+-- under it, by the `code.explorer.nest` setting. The arrow before the file opens and closes
+-- them. Delete, cut, copy and drag carry a closed group along with the file on top.
+--
 -- With the tree focused:
 --   Up, Down, Home, End   move the selection, and Shift stretches it
---   Left, Right           close and open folders
+--   Left, Right           close and open folders and groups
 --   Enter                 opens a file in the editor. Space opens it and keeps the focus here.
 --   F2, Delete            rename and delete
 --   Ctrl+C, Ctrl+X, Ctrl+V   copy, cut and paste files
@@ -21,6 +25,7 @@
 -- `code:search_folder` events.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local nesting = require ('file_nesting') --[[@as CodeExplorer.Nesting]]
 local paths = require ('explorer_paths') --[[@as Explorer.PathsModule]]
 
 -- lang=css
@@ -91,6 +96,32 @@ local FIND_RESET = 1000
 local DOUBLE_CLICK = 400
 -- Names the tree leaves out unless the setting says otherwise.
 local HIDE = { '.git', '.DS_Store', 'Thumbs.db', 'desktop.ini' }
+-- Files the tree draws under another file unless the setting says otherwise.
+local NEST = {
+  ['package.json'] = {
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'bun.lock',
+    'bun.lockb',
+    '.npmrc',
+    '.yarnrc.yml',
+  },
+  ['tsconfig.json'] = { 'tsconfig.*.json', '*.tsbuildinfo' },
+  ['Cargo.toml'] = { 'Cargo.lock' },
+  ['*.ts'] = {
+    '${capture}.js',
+    '${capture}.js.map',
+    '${capture}.d.ts',
+    '${capture}.d.ts.map',
+  },
+  ['*.js'] = { '${capture}.js.map', '${capture}.min.js', '${capture}.d.ts' },
+}
+-- The `data-item` of the arrow that opens a group of files. A path in the tree never starts
+-- with `/`, so this cannot name a row.
+local TWISTY_ITEM = '/twisty/'
 
 -- The letter shown after a name for each thing Git can say about a file.
 ---@type table<string, string>
@@ -110,6 +141,8 @@ local GIT_LETTER = {
 ---@field name string
 ---@field path string From the project folder, with `/`.
 ---@field dir boolean
+---@field kids? CodeExplorer.Entry[] The files drawn under this file.
+---@field nested_in? string The path of the file this one is drawn under.
 
 ---A row drawn in the tree.
 ---@class CodeExplorer.Row
@@ -208,7 +241,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.0.0',
+  version = '1.1.0',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -249,6 +282,14 @@ return {
       default = HIDE,
       description = 'File and folder names the Code Editor file tree leaves out, such as .git.',
     })
+    settings.define ('code.explorer.nest', {
+      title = 'Files the file tree nests',
+      type = 'json',
+      default = NEST,
+      description = 'Maps a file name pattern to the patterns of the files drawn under it, such as {"package.json": ["yarn.lock"]}. '
+        .. 'The first * in a key is kept, and ${capture} below stands for it, so {"*.ts": ["${capture}.js"]} puts app.js under app.ts. '
+        .. 'Use {} to turn nesting off.',
+    })
 
     -- With no folder open there is no tree. The Welcome page opens a folder instead.
     if not root then
@@ -269,6 +310,45 @@ return {
         end
       end
       return out
+    end
+
+    local nest_rules = nesting.rules (settings.get ('code.explorer.nest'), fold)
+
+    ---Marks which files of a folder sit under another file.
+    ---@param list CodeExplorer.Entry[] The folder's entries, sorted.
+    local function nest_entries (list)
+      local names = {} ---@type string[]
+      local by_name = {} ---@type table<string, CodeExplorer.Entry>
+      for _, e in ipairs (list) do
+        e.kids, e.nested_in = nil, nil
+        if not e.dir then
+          names[#names + 1] = e.name
+          by_name[e.name] = e
+        end
+      end
+      for top, kids in pairs (nesting.group (names, nest_rules, fold)) do
+        local parent = by_name[top]
+        parent.kids = {}
+        for _, name in ipairs (kids) do
+          local kid = by_name[name]
+          kid.nested_in = parent.path
+          parent.kids[#parent.kids + 1] = kid
+        end
+      end
+    end
+
+    ---True for a folder, or a file with files under it.
+    ---@param entry CodeExplorer.Entry
+    ---@return boolean
+    local function opens (entry)
+      return entry.dir or entry.kids ~= nil
+    end
+
+    ---The row a folder or a group of files draws its rows under.
+    ---@param entry CodeExplorer.Entry
+    ---@return string
+    local function tree_parent (entry)
+      return entry.nested_in or paths.parent (entry.path)
     end
 
     ---The full path of a path in the tree.
@@ -413,6 +493,21 @@ return {
       end
     end
 
+    ---The row an event's `item` names. The second result is true when the press landed on the
+    ---arrow that opens a group of files.
+    ---@param item string?
+    ---@return CodeExplorer.Row?
+    ---@return boolean
+    local function row_of (item)
+      if not item then
+        return nil, false
+      end
+      if item:sub (1, #TWISTY_ITEM) == TWISTY_ITEM then
+        return row_at[item:sub (#TWISTY_ITEM + 1)], true
+      end
+      return row_at[item], false
+    end
+
     -- Reading folders ----------------------------------------------------------------------
 
     ---Reads a folder from disk, then draws the tree. `done` runs once it is read. A folder
@@ -456,6 +551,7 @@ return {
             end
             return a.name:lower () < b.name:lower ()
           end)
+          nest_entries (list)
           listing[dir] = list
         end
         if again[dir] then
@@ -638,6 +734,23 @@ return {
       local out = {} ---@type CodeExplorer.Entry[]
       for _, p in ipairs (paths.outermost (list)) do
         out[#out + 1] = row_at[p].entry
+      end
+      return out
+    end
+
+    ---The items with the files of every closed group among them, which go wherever the file
+    ---on top goes.
+    ---@param list CodeExplorer.Entry[]
+    ---@return CodeExplorer.Entry[]
+    local function with_kids (list)
+      local out = {} ---@type CodeExplorer.Entry[]
+      for _, e in ipairs (list) do
+        out[#out + 1] = e
+        if e.kids and not expanded[e.path] then
+          for _, kid in ipairs (e.kids) do
+            out[#out + 1] = kid
+          end
+        end
       end
       return out
     end
@@ -945,7 +1058,16 @@ return {
       if #list == 0 or not p then
         return
       end
+      local all = with_kids (list)
       local what = #list == 1 and list[1].name or (#list .. ' items')
+      local extra = #all - #list
+      if extra > 0 then
+        what = what
+          .. ' and '
+          .. extra
+          .. (extra == 1 and ' file' or ' files')
+          .. ' nested under it'
+      end
       p.confirm ({
         message = 'Move ' .. what .. ' to ' .. bin_name () .. '?',
         yes = 'Move to ' .. (app.os == 'windows' and 'Recycle Bin' or 'Trash'),
@@ -967,7 +1089,7 @@ return {
           end
           next_row = next_row or (first and rows[first.index - 1])
           select_one (next_row and next_row.entry.path or nil)
-          for _, e in ipairs (list) do
+          for _, e in ipairs (all) do
             local entry = e
             app.fs.trash_path (abs (entry.path), function (_, err)
               if not err then
@@ -1001,14 +1123,20 @@ return {
       delete (chosen ())
     end
 
+    ---Opens or closes a folder or a group of files.
+    ---@param entry CodeExplorer.Entry
+    local function toggle (entry)
+      expanded[entry.path] = not expanded[entry.path] or nil
+      save_expanded ()
+      render ()
+    end
+
     ---Opens a file, or opens or closes a folder.
     ---@param entry CodeExplorer.Entry
     ---@param keep_focus boolean Leaves the keyboard focus in the tree.
     local function activate_row (entry, keep_focus)
       if entry.dir then
-        expanded[entry.path] = not expanded[entry.path] or nil
-        save_expanded ()
-        render ()
+        toggle (entry)
       else
         open_file (entry.path, keep_focus and { keep_focus = true } or nil)
       end
@@ -1028,7 +1156,7 @@ return {
 
     ---@param cut boolean
     local function set_clip (cut)
-      local list = chosen ()
+      local list = with_kids (chosen ())
       if #list == 0 then
         return
       end
@@ -1423,7 +1551,7 @@ return {
         if ev.editable then
           return m.edit_items (ev)
         end
-        local r = ev.item and row_at[ev.item]
+        local r = row_of (ev.item)
         if r and not picked[r.entry.path] then
           select_one (r.entry.path)
         end
@@ -1463,10 +1591,14 @@ return {
         and e.kind == 'rename'
         and e.entry ~= nil
         and e.entry.path == p
-      local open = entry.dir and expanded[p] == true
+      local open = opens (entry) and expanded[p] == true
       local kind = git_kind[p]
       local badge = kind and GIT_LETTER[kind] or ''
-      if badge == '' and entry.dir and git_inside[p] then
+      local inside = entry.dir and git_inside[p] or false
+      for _, kid in ipairs (entry.kids or {}) do
+        inside = inside or git_kind[kid.path] ~= nil
+      end
+      if badge == '' and inside then
         badge = '•'
       end
       ---@type string[]
@@ -1485,7 +1617,7 @@ return {
       add_class (cut_now[p], 'cut')
       add_class (unsaved[p], 'unsaved')
       add_class (kind, 'git-' .. (kind or ''))
-      add_class (entry.dir and git_inside[p], 'git-inside')
+      add_class (inside, 'git-inside')
       return ui.div ({
         class = classes,
         style = { ['--depth'] = depth },
@@ -1494,7 +1626,10 @@ return {
         ['data-item'] = not renaming and p or nil,
         ui.span ({
           class = 'tree-twisty',
-          entry.dir
+          -- A press on a group's arrow opens the group rather than the file.
+          ['data-item'] = entry.kids and not renaming and (TWISTY_ITEM .. p)
+            or nil,
+          opens (entry)
               and ui.icon (open and 'chevron-down' or 'chevron-right', 14)
             or nil,
         }),
@@ -1539,6 +1674,12 @@ return {
         return
       end
       local e = edit
+      -- A file to scroll to that sits in a closed group opens the group, so it has a row.
+      local hidden = reveal_next and known (reveal_next)
+      if hidden and hidden.nested_in and not expanded[hidden.nested_in] then
+        expanded[hidden.nested_in] = true
+        save_expanded ()
+      end
       local list = {} ---@type Proteus.El[]
       rows, row_at = {}, {}
       cut_now = {}
@@ -1546,6 +1687,15 @@ return {
         for _, p in ipairs (clip.paths) do
           cut_now[p] = true
         end
+      end
+      ---@param entry CodeExplorer.Entry
+      ---@param depth integer
+      local function add_row (entry, depth)
+        local row = row_for (entry, depth)
+        list[#list + 1] = row
+        local r = { row = row, entry = entry, index = #rows + 1 }
+        rows[r.index] = r
+        row_at[entry.path] = r
       end
       ---@param dir string
       ---@param depth integer
@@ -1575,17 +1725,20 @@ return {
             )
           )
         for _, entry in ipairs (entries) do
-          if creating and (goes_first or not entry.dir) then
-            list[#list + 1] = new_row (creating, depth)
-            creating = nil
-          end
-          local row = row_for (entry, depth)
-          list[#list + 1] = row
-          local r = { row = row, entry = entry, index = #rows + 1 }
-          rows[r.index] = r
-          row_at[entry.path] = r
-          if entry.dir and expanded[entry.path] then
-            walk (entry.path, depth + 1)
+          -- A file in a group is drawn under the file on top instead.
+          if not entry.nested_in then
+            if creating and (goes_first or not entry.dir) then
+              list[#list + 1] = new_row (creating, depth)
+              creating = nil
+            end
+            add_row (entry, depth)
+            if entry.dir and expanded[entry.path] then
+              walk (entry.path, depth + 1)
+            elseif entry.kids and expanded[entry.path] then
+              for _, kid in ipairs (entry.kids) do
+                add_row (kid, depth + 1)
+              end
+            end
           end
         end
         if creating then
@@ -1634,6 +1787,24 @@ return {
     end
 
     -- Dragging to move -------------------------------------------------------------------
+
+    ---What a drag carries, in words. Files that came along with their group's file on top go
+    ---unnamed.
+    ---@param entries CodeExplorer.Entry[]
+    ---@return string
+    local function drag_label (entries)
+      local carried = {} ---@type table<string, boolean>
+      for _, e in ipairs (entries) do
+        carried[e.path] = true
+      end
+      local named = {} ---@type CodeExplorer.Entry[]
+      for _, e in ipairs (entries) do
+        if not (e.nested_in and carried[e.nested_in]) then
+          named[#named + 1] = e
+        end
+      end
+      return #named == 1 and named[1].name or (#named .. ' items')
+    end
 
     ---Ends the drag. With `drop`, the items move to the folder under the pointer.
     ---@param drop boolean
@@ -1697,7 +1868,7 @@ return {
       local dir = nil ---@type string?
       local over = nil ---@type CodeExplorer.Row?
       if ev.target and app.dom.contains (tree.id, ev.target) then
-        over = ev.item and row_at[ev.item] or nil
+        over = row_of (ev.item)
         if over then
           dir = over.entry.dir and over.entry.path
             or paths.parent (over.entry.path)
@@ -1732,8 +1903,7 @@ return {
         end
       end
       d.moves = moves
-      local what = #d.entries == 1 and d.entries[1].name
-        or (#d.entries .. ' items')
+      local what = drag_label (d.entries)
       local where = dir == '' and (project.name () or 'the folder')
         or (dir or '')
       d.ghost:text (
@@ -1760,7 +1930,7 @@ return {
 
     ---@param entries CodeExplorer.Entry[]
     local function start_drag (entries)
-      local what = #entries == 1 and entries[1].name or (#entries .. ' items')
+      local what = drag_label (entries)
       local ghost = drag_ghost
       if not ghost then
         ghost = ui.mount (ui.div ({ class = 'tree-ghost' }))
@@ -1860,7 +2030,7 @@ return {
       if ev.button ~= 0 then
         return nil
       end
-      local r = ev.item and row_at[ev.item]
+      local r, on_twisty = row_of (ev.item)
       if not r then
         if not edit and not (ev.ctrl or ev.meta or ev.shift) then
           select_one (nil)
@@ -1868,6 +2038,11 @@ return {
         return nil
       end
       local path = r.entry.path ---@type string
+      if on_twisty then
+        select_one (path)
+        toggle (r.entry)
+        return nil
+      end
       if ev.ctrl or ev.meta then
         toggle_pick (path)
         return nil
@@ -1888,14 +2063,14 @@ return {
       else
         select_one (path)
       end
-      press_row (r.entry, ev, group)
+      press_row (r.entry, ev, with_kids (group))
       return nil
     end)
 
     -- A double-click moves the focus into the editor.
     tree:on ('dblclick', function (ev)
-      local r = ev.item and row_at[ev.item]
-      if r and not r.entry.dir then
+      local r, on_twisty = row_of (ev.item)
+      if r and not on_twisty and not r.entry.dir then
         open_file (r.entry.path)
       end
       return nil
@@ -2017,20 +2192,20 @@ return {
         go (#rows)
       elseif key == 'ArrowRight' and r then
         local entry = r.entry
-        if entry.dir and not expanded[entry.path] then
-          activate_row (entry, true)
-        elseif entry.dir then
+        if opens (entry) and not expanded[entry.path] then
+          toggle (entry)
+        elseif opens (entry) then
           local child = rows[r.index + 1]
-          if child and paths.parent (child.entry.path) == entry.path then
+          if child and tree_parent (child.entry) == entry.path then
             select_one (child.entry.path, true)
           end
         end
       elseif key == 'ArrowLeft' and r then
         local entry = r.entry
-        if entry.dir and expanded[entry.path] then
-          activate_row (entry, true)
-        elseif row_at[paths.parent (entry.path)] then
-          select_one (paths.parent (entry.path), true)
+        if opens (entry) and expanded[entry.path] then
+          toggle (entry)
+        elseif row_at[tree_parent (entry)] then
+          select_one (tree_parent (entry), true)
         end
       elseif key == 'Enter' and r then
         activate_row (r.entry, false)
@@ -2098,6 +2273,17 @@ return {
     settings.watch ('code.explorer.hide', function ()
       if root and listing[''] then
         refresh_all ()
+      end
+    end)
+
+    -- The folders read so far group again without reading the disk.
+    settings.watch ('code.explorer.nest', function ()
+      nest_rules = nesting.rules (settings.get ('code.explorer.nest'), fold)
+      if root and listing[''] then
+        for _, list in pairs (listing) do
+          nest_entries (list)
+        end
+        render ()
       end
     end)
 
