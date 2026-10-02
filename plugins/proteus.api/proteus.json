@@ -2,7 +2,7 @@
   "id": "proteus.api",
   "name": "API Client",
   "description": "Send HTTP requests, save them, and read the answers.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.lib.http",
@@ -40,8 +40,15 @@
   "files": [
     "README.md",
     "api_core.lua",
+    "api_css.lua",
+    "api_editor.lua",
+    "api_envs.lua",
+    "api_history.lua",
+    "api_list.lua",
+    "api_response.lua",
     "init.lua",
     "tests/api_core.test.lua",
-    "tests/client.test.lua"
+    "tests/client.test.lua",
+    "tests/css.test.lua"
   ]
 }

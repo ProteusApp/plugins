@@ -1,6 +1,7 @@
 -- api_core: the parts of the API client that need no screen and no service, so its tests
--- reach them: where a folder keeps its sign-in, when an OAuth 2 token is still good, what
--- keeps a request from going out, and how an answer from app.net.fetch is kept.
+-- reach them: where a folder keeps its sign-in, the name and folder of a request's file, the
+-- row a key and value grid's event is about, when an OAuth 2 token is still good, what keeps
+-- a request from going out, and how an answer from app.net.fetch is kept.
 
 -- The file in a folder that holds the sign-in its requests inherit.
 local FOLDER_FILE = '.folder.json'
@@ -70,6 +71,47 @@ end
 ---@return boolean
 function M.hidden (name)
   return name:sub (1, 1) == '.'
+end
+
+---The name of a request from its file's path, without the folder or `.json`.
+---@param path string
+---@return string
+function M.stem (path)
+  return path:match ('([^/]+)%.json$') or path
+end
+
+---The folder a file or folder under `dir` sits in, as a path under `dir`, or an empty string
+---for `dir` itself.
+---@param dir string
+---@param path string
+---@return string
+function M.folder_of (dir, path)
+  return path:sub (#dir + 2):match ('^(.*)/[^/]*$') or ''
+end
+
+---The path of the request file `name` in a folder under `dir`.
+---@param dir string
+---@param folder string
+---@param name string
+---@return string
+function M.path_for (dir, folder, name)
+  return dir
+    .. '/'
+    .. (folder ~= '' and (folder .. '/') or '')
+    .. name
+    .. '.json'
+end
+
+---The row and the field a key and value grid's `data-item` names, such as `3:value`.
+---@param item string?
+---@return integer?
+---@return string?
+function M.grid_item (item)
+  local n, field = (item or ''):match ('^(%d+):(%a+)$')
+  if not n then
+    return nil, nil
+  end
+  return math.floor (tonumber (n) or 0), field
 end
 
 ---True while a token can still be sent.
