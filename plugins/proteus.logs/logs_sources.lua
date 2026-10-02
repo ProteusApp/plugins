@@ -1,12 +1,12 @@
--- logs_sources: where the log viewer's lines come from. It opens log files, runs commands and
--- reads pasted logs, starts, stops and restarts them, keeps their lines, draws the Sources view
+-- logs_sources: where the log viewer's lines come from. It opens log files, gzip files and
+-- rotated logs, runs commands and reads pasted logs, starts, stops and restarts them, keeps their lines, draws the Sources view
 -- and shows one source, or every source merged by time. The log viewer's init.lua attaches it
 -- to the context its modules share.
 
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 
 local MAX_LINES = 50000 -- kept per source
-local MAX_WHOLE = 250000 -- kept for a whole file
+local MAX_WHOLE = 250000 -- kept for a whole file, a gzip file or a rotated log
 local MAX_RECENT = 12
 local DESKTOP_ONLY =
   'Following files and running commands needs the desktop app.'
@@ -110,7 +110,8 @@ function M.attach (ctx)
       })
     end
     for _, src in ipairs (ctx.sources) do
-      local label = lf.state_label (src.state, src.code)
+      local label =
+        lf.state_label (src.state, src.code, src.spec.kind == 'file')
       local count = ui.span ({
         class = 'logs-src-count',
         lf.group (src.lines:count ()),
@@ -191,7 +192,7 @@ function M.attach (ctx)
       id = next_id,
       spec = spec,
       name = lf.source_name (spec),
-      lines = lf.ring (spec.whole and MAX_WHOLE or MAX_LINES),
+      lines = lf.ring (lf.reads_whole (spec) and MAX_WHOLE or MAX_LINES),
       next_n = 1,
       state = 'stopped',
       run = 0,
@@ -202,28 +203,18 @@ function M.attach (ctx)
     return src
   end
 
+  ---Runs a source's program, unless the source was stopped or started again meanwhile.
   ---@param src Logs.Source
-  local function start (src)
-    src.run = src.run + 1
-    local run = src.run
-    src.code, src.detail = nil, nil
-    if not desktop then
-      src.state = 'failed'
-      src.detail = DESKTOP_ONLY
-      source_changed (src)
+  ---@param run integer
+  ---@param program string
+  ---@param args string[]
+  local function spawn (src, run, program, args)
+    if src.run ~= run then
       return
     end
-    local spec = src.spec
-    local program, args ---@type string, string[]
-    if spec.kind == 'file' then
-      program, args = lf.follow_command (spec.path or '', app.os, spec.whole)
-    else
-      program, args = lf.shell_command (spec.command or '', app.os)
-    end
-    src.state = 'running'
     ---@type Proteus.SpawnOptions
     local opts = {
-      cwd = spec.cwd,
+      cwd = src.spec.cwd,
       framing = 'lines',
       on_message = function (text)
         if src.run == run then
@@ -264,6 +255,48 @@ function M.attach (ctx)
       say_error ('"' .. src.name .. '" did not start. ' .. why)
     end
     source_changed (src)
+  end
+
+  ---@param src Logs.Source
+  local function start (src)
+    src.run = src.run + 1
+    local run = src.run
+    src.code, src.detail = nil, nil
+    if not desktop then
+      src.state = 'failed'
+      src.detail = DESKTOP_ONLY
+      source_changed (src)
+      return
+    end
+    local spec = src.spec
+    src.state = 'running'
+    if spec.kind ~= 'file' then
+      local program, args = lf.shell_command (spec.command or '', app.os)
+      spawn (src, run, program, args)
+      return
+    end
+    local path = spec.path or ''
+    if not spec.rotated then
+      local program, args = lf.follow_command (path, app.os, spec.whole)
+      spawn (src, run, program, args)
+      return
+    end
+    -- A rotated log reads the files beside it that it was rotated into, oldest first.
+    local folder, sep, base = path:match ('^(.*)([/\\])([^/\\]+)$')
+    source_changed (src)
+    if not folder then
+      local program, args = lf.follow_command (path, app.os, true)
+      spawn (src, run, program, args)
+      return
+    end
+    app.fs.list_dir (folder == '' and sep or folder, function (names)
+      local older = {} ---@type string[]
+      for _, name in ipairs (lf.rotated_files (base, names or {})) do
+        older[#older + 1] = folder .. sep .. name
+      end
+      local program, args = lf.follow_command (path, app.os, true, older)
+      spawn (src, run, program, args)
+    end)
   end
 
   ---Stops a source's program. Output still on its way is ignored.
@@ -395,6 +428,28 @@ function M.attach (ctx)
     start (src)
   end
 
+  ---Asks for one file of a rotated log, such as `app.log` or `app.log.1`, and reads every file
+  ---of it as one source, oldest first, then follows the file written to now.
+  local function open_rotated ()
+    if not desktop then
+      say (DESKTOP_ONLY)
+      return
+    end
+    app.fs.pick_open ({ title = 'Open Rotated Log' }, function (paths, err)
+      if err then
+        say_error ('Could not show the file picker. ' .. err)
+        return
+      end
+      local path = paths and paths[1]
+      if not path then
+        return
+      end
+      local folder, name = path:match ('^(.*[/\\])([^/\\]+)$')
+      local base = (folder or '') .. lf.rotation_base (name or path)
+      open_spec ({ kind = 'file', path = base, rotated = true })
+    end)
+  end
+
   ---Asks for log files and follows them. A whole file is read from its first line, and
   ---keeps up to 250,000 lines.
   ---@param whole boolean
@@ -496,7 +551,11 @@ function M.attach (ctx)
     local items = {} ---@type Proteus.PickItem[]
     for _, spec in ipairs (ctx.recent) do
       items[#items + 1] = {
-        label = lf.source_name (spec) .. (spec.whole and ' (whole file)' or ''),
+        label = lf.source_name (spec)
+          .. (
+            spec.rotated and ' (with rotated files)'
+            or (spec.whole and ' (whole file)' or '')
+          ),
         detail = spec.kind == 'file' and spec.path or spec.cwd,
         icon = KIND_ICONS[spec.kind],
         value = spec,
@@ -541,6 +600,7 @@ function M.attach (ctx)
   ctx.restart = restart
   ctx.close_source = close_source
   ctx.open_file = open_file
+  ctx.open_rotated = open_rotated
   ctx.run_command = run_command
   ctx.paste_log = paste_log
   ctx.open_recent = open_recent

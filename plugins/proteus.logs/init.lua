@@ -126,6 +126,7 @@ local LEVEL_PLURALS = {
 ---@field restart fun(src: Logs.Source)
 ---@field close_source fun(src: Logs.Source)
 ---@field open_file fun(whole: boolean)
+---@field open_rotated fun()
 ---@field run_command fun()
 ---@field paste_log fun()
 ---@field open_recent fun()
@@ -134,7 +135,7 @@ local LEVEL_PLURALS = {
 return {
   name = 'Logs',
   description = 'Follow a log file or a program, filter the lines, and spot errors.',
-  version = '1.2.1',
+  version = '1.3.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the programs the user names, and follows a log file anywhere on disk with one. Paste
   -- Log reads the clipboard.
@@ -495,7 +496,11 @@ return {
         st_state.set (
           ctx.shown.name
             .. ': '
-            .. lf.state_label (ctx.shown.state, ctx.shown.code)
+            .. lf.state_label (
+              ctx.shown.state,
+              ctx.shown.code,
+              ctx.shown.spec.kind == 'file'
+            )
         )
       end
       local total = view_total ()
@@ -609,7 +614,7 @@ return {
           or 'Lines show here as the program prints them.'
       elseif src then
         title = 'No lines'
-        text = lf.state_label (src.state, src.code)
+        text = lf.state_label (src.state, src.code, src.spec.kind == 'file')
           .. (src.detail and ('. ' .. src.detail) or '.')
       end
       empty:set_children ({

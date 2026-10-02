@@ -148,6 +148,10 @@ local function fake_app ()
       pick_open = function (_, cb)
         cb ({ table.remove (world.picks, 1) })
       end,
+      list_dir = function (path, cb)
+        world.listed = path
+        cb (world.dir or {})
+      end,
     },
     process = {
       spawn = function (program, args, opts)
@@ -353,4 +357,19 @@ test ('a click shows a line, with its time, and arrows move', function ()
   title = find (world, 'logs-detail-title').shown_text
   ok (title:find ('Line 2', 1, true), title)
   ok (title:find ('(from the line above)', 1, true), title)
+end)
+
+test ('a rotated log reads its older files first, as one source', function ()
+  local world = start ()
+  world.dir = { 'app.log', 'app.log.1', 'app.log.2.gz', 'other.log' }
+  open (world, 'logs.open_rotated', '/var/log/app.log.1', { 'old', 'new' })
+  eq (world.listed, '/var/log')
+  local proc = world.spawned[#world.spawned]
+  eq (proc.program, 'sh')
+  eq ({ proc.args[4], proc.args[5], proc.args[6] }, {
+    '/var/log/app.log',
+    '/var/log/app.log.2.gz',
+    '/var/log/app.log.1',
+  })
+  eq (rows (world), { 'old', 'new' })
 end)

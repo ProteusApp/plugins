@@ -1,6 +1,7 @@
 -- log_sources: where the log viewer's lines come from. It builds the command that follows a
--- file or runs a command line, names and describes a source, keeps the list of recent ones,
--- and reads back the sources and levels saved in the store.
+-- file, reads a gzip file or a rotated log, or runs a command line, names and describes a
+-- source, keeps the list of recent ones, and reads back the sources and levels saved in the
+-- store.
 
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
 local tx = require ('log_text') --[[@as Logs.TextModule]]
@@ -23,41 +24,181 @@ local LEVELS = ll.LEVELS
 ---@field cwd? string The folder a command runs in.
 ---@field name? string The name of pasted text.
 ---@field whole? boolean For a file, read from its first line rather than its last thousand.
+---@field rotated? boolean For a file, read the older files it was rotated into first, oldest first, then follow it from its first line.
+---@field format? string The name of the format whose fields show as columns.
 
 ---@class Logs.SourcesModule
----@field follow_command fun(path: string, os_name: string, whole?: boolean): string, string[]
+---@field is_gzip fun(path: string): boolean
+---@field rotation_base fun(name: string): string
+---@field rotated_files fun(base: string, names: string[]): string[]
+---@field follow_command fun(path: string, os_name: string, whole?: boolean, older?: string[]): string, string[]
+---@field reads_whole fun(spec: Logs.SourceSpec): boolean
 ---@field shell_command fun(line: string, os_name: string): string, string[]
 ---@field source_name fun(spec: Logs.SourceSpec): string
 ---@field source_title fun(spec: Logs.SourceSpec): string
----@field state_label fun(state: Logs.State, code?: integer): string
+---@field state_label fun(state: Logs.State, code?: integer, file?: boolean): string
 ---@field spec_key fun(spec: Logs.SourceSpec): string
 ---@field remember fun(list: Logs.SourceSpec[], spec: Logs.SourceSpec, max: integer): Logs.SourceSpec[]
 ---@field clean_specs fun(value: any): Logs.SourceSpec[]
 ---@field clean_levels fun(value: any): Logs.Level[]
 
+---True for a path that names a gzip file, such as `app.log.2.gz`.
+---@param path string
+---@return boolean
+local function is_gzip (path)
+  return path:lower ():find ('%.gz$') ~= nil
+end
+
+---The name of the file a rotated log is written to now: `app.log` for `app.log.1`,
+---`app.log.2.gz` or `app.log-20240301.gz`. A name that is no rotated file stays as it is.
+---@param name string
+---@return string
+local function rotation_base (name)
+  local base = name:gsub ('%.[gG][zZ]$', '')
+  local numbered = base:match ('^(.+)%.%d+$')
+  if numbered then
+    return numbered
+  end
+  local dated = base:match ('^(.+)%-%d%d%d%d%d%d%d%d%d*$')
+  return dated or base
+end
+
+---The older files a log was rotated into, among the names of the files beside it, oldest
+---first: dated ones such as `app.log-20240301.gz` by date, then numbered ones such as
+---`app.log.2.gz` and `app.log.1`, the highest number first.
+---@param base string The name of the file written to now, such as `app.log`.
+---@param names string[] The names in its folder. Folders end with `/`.
+---@return string[]
+local function rotated_files (base, names)
+  ---@type { name: string, key: number, dated: boolean }[]
+  local found = {}
+  local plain_base = base:gsub ('%p', '%%%0')
+  for _, name in ipairs (names) do
+    local bare = name:gsub ('%.[gG][zZ]$', '')
+    local n = bare:match ('^' .. plain_base .. '%.(%d+)$')
+    local date = bare:match ('^' .. plain_base .. '%-(%d%d%d%d%d%d%d%d%d*)$')
+    if name:sub (-1) ~= '/' and (n or date) then
+      found[#found + 1] = {
+        name = name,
+        key = tonumber (n or date) or 0,
+        dated = date ~= nil,
+      }
+    end
+  end
+  table.sort (found, function (a, b)
+    if a.dated ~= b.dated then
+      return a.dated
+    end
+    if a.key ~= b.key then
+      -- A dated file is older the earlier its date, a numbered one the higher its number.
+      return (a.key < b.key) == a.dated
+    end
+    return a.name < b.name
+  end)
+  local out = {} ---@type string[]
+  for _, f in ipairs (found) do
+    out[#out + 1] = f.name
+  end
+  return out
+end
+
+---A path in single quotes for PowerShell, which ends a quoted string at any of its four
+---single quotes, so each is doubled.
+---@param path string
+---@return string
+local function ps_quote (path)
+  return "'"
+    .. path:gsub ("'", "''"):gsub ('\226\128[\152-\155]', '%0%0')
+    .. "'"
+end
+
+-- What PowerShell runs first: write UTF-8, and a function that prints a gzip file's lines.
+local PS_START = '[Console]::OutputEncoding = [Text.Encoding]::UTF8; '
+local PS_GZIP = 'function Read-Gzip ($p) { '
+  .. '$z = New-Object IO.Compression.GZipStream ([IO.File]::OpenRead ($p), '
+  .. '[IO.Compression.CompressionMode]::Decompress); '
+  .. '$r = New-Object IO.StreamReader ($z, [Text.Encoding]::UTF8); '
+  .. 'while ($null -ne ($l = $r.ReadLine ())) { $l }; $r.Close () }; '
+
+-- What sh runs to print each file it is given, unpacking the gzip ones.
+local SH_READ =
+  'for f in "$@"; do case "$f" in *.gz|*.GZ) gzip -dc "$f" ;; *) cat "$f" ;; esac; done'
+
+---True when a source reads a file from its first line: a whole file, a gzip file or a
+---rotated log.
+---@param spec Logs.SourceSpec
+---@return boolean
+local function reads_whole (spec)
+  return spec.whole == true
+    or spec.rotated == true
+    or (spec.kind == 'file' and is_gzip (spec.path or ''))
+end
+
 ---The program and arguments that follow a file: the last thousand lines, or with `whole`
----every line from the first, then each new one.
+---every line from the first, then each new one. `older` names the files the log was rotated
+---into, oldest first, which are read before it. A gzip file is read once, since it does not
+---grow.
 ---@param path string
 ---@param os_name string
 ---@param whole? boolean
+---@param older? string[]
 ---@return string program
 ---@return string[] args
-local function follow_command (path, os_name, whole)
+local function follow_command (path, os_name, whole, older)
+  local before = older or {}
+  local gzip = is_gzip (path)
   if os_name == 'windows' then
-    -- PowerShell ends a quoted string at any of its four single quotes, so each is doubled.
-    -- It also writes in the console code page unless told to use UTF-8.
-    local quoted = path:gsub ("'", "''"):gsub ('\226\128[\152-\155]', '%0%0')
-    return 'powershell',
-      {
-        '-NoProfile',
-        '-Command',
-        '[Console]::OutputEncoding = [Text.Encoding]::UTF8; '
-          .. "Get-Content -LiteralPath '"
-          .. quoted
-          .. "'"
-          .. (whole and '' or ' -Tail 1000')
-          .. ' -Wait -Encoding UTF8',
-      }
+    -- PowerShell also writes in the console code page unless told to use UTF-8.
+    local parts = { PS_START } ---@type string[]
+    local all = {} ---@type string[]
+    for _, p in ipairs (before) do
+      all[#all + 1] = p
+    end
+    if gzip then
+      all[#all + 1] = path
+    end
+    local unpacks = false
+    for _, p in ipairs (all) do
+      unpacks = unpacks or is_gzip (p)
+    end
+    if unpacks then
+      parts[#parts + 1] = PS_GZIP
+    end
+    for _, p in ipairs (all) do
+      if is_gzip (p) then
+        parts[#parts + 1] = 'Read-Gzip ' .. ps_quote (p) .. '; '
+      else
+        parts[#parts + 1] = 'Get-Content -LiteralPath '
+          .. ps_quote (p)
+          .. ' -Encoding UTF8; '
+      end
+    end
+    if not gzip then
+      parts[#parts + 1] = 'Get-Content -LiteralPath '
+        .. ps_quote (path)
+        .. ((whole or #before > 0) and '' or ' -Tail 1000')
+        .. ' -Wait -Encoding UTF8'
+    end
+    local script = table.concat (parts):gsub ('; $', '')
+    return 'powershell', { '-NoProfile', '-Command', script }
+  end
+  if gzip and #before == 0 then
+    return 'gzip', { '-dc', path }
+  end
+  if #before > 0 or gzip then
+    local args = { '-c', '', 'sh' } ---@type string[]
+    for _, p in ipairs (before) do
+      args[#args + 1] = p
+    end
+    if gzip then
+      args[#args + 1] = path
+      args[2] = SH_READ
+    else
+      -- The file followed comes first, and the rest are read before it.
+      table.insert (args, 4, path)
+      args[2] = 'b="$1"; shift; ' .. SH_READ .. '; exec tail -n +1 -F "$b"'
+    end
+    return 'sh', args
   end
   return 'tail', { '-n', whole and '+1' or '1000', '-F', path }
 end
@@ -96,7 +237,11 @@ end
 ---@return string
 local function source_title (spec)
   if spec.kind == 'file' then
-    return (spec.path or '') .. (spec.whole and '\nthe whole file' or '')
+    local path = spec.path or ''
+    if spec.rotated then
+      return path .. '\nwith the files it was rotated into'
+    end
+    return path .. ((spec.whole or is_gzip (path)) and '\nthe whole file' or '')
   end
   if spec.kind == 'command' then
     local cwd = spec.cwd
@@ -105,11 +250,16 @@ local function source_title (spec)
   return spec.name or 'Pasted text'
 end
 
+---What a state is called. `file` says the source reads a file, which has read to its end
+---when its program ended well.
 ---@param state Logs.State
 ---@param code? integer
+---@param file? boolean
 ---@return string
-local function state_label (state, code)
-  if state == 'running' then
+local function state_label (state, code, file)
+  if file and state == 'exited' and code == 0 then
+    return 'Read to the end'
+  elseif state == 'running' then
     return 'Running'
   elseif state == 'stopped' then
     return 'Stopped'
@@ -130,7 +280,7 @@ local function spec_key (spec)
     spec.path or spec.command or spec.name or '',
     spec.cwd or '',
     spec.whole and 'whole' or '',
-  }, '\n')
+  }, '\n') .. (spec.rotated and '\nrotated' or '')
 end
 
 ---A copy of a spec with only the fields that are saved.
@@ -143,6 +293,8 @@ local function copy_spec (spec)
     command = spec.command,
     cwd = spec.cwd,
     whole = spec.whole,
+    rotated = spec.rotated,
+    format = spec.format,
   }
 end
 
@@ -180,9 +332,16 @@ local function clean_specs (value)
   do
     if type (v) == 'table' then
       local path, command, cwd = v.path, v.command, v.cwd
+      local format = type (v.format) == 'string' and v.format ~= '' and v.format
+        or nil
       if v.kind == 'file' and type (path) == 'string' and path ~= '' then
-        out[#out + 1] =
-          { kind = 'file', path = path, whole = v.whole == true or nil }
+        out[#out + 1] = {
+          kind = 'file',
+          path = path,
+          whole = v.whole == true or nil,
+          rotated = v.rotated == true or nil,
+          format = format,
+        }
       elseif
         v.kind == 'command'
         and type (command) == 'string'
@@ -192,6 +351,7 @@ local function clean_specs (value)
           kind = 'command',
           command = command,
           cwd = type (cwd) == 'string' and cwd ~= '' and cwd or nil,
+          format = format,
         }
       end
     end
@@ -222,7 +382,11 @@ end
 
 ---@type Logs.SourcesModule
 local M = {
+  is_gzip = is_gzip,
+  rotation_base = rotation_base,
+  rotated_files = rotated_files,
   follow_command = follow_command,
+  reads_whole = reads_whole,
   shell_command = shell_command,
   source_name = source_name,
   source_title = source_title,

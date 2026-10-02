@@ -23,6 +23,7 @@ function M.attach (ctx)
     ctx.find_source, ctx.show_source, ctx.show_merged
   local stop, restart, close_source = ctx.stop, ctx.restart, ctx.close_source
   local open_file, run_command = ctx.open_file, ctx.run_command
+  local open_rotated = ctx.open_rotated
   local paste_log, open_recent = ctx.paste_log, ctx.open_recent
   local clear_lines, copy_matching = ctx.clear_lines, ctx.copy_matching
   local copy_selected, toggle_level = ctx.copy_selected, ctx.toggle_level
@@ -108,6 +109,11 @@ function M.attach (ctx)
             run = function ()
               open_file (true)
             end,
+          },
+          {
+            label = 'Open Rotated Log File',
+            icon = 'files',
+            run = open_rotated,
           },
           {
             label = 'All Sources, by Time',
@@ -227,6 +233,14 @@ function M.attach (ctx)
     run = function ()
       open_file (true)
     end,
+  })
+  commands.register ({
+    id = 'logs.open_rotated',
+    category = 'Logs',
+    title = 'Open Rotated Log File',
+    icon = 'files',
+    when = here,
+    run = open_rotated,
   })
   commands.register ({
     id = 'logs.merged',

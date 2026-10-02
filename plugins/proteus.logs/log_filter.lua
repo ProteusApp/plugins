@@ -47,11 +47,15 @@ local highlight = lq.highlight
 ---@field trim fun(text: string): string
 ---@field sentence fun(text: string): string
 ---@field group fun(n: number): string
----@field follow_command fun(path: string, os_name: string, whole?: boolean): string, string[]
+---@field is_gzip fun(path: string): boolean
+---@field rotation_base fun(name: string): string
+---@field rotated_files fun(base: string, names: string[]): string[]
+---@field follow_command fun(path: string, os_name: string, whole?: boolean, older?: string[]): string, string[]
+---@field reads_whole fun(spec: Logs.SourceSpec): boolean
 ---@field shell_command fun(line: string, os_name: string): string, string[]
 ---@field source_name fun(spec: Logs.SourceSpec): string
 ---@field source_title fun(spec: Logs.SourceSpec): string
----@field state_label fun(state: Logs.State, code?: integer): string
+---@field state_label fun(state: Logs.State, code?: integer, file?: boolean): string
 ---@field spec_key fun(spec: Logs.SourceSpec): string
 ---@field remember fun(list: Logs.SourceSpec[], spec: Logs.SourceSpec, max: integer): Logs.SourceSpec[]
 ---@field clean_specs fun(value: any): Logs.SourceSpec[]
@@ -376,7 +380,11 @@ local M = {
   trim = tx.trim,
   sentence = tx.sentence,
   group = tx.group,
+  is_gzip = ls.is_gzip,
+  rotation_base = ls.rotation_base,
+  rotated_files = ls.rotated_files,
   follow_command = ls.follow_command,
+  reads_whole = ls.reads_whole,
   shell_command = ls.shell_command,
   source_name = ls.source_name,
   source_title = ls.source_title,
