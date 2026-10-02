@@ -856,7 +856,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.3.3",
+      "version": "1.4.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -872,7 +872,8 @@
         "proteus.core.keys",
         "proteus.ui.menus",
         "proteus.ui.tabs",
-        "proteus.code.project"
+        "proteus.code.project",
+        "proteus.core.settings"
       ],
       "permissions": [
         "files",
@@ -882,7 +883,8 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "highlight"
         ]
       },
       "files": [
@@ -901,9 +903,57 @@
         "tests/git_paths.test.lua",
         "tests/git_text.test.lua"
       ],
-      "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
-      "updated": "2026-10-02T17:01:40Z",
+      "commit": "ee411be89453df5e4abed7a512a011b1e1932612",
+      "updated": "2026-10-02T21:42:33Z",
       "versions": [
+        {
+          "version": "1.3.3",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.shell",
+            "proteus.ui.views",
+            "proteus.core.commands"
+          ],
+          "optional": [
+            "proteus.ui.toolbar",
+            "proteus.ui.statusbar",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.core.keys",
+            "proteus.ui.menus",
+            "proteus.ui.tabs",
+            "proteus.code.project"
+          ],
+          "permissions": [
+            "files",
+            "process"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "git_args.lua",
+            "git_blame.lua",
+            "git_graph.lua",
+            "git_html.lua",
+            "git_parse.lua",
+            "git_paths.lua",
+            "git_text.lua",
+            "init.lua",
+            "tests/git.test.lua",
+            "tests/git_args.test.lua",
+            "tests/git_html.test.lua",
+            "tests/git_paths.test.lua",
+            "tests/git_text.test.lua"
+          ],
+          "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
+          "updated": "2026-10-02T17:01:40Z"
+        },
         {
           "version": "1.3.2",
           "depends": [
