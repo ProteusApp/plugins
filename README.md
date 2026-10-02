@@ -52,6 +52,7 @@ A restricted plugin names its services, events, commands and settings after the 
 - No two file paths differ only in case, such as `init.lua` and `INIT.lua`. Windows and macOS would see them as one file.
 - Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines.
 - What `init.lua` declares matches `proteus.json`: name, description, version, `depends`, `optional`, `permissions`, `folders` and `requires`. The marketplace reads `proteus.json` before an install, and Proteus runs what `init.lua` says, so they must agree.
+- `init.lua` writes `permissions` as a list of plain names, such as `permissions = { 'net', 'files' }`, and nothing else changes it. Proteus runs `init.lua` on every start, so a list worked out in code could ask for more later than the reviewer saw. Proteus itself grants no more than you allowed when you installed the plugin, and asks before it grants anything new.
 - Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
 - The Lua passes StyLua and selene with this repository's `stylua.toml` and `selene.toml`, and the plugin's tests pass.
 - A plugin holds up to 200 files and 2 MB, with no file over 512 KB and no folder more than three deep.

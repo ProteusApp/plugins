@@ -190,7 +190,7 @@ The status bar shows the folder's name, and a click on it opens a recent folder.
 
 ## The folder's own setup
 
-A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins, and copies of any app file. It can run code, so it stays off until the user trusts the folder. While it is in use, a **.proteus** item shows in the status bar, and a click on it opens `.proteus/settings.json`. See [A folder's own .proteus setup](proteus/project-folders.md).
+A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins of its own and profiles. It can run code, so it stays off until the user trusts the folder. Each of its plugins asks the user before it gets a permission, and one such as `process` gives full access to the computer. While it is in use, a **.proteus** item shows in the status bar, and a click on it opens `.proteus/settings.json`. See [A folder's own .proteus setup](proteus/project-folders.md).
 
 ## Restricted plugins
 
