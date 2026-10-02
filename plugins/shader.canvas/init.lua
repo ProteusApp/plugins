@@ -1,5 +1,6 @@
 -- shader.canvas: the node editor for shader graphs. Nodes, typed wires, connecting, panning
--- and zooming, frames, reroute points, picking many nodes, copy and paste, and a minimap.
+-- and zooming, frames, reroute points, picking many nodes, copy and paste, made nodes, and a
+-- minimap.
 --
 -- The document in shader.docs is the source of truth. Each node is one element whose inside
 -- is drawn as an HTML string, and draws again only when something it shows changes. Each wire
@@ -14,7 +15,7 @@
 --   view       pan, zoom, where nodes and ports sit, fitting the graph in view
 --   wires      wires, reroute points, and the inputs a dragged wire can go into
 --   frames     frames behind the nodes
---   edit       picking, and every change: add, paste, delete, move, tidy, frames
+--   edit       picking, and every change: add, paste, delete, move, tidy, frames, made nodes
 --   gestures   pointer gestures
 --   commands   the commands and the right-click menu
 --
@@ -34,7 +35,7 @@ local wires_m = require ('wires')
 return {
   name = 'Shader canvas',
   description = 'The node editor for shader graphs: nodes, typed wires, panning and zooming.',
-  version = '1.1.1',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -109,6 +110,12 @@ return {
       local status = ui.span ({ class = 'sg-status' })
       local zoom_label = ui.span ({ class = 'sg-t', text = '100%' })
 
+      -- The catalog as this graph reads it: the nodes it may hold, and the ones made from
+      -- groups of its own nodes.
+      local catalog = {} ---@type table<string, any>
+      for k, v in pairs (core.nodes) do
+        catalog[k] = v
+      end
       local shared = {
         app = app,
         ui = ui,
@@ -116,7 +123,7 @@ return {
         core = core,
         docs = docs,
         commands = commands,
-        catalog = core.nodes,
+        catalog = catalog --[[@as Shader.NodesModule]],
         html = html,
         html_m = html_m,
         refuse = refuse,
@@ -145,6 +152,11 @@ return {
       }
       -- The modules fill in the rest.
       local ctx = shared --[[@as ShaderCanvas.Ctx]]
+      ---@param type_id string
+      ---@return Shader.NodeDef?
+      catalog.get = function (type_id)
+        return core.graph.def (ctx.current (), type_id)
+      end
       ctx.minimap = nc.minimap ({
         ui = ui,
         on_jump = function (x, y)
@@ -167,7 +179,7 @@ return {
         for _, n in ipairs (ctx.current ().nodes) do
           local p = ctx.position (n)
           -- The rows give the size here, so drawing the map measures nothing.
-          local def = core.nodes.get (n.type)
+          local def = ctx.catalog.get (n.type)
           local h = view_m.HEAD_H
             + (def and html.rows (def, n) or 1) * view_m.ROW_H
           boxes[#boxes + 1] =
@@ -243,7 +255,7 @@ return {
         local seen = {} ---@type table<string, boolean>
         for _, n in ipairs (d.nodes) do
           seen[n.id] = true
-          local def = core.nodes.get (n.type)
+          local def = ctx.catalog.get (n.type)
           local el = ctx.elements[n.id]
           if not el then
             el = ui.div ({ class = 'sg-node' })
@@ -251,8 +263,11 @@ return {
             world:insert_before (el, wires_svg)
           end
           local info = def
-            and html.info_of (n, result, linked_map, used_map, errors)
+            and html.info_of (n, result, linked_map, used_map, errors, def)
+          -- A made node draws again when its group is renamed.
           local sig = html.signature (n, info or nil)
+            .. '|'
+            .. (def and def.title or '')
           if ctx.drawn[n.id] ~= sig and ctx.held ~= n.id then
             ctx.drawn[n.id] = sig
             ctx.heights[n.id] = nil
@@ -316,7 +331,7 @@ return {
       local function set_number (id, key, index, text)
         local v = tonumber (text)
         local n = ctx.node (id)
-        local def = n and core.nodes.get (n.type)
+        local def = n and ctx.catalog.get (n.type)
         local port = def and core.nodes.input (def, key)
         if not n or not port or not v then
           ctx.drawn[id] = nil
@@ -338,7 +353,7 @@ return {
       ---@param text string
       local function set_setting (id, key, index, text)
         local n = ctx.node (id)
-        local def = n and core.nodes.get (n.type)
+        local def = n and ctx.catalog.get (n.type)
         if not n or not def then
           return
         end

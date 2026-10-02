@@ -10,6 +10,7 @@ local helpers = require ('shader_helpers') --[[@as Shader.HelpersModule]]
 local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
 local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
+local subgraph = require ('shader_subgraph') --[[@as Shader.SubgraphModule]]
 local types = require ('shader_types') --[[@as Shader.TypesModule]]
 
 -- The uniforms every shader gets, in their WGSL order.
@@ -256,11 +257,10 @@ local function order_from (doc, start, into)
   return order
 end
 
----Compiles a graph. The result always holds shaders that compile, even when the graph has
----problems: nodes with problems are left out, and `errors` says why.
+---Compiles a graph without made nodes.
 ---@param doc Shader.Doc
 ---@return Shader.CompileResult
-function M.compile (doc)
+local function compile_flat (doc)
   local errors = {} ---@type Shader.CompileError[]
   ---@param message string
   ---@param node? string
@@ -722,6 +722,61 @@ function M.compile (doc)
       bindings = bindings,
     },
   }
+  return result
+end
+
+---Compiles a graph. The result always holds shaders that compile, even when the graph has
+---problems: nodes with problems are left out, and `errors` says why. Made nodes are expanded
+---first, and what the result says of their nodes it says of the made node.
+---@param doc Shader.Doc
+---@return Shader.CompileResult
+function M.compile (doc)
+  local flat, expansion = subgraph.expand (doc)
+  local result = compile_flat (flat)
+  if not expansion then
+    return result
+  end
+  local owner = expansion.owner
+  ---@param id string?
+  ---@return string?
+  local function top (id)
+    return id and (owner[id] or id)
+  end
+  for _, e in ipairs (result.errors) do
+    e.node = top (e.node)
+  end
+  for _, p in ipairs ({ result.glsl, result.wgsl }) do
+    for line, id in pairs (p.lines or {}) do
+      p.lines[line] = top (id) --[[@as string]]
+    end
+  end
+  for _, u in ipairs (result.uniforms) do
+    u.node = top (u.node)
+  end
+  for _, c in ipairs (result.glsl.channels or {}) do
+    local seen, list = {}, {} ---@type table<string, boolean>, string[]
+    for _, id in ipairs (c.nodes or {}) do
+      local t = top (id) --[[@as string]]
+      if not seen[t] then
+        seen[t] = true
+        list[#list + 1] = t
+      end
+    end
+    c.nodes = list
+  end
+  -- A made node's ports have the types of the inputs and outputs inside it.
+  for id, ports in pairs (expansion.ports) do
+    local ins, outs = {}, {} ---@type table<string, Shader.Type>, table<string, Shader.Type>
+    for key, targets in pairs (ports.ins) do
+      local t = targets[1]
+      ins[key] = t and (result.types[t.node] or {})[t.input] or nil
+    end
+    for key, o in pairs (ports.outs) do
+      outs[key] = (result.out_types[o.node] or {})[o.output]
+    end
+    result.types[id] = ins
+    result.out_types[id] = outs
+  end
   return result
 end
 

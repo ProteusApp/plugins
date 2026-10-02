@@ -14,7 +14,7 @@
 ---@class ShaderCanvas.Html
 ---@field node_html fun(n: Shader.Node, def: Shader.NodeDef, info: ShaderCanvas.NodeInfo): string, string
 ---@field missing_html fun(n: Shader.Node): string
----@field info_of fun(n: Shader.Node, result: Shader.CompileResult?, linked_map: table<string, table<string, boolean>>, used_map: table<string, table<string, boolean>>, errors: table<string, string>): ShaderCanvas.NodeInfo
+---@field info_of fun(n: Shader.Node, result: Shader.CompileResult?, linked_map: table<string, table<string, boolean>>, used_map: table<string, table<string, boolean>>, errors: table<string, string>, def?: Shader.NodeDef): ShaderCanvas.NodeInfo
 ---@field signature fun(n: Shader.Node, info: ShaderCanvas.NodeInfo?): string
 ---@field rows fun(def: Shader.NodeDef, n: Shader.Node): integer
 
@@ -299,8 +299,9 @@ function M.new (deps)
         .. '.</div>'
     end,
 
-    info_of = function (n, result, linked_map, used_map, errors)
-      local def = catalog.get (n.type)
+    info_of = function (n, result, linked_map, used_map, errors, node_def)
+      -- A made node's def comes from its document, so the caller gives it.
+      local def = node_def or catalog.get (n.type)
       local ins = result and result.types[n.id] or {} ---@type table<string, Shader.Type>
       local outs = result and result.out_types[n.id] or {} ---@type table<string, Shader.Type>
       ---@type ShaderCanvas.NodeInfo

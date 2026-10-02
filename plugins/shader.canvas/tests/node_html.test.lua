@@ -122,3 +122,38 @@ test ('a colour parameter hides its range', function ()
   local text = html.node_html (p, def, html.info_of (p, nil, {}, {}, {}))
   ok (has (text, 'type="color"'))
 end)
+
+test (
+  'a made node shows the ports of its group, with the types inside it',
+  function ()
+    local graph = core_require ('shader_graph') --[[@as Shader.GraphModule]]
+    local subgraph = core_require ('shader_subgraph') --[[@as Shader.SubgraphModule]]
+    local compile = core_require ('shader_compile') --[[@as Shader.CompileModule]]
+    local doc, circle =
+      assert (graph.add_node (graph.new ('Rings'), 'circle', 0, 0))
+    doc = assert (graph.connect (doc, 'n1', 'uv', circle, 'uv'))
+    doc = assert (graph.connect (doc, circle, 'mask', 'n2', 'color'))
+    local made, id = subgraph.make (doc, { circle }, 'Disc <1>')
+    assert (made, id)
+    local n = assert (graph.node (made, id))
+    -- The plain catalog does not know the made node. The graph does.
+    eq (nodes.get (n.type), nil)
+    local def = assert (graph.def (made, n.type))
+    local result = compile.compile (made)
+    local info = html.info_of (
+      n,
+      result,
+      { [id] = { i1 = true } },
+      { [id] = { o1 = true } },
+      {},
+      def
+    )
+    eq (info.ins, { i1 = 'vec2' })
+    eq (info.outs, { o1 = 'float' })
+    local text = html.node_html (n, def, info)
+    ok (has (text, 'Disc &lt;1&gt;'))
+    ok (has (text, 'data-item="' .. id .. '|pin|i1"'))
+    ok (has (text, 'data-item="' .. id .. '|pout|o1"'))
+    eq (html.rows (def, n), 2)
+  end
+)

@@ -2,7 +2,7 @@
 title: Shaders as node graphs
 section: Learning shaders
 order: 313
-keywords: node graph nodes wires canvas add node connect expression node parameter output generated code open as code shader visual shader no code
+keywords: node graph nodes wires canvas add node connect expression node parameter output generated code open as code shader visual shader no code make node subgraph group unpack made node
 ---
 
 # Shaders as node graphs
@@ -88,6 +88,22 @@ A **Parameter** node becomes a uniform. Its value gets a slider in the Preview p
 Some maths has no node of its own. The **Expression** node takes up to four inputs, `a`, `b`, `c` and `d`, and any expression over them, such as `sin(a * 3.0) + b`.
 
 It writes the expression into both languages, so `vec3(` and `vec3f(` both work. Most one-line formulas in this course fit in one.
+
+## Making a node from a group
+
+A part of a graph that does one job, such as a glow from a circle and a palette, can become one node of its own. Pick its nodes, then choose **Make a Node from the Selected Nodes** from the **Graph** menu, or **Make a Node from These** from a right click, and give it a name.
+
+The picked nodes go inside the new node:
+
+- A wire that came into the group from outside becomes one of its inputs. When one wire fed several nodes in the group, it is one input that feeds them all.
+- A wire that left the group becomes one of its outputs. When nothing outside read the group, each output nothing inside reads becomes one.
+- An input with no wire shows a number field, as on any node, and its number goes to the nodes it feeds.
+
+The made node computes exactly what its nodes did. It saves in the graph's file, and **Add Node** lists it under **Made here**, so the graph can use it again. Copy it into another graph, and its nodes go with it. Each made node from the same group shows the same name, which **Rename Made Node** changes for all of them.
+
+To change what is inside, right-click the made node and choose **Unpack**. Its nodes come back where it was, wired as before. A made node can hold other made nodes, and unpacking opens one level.
+
+The Output node cannot go inside a made node. A **Parameter** node can, and its slider works in the Preview, but the value it starts with changes only after unpacking.
 
 ## From a graph to code
 

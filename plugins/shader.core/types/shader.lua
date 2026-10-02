@@ -155,6 +155,43 @@
 ---@field edges Shader.Edge[]
 ---@field canvas? Shader.CanvasData The canvas's frames and reroute points. The compiler never reads it.
 ---@field channels? table<string, Shader.ChannelSource> What each channel shows, by `'0'` to `'3'`.
+---@field subgraphs? table<string, Shader.Subgraph> The groups made nodes come from, by id such as `'s1'`. A made node's type is `'subgraph:s1'`.
+
+---An input of a made node: a wire from outside its group, and the inputs inside it feeds.
+---@class Shader.SubgraphInput
+---@field key string Such as `'i1'`.
+---@field label string
+---@field type Shader.PortType The type of the first input it feeds.
+---@field default? number[] What it reads while nothing is wired in.
+---@field builtin? Shader.Builtin What it reads instead of numbers while unwired.
+---@field color? boolean
+---@field targets { node: string, input: string }[] The inputs inside it feeds.
+
+---An output of a made node: the output of a node inside its group.
+---@class Shader.SubgraphOutput
+---@field key string Such as `'o1'`.
+---@field label string
+---@field type Shader.PortType
+---@field node string
+---@field output string
+
+---The group of nodes a made node stands for. It never changes in place.
+---@class Shader.Subgraph
+---@field name string What the made node is called.
+---@field nodes Shader.Node[] Placed from 0, 0 at the group's top left.
+---@field edges Shader.Edge[] The wires inside the group.
+---@field inputs Shader.SubgraphInput[]
+---@field outputs Shader.SubgraphOutput[]
+
+---Where the nodes of made nodes went when they were expanded before compiling.
+---@class Shader.Expansion
+---@field owner table<string, string> Each node of the expanded graph by the top-level node it came from: itself, or the made node it is inside.
+---@field ports table<string, { ins: table<string, { node: string, input: string }[]>, outs: table<string, { node: string, output: string }> }> Each top-level made node's ports, as inputs and outputs of the expanded graph.
+
+---@class Shader.Placed
+---@field id? string For a plain node: its id after expanding.
+---@field ins? table<string, { node: string, input: string }[]> For a made node.
+---@field outs? table<string, { node: string, output: string }> For a made node.
 
 ---A titled box on the canvas behind nodes. Moving it moves the nodes inside.
 ---@class Shader.Frame
@@ -182,6 +219,7 @@
 ---@field edges Shader.Edge[]
 ---@field frames Shader.Frame[]
 ---@field routes table<string, { x: number, y: number }[]> Reroute points by wire id.
+---@field subgraphs? table<string, Shader.Subgraph> The groups the made nodes among them come from.
 
 ---@class Shader.LayoutField
 ---@field name string
@@ -300,8 +338,16 @@
 ---@field sources fun(names: string[], lang: Shader.Lang): string[]
 
 ---@class Shader.GraphModule
----@field FORMAT integer
+---@field FORMAT integer The newest file format this reads.
+---@field SUBGRAPH string What a made node's type starts with: `'subgraph:'`.
 ---@field copy fun(value: any): any
+---@field with fun(doc: Shader.Doc, fields: { nodes?: Shader.Node[], edges?: Shader.Edge[], name?: string, canvas?: Shader.CanvasData|false, channels?: table<string, Shader.ChannelSource>|false, subgraphs?: table<string, Shader.Subgraph>|false }): Shader.Doc
+---@field subgraph_id fun(type_id: string): string?
+---@field def fun(doc: Shader.Doc, type_id: string): Shader.NodeDef? A node of the catalog, or a made node of this document.
+---@field used_subgraphs fun(doc: Shader.Doc, list: Shader.Node[]): table<string, boolean>
+---@field kept_subgraphs fun(doc: Shader.Doc, list: Shader.Node[]): table<string, Shader.Subgraph>|false
+---@field next_subgraph_id fun(subs: table<string, Shader.Subgraph>): string
+---@field retype fun(list: Shader.Node[], map: table<string, string>): Shader.Node[]
 ---@field node fun(doc: Shader.Doc, id: string): Shader.Node?, integer?
 ---@field edge_into fun(doc: Shader.Doc, to: string, input: string): Shader.Edge?, integer?
 ---@field next_id fun(doc: Shader.Doc): string
@@ -327,6 +373,13 @@
 ---@field copy_nodes fun(doc: Shader.Doc, ids: string[], frame_ids?: string[]): Shader.Fragment
 ---@field paste fun(doc: Shader.Doc, fragment: Shader.Fragment, dx: number, dy: number): Shader.Doc?, string[], string[]
 ---@field insert fun(doc: Shader.Doc, id: string, wire: string): Shader.Doc?
+
+---@class Shader.SubgraphModule
+---@field make fun(doc: Shader.Doc, ids: string[], name?: string): Shader.Doc?, string
+---@field unpack fun(doc: Shader.Doc, id: string): Shader.Doc?, string[]|string
+---@field rename fun(doc: Shader.Doc, sid: string, name: string): Shader.Doc?, string?
+---@field list fun(doc: Shader.Doc): { id: string, type: string, subgraph: Shader.Subgraph }[]
+---@field expand fun(doc: Shader.Doc): Shader.Doc, Shader.Expansion?
 
 ---@class Shader.CompileModule
 ---@field GLSL_VERTEX string
@@ -430,6 +483,7 @@
 ---@field history Shader.HistoryModule
 ---@field examples Shader.ExamplesModule
 ---@field build Shader.BuildModule
+---@field subgraph Shader.SubgraphModule
 
 ---------------------------------------------------------------------------------------------
 -- The plugins around the core
@@ -594,6 +648,10 @@
 ---@field align fun(edge: NodeCanvas.Edge)
 ---@field distribute fun(axis: 'x'|'y')
 ---@field tidy fun()
+---@field make_node fun(name: string): boolean Makes one node from the picked nodes.
+---@field ask_make_node fun() Asks for a name, then makes one node from the picked nodes.
+---@field unpack_node fun(id: string): boolean
+---@field ask_rename_node fun(id: string)
 ---@field add_frame fun(box: NodeCanvas.Box)
 ---@field frame_picked fun()
 ---@field set_frame_title fun(id: string, title: string)

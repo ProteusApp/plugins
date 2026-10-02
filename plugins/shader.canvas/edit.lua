@@ -132,6 +132,18 @@ function M.attach (ctx)
       has_output = has_output or n.type == 'output'
     end
     local items = {} ---@type Proteus.PickItem[]
+    -- The nodes made from groups in this graph come first.
+    for _, made in ipairs (core.subgraph.list (ctx.current ())) do
+      local def = catalog.get (made.type)
+      if def and not (from and #def.inputs == 0) then
+        items[#items + 1] = {
+          label = def.title,
+          detail = 'Made here · ' .. def.description,
+          value = made.type,
+          search = def.title .. ' made',
+        }
+      end
+    end
     for _, def in ipairs (catalog.list) do
       local ok_here = not (def.unique and has_output)
       if from and #def.inputs == 0 then
@@ -154,6 +166,87 @@ function M.attach (ctx)
       placeholder = from and 'Add a node that takes this wire' or 'Add a node',
       on_pick = function (item)
         ctx.add_node (item.value, at, from)
+      end,
+    })
+  end
+
+  -- Made nodes ---------------------------------------------------------------------------------
+
+  ---Makes one node from the picked nodes, called `name`, and picks it.
+  ---@param name string
+  ---@return boolean
+  function ctx.make_node (name)
+    local d, id = core.subgraph.make (ctx.current (), ctx.picked_nodes (), name)
+    if not d then
+      ctx.refuse (id)
+      return false
+    end
+    docs.change (ctx.path, d)
+    ctx.set_picked ({ [id] = true })
+    return true
+  end
+
+  ---Asks for a name, then makes one node from the picked nodes.
+  function ctx.ask_make_node ()
+    if #ctx.picked_nodes () == 0 then
+      ctx.refuse ('Pick the nodes to make a node from.')
+      return
+    end
+    local picker = app.try_use ('picker')
+    if not picker then
+      ctx.make_node ('Made node')
+      return
+    end
+    picker.input ({
+      prompt = 'Name the new node',
+      value = 'Made node',
+      validate = function (text)
+        if not text:find ('%S') then
+          return 'A made node needs a name.'
+        end
+        return nil
+      end,
+      on_submit = function (text)
+        ctx.make_node (text)
+      end,
+    })
+  end
+
+  ---Puts the nodes inside a made node back in its place, and picks them.
+  ---@param id string
+  ---@return boolean
+  function ctx.unpack_node (id)
+    local d, ids = core.subgraph.unpack (ctx.current (), id)
+    if not d then
+      ctx.refuse (tostring (ids))
+      return false
+    end
+    docs.change (ctx.path, d)
+    local picked = {} ---@type table<string, boolean>
+    for _, new_id in
+      ipairs (ids --[[@as string[] ]])
+    do
+      picked[new_id] = true
+    end
+    ctx.set_picked (picked)
+    return true
+  end
+
+  ---Asks for a new name for the group a made node comes from.
+  ---@param id string
+  function ctx.ask_rename_node (id)
+    local n = ctx.node (id)
+    local sid = n and core.graph.subgraph_id (n.type)
+    local def = n and catalog.get (n.type)
+    local picker = app.try_use ('picker')
+    if not sid or not def or not picker then
+      return
+    end
+    picker.input ({
+      prompt = 'Rename every node made from this group',
+      value = def.title,
+      on_submit = function (text)
+        ctx.commit (core.subgraph.rename (ctx.current (), sid, text))
       end,
     })
   end

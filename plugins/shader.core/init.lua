@@ -1,7 +1,7 @@
 -- shader.core: the pure logic of the shader builder, shared with the other shader plugins as
 -- the `shader` service. It has no UI and does no I/O: the node catalog, graph operations,
--- the GLSL and WGSL compiler, code shaders, channels and passes, the file format, builds, undo,
--- and how numbers and colours show in fields.
+-- the GLSL and WGSL compiler, made nodes, code shaders, channels and passes, the file format,
+-- builds, undo, and how numbers and colours show in fields.
 
 local build = require ('shader_build') --[[@as Shader.BuildModule]]
 local compile = require ('shader_compile') --[[@as Shader.CompileModule]]
@@ -15,13 +15,14 @@ local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
 local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 local source = require ('shader_source') --[[@as Shader.SourceModule]]
+local subgraph = require ('shader_subgraph') --[[@as Shader.SubgraphModule]]
 local types = require ('shader_types') --[[@as Shader.TypesModule]]
 
 ---@type Proteus.Plugin
 return {
   name = 'Shader core',
-  description = 'The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.',
-  version = '1.3.1',
+  description = 'The logic behind the shader builder: nodes, graphs, made nodes, the GLSL and WGSL compiler, code shaders and files.',
+  version = '1.4.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)
@@ -40,6 +41,7 @@ return {
       history = history,
       examples = examples,
       build = build,
+      subgraph = subgraph,
     }
     app.provide ('shader', core)
   end,

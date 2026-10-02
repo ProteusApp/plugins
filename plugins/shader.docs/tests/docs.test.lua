@@ -40,6 +40,7 @@ local core = {
   history = core_require ('shader_history'),
   examples = core_require ('shader_examples'),
   build = core_require ('shader_build'),
+  subgraph = core_require ('shader_subgraph'),
 }
 
 local plugin =
