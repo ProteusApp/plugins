@@ -801,6 +801,19 @@ function M.base_args ()
   return { '--literal-pathspecs', '-c', 'core.quotepath=false' }
 end
 
+---The variables a command that reaches a remote runs with. The app has no terminal, so a
+---password or passphrase prompt would wait for ever: Git and ssh fail at once instead, and
+---say why. A `core.sshCommand` of the user's own is left as it is.
+---@param ssh_command? string What `git config core.sshCommand` printed.
+---@return table<string, string>
+function M.remote_env (ssh_command)
+  local env = { GIT_TERMINAL_PROMPT = '0' } ---@type table<string, string>
+  if not ssh_command or trim (ssh_command) == '' then
+    env.GIT_SSH_COMMAND = 'ssh -o BatchMode=yes'
+  end
+  return env
+end
+
 ---Zero bytes separate the entries, so paths come back exactly as they are, with no quoting.
 ---@return string[]
 function M.status_args ()
@@ -921,18 +934,63 @@ function M.commit_args (amend)
   return args
 end
 
----Pushes the current branch, and sets its upstream on `origin` when it has none yet.
+---True when the current branch has an upstream to push to, so a plain `git push` works.
 ---@param st Git.Status
+---@return boolean
+function M.has_upstream (st)
+  return st.upstream ~= nil and not st.gone
+end
+
+---The remote a branch with no upstream is pushed to: the one `branch.<name>.remote` names,
+---or the only remote there is, or `origin` among several. nil and a message when none fits.
+---@param configured? string What `git config branch.<name>.remote` printed.
+---@param remotes string What `git remote` printed, one name a line.
+---@return string? remote
+---@return string? why
+function M.push_remote (configured, remotes)
+  local named = configured and trim (configured) or ''
+  if named ~= '' and named ~= '.' then
+    return named, nil
+  end
+  local names = {} ---@type string[]
+  for _, line in ipairs (lines_of (remotes)) do
+    local name = trim (strip_cr (line))
+    if name ~= '' then
+      names[#names + 1] = name
+    end
+  end
+  if #names == 1 then
+    return names[1], nil
+  end
+  for _, name in ipairs (names) do
+    if name == 'origin' then
+      return name, nil
+    end
+  end
+  if #names == 0 then
+    return nil, 'This repository has no remote to push to.'
+  end
+  return nil,
+    'This branch has no upstream, and the repository has several remotes. Set one with git push -u <remote> <branch>.'
+end
+
+---Pushes the current branch. One with no upstream yet gets it on `remote`, which
+---`push_remote` picks.
+---@param st Git.Status
+---@param remote? string
 ---@return string[]? args
 ---@return string? why A message when it cannot push.
-function M.push_args (st)
+function M.push_args (st, remote)
   if st.detached or not st.branch then
     return nil, 'Switch to a branch before pushing.'
   end
-  if st.upstream and not st.gone then
+  if M.has_upstream (st) then
     return { 'push' }, nil
   end
-  return { 'push', '-u', 'origin', st.branch }, nil
+  if not remote then
+    return nil, 'This repository has no remote to push to.'
+  end
+  return { 'push', '-u', remote, st.branch }, nil
 end
 
 ---------------------------------------------------------------------------------------------

@@ -259,10 +259,12 @@ return {
     -- Running git ---------------------------------------------------------------------------
 
     ---Runs git in the open repository, or in `opts.cwd`. `cb` gets the result, or an error
-    ---text when git could not start. An error inside `cb` is logged, not raised.
+    ---text when git could not start. An error inside `cb` is logged, not raised. The handle
+    ---cancels it, and is nil when git could not start.
     ---@param args string[]
-    ---@param opts? { cwd?: string, stdin?: string }
+    ---@param opts? { cwd?: string, stdin?: string, env?: table<string, string> }
     ---@param cb fun(res: Proteus.RunResult?, err: string?)
+    ---@return Proteus.RunHandle?
     local function git (args, opts, cb)
       local full = m.base_args ()
       for _, a in ipairs (args) do
@@ -277,16 +279,18 @@ return {
           app.error (problem)
         end
       end
-      local started, err = pcall (
+      local started, handle = pcall (
         app.process.run,
         'git',
         full,
-        { cwd = o.cwd or repo, stdin = o.stdin },
+        { cwd = o.cwd or repo, stdin = o.stdin, env = o.env },
         reply
       )
       if not started then
-        reply (nil, tostring (err))
+        reply (nil, tostring (handle))
+        return nil
       end
+      return handle
     end
 
     ---@type fun()
@@ -448,8 +452,10 @@ return {
       and bar.add ({
         id = 'git.busy',
         icon = 'loader-circle',
+        tooltip = 'Click to cancel',
         align = 'right',
         order = 1,
+        command = 'git.cancel',
       })
 
     -- Drawing -------------------------------------------------------------------------------
@@ -1065,6 +1071,61 @@ return {
       end)
     end
 
+    -- The fetch, pull, push or clone running now, which Cancel stops.
+    local remote_run = nil ---@type Proteus.RunHandle?
+    local cancelled = false
+
+    ---Runs a git command that reaches a remote, with no password prompt that could wait for
+    ---ever, and shows it as busy until it ends. `cb` gets nothing when it was cancelled.
+    ---@param label string What the status bar shows, such as `'Pushing…'`.
+    ---@param args string[]
+    ---@param cwd string?
+    ---@param cb fun(res: Proteus.RunResult?, err: string?)
+    local function run_remote (label, args, cwd, cb)
+      busy = label
+      cancelled = false
+      render_bar ()
+      git (
+        { 'config', '--get', 'core.sshCommand' },
+        { cwd = cwd },
+        function (cfg)
+          if cancelled then
+            busy = nil
+            render_bar ()
+            return
+          end
+          local own = cfg and cfg.code == 0 and cfg.stdout or nil
+          remote_run = git (
+            args,
+            { cwd = cwd, env = m.remote_env (own) },
+            function (res, err)
+              remote_run = nil
+              busy = nil
+              render_bar ()
+              if cancelled then
+                tell ('Cancelled.')
+                if repo then
+                  refresh ()
+                end
+                return
+              end
+              cb (res, err)
+            end
+          )
+        end
+      )
+    end
+
+    local function cancel_remote ()
+      if busy == nil then
+        return
+      end
+      cancelled = true
+      if remote_run then
+        remote_run.cancel ()
+      end
+    end
+
     ---@type table<string, { label: string, done: string }>
     local REMOTE = {
       fetch = { label = 'Fetching…', done = 'Fetched.' },
@@ -1072,17 +1133,50 @@ return {
       push = { label = 'Pushing…', done = 'Pushed.' },
     }
 
+    ---Finds the remote a branch with no upstream is pushed to, then calls `cb` with it.
+    ---@param st Git.Status
+    ---@param cb fun(remote: string?)
+    local function find_push_remote (st, cb)
+      if m.has_upstream (st) or not st.branch then
+        cb (nil)
+        return
+      end
+      local key = 'branch.' .. st.branch .. '.remote'
+      git ({ 'config', '--get', key }, nil, function (cfg)
+        git ({ 'remote' }, nil, function (res, err)
+          if not res or res.code ~= 0 then
+            fail (m.error_text (res, err))
+            return
+          end
+          local configured = cfg and cfg.code == 0 and cfg.stdout or nil
+          local name, why = m.push_remote (configured, res.stdout)
+          if not name then
+            fail (why or 'Cannot push now.')
+            return
+          end
+          cb (name)
+        end)
+      end)
+    end
+
     ---Fetch, Pull and Push can take a while, so they run one at a time and show in the status
-    ---bar while they run.
+    ---bar while they run. Clicking it there, or Cancel, stops one.
     ---@param op 'fetch'|'pull'|'push'
-    local function remote (op)
+    ---@param push_remote? string The remote a branch with no upstream goes to.
+    local function remote (op, push_remote)
       local st = status
       if busy or not repo or not st then
         return
       end
       local args = { op }
       if op == 'push' then
-        local push, why = m.push_args (st)
+        if not m.has_upstream (st) and st.branch and not push_remote then
+          find_push_remote (st, function (name)
+            remote ('push', name)
+          end)
+          return
+        end
+        local push, why = m.push_args (st, push_remote)
         if not push then
           fail (why or 'Cannot push now.')
           return
@@ -1090,11 +1184,7 @@ return {
         args = push
       end
       local spec = REMOTE[op]
-      busy = spec.label
-      render_bar ()
-      git (args, nil, function (res, err)
-        busy = nil
-        render_bar ()
+      run_remote (spec.label, args, repo, function (res, err)
         if not res or res.code ~= 0 then
           fail (m.error_text (res, err))
         elseif op == 'pull' then
@@ -1411,15 +1501,12 @@ return {
                 return
               end
               local target = m.join ((parent:gsub ('\\', '/')), name)
-              busy = 'Cloning…'
-              render_bar ()
               tell ('Cloning ' .. name .. '…')
-              git (
+              run_remote (
+                'Cloning…',
                 { 'clone', '--', url, name },
-                { cwd = parent },
+                parent,
                 function (res, run_err)
-                  busy = nil
-                  render_bar ()
                   if not res or res.code ~= 0 then
                     fail (m.error_text (res, run_err))
                     return
@@ -1553,6 +1640,16 @@ return {
       run = function ()
         remote ('push')
       end,
+    })
+    commands.register ({
+      id = 'git.cancel',
+      category = 'Git',
+      title = 'Cancel Fetch, Pull, Push or Clone',
+      icon = 'circle-x',
+      when = function ()
+        return busy ~= nil
+      end,
+      run = cancel_remote,
     })
     commands.register ({
       id = 'git.commit',

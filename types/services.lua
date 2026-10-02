@@ -1287,6 +1287,12 @@ function Project.excluded () end
 ---@class Proteus.RunOptions
 ---@field cwd? string
 ---@field stdin? string Text written to the program before it reads.
+---@field env? table<string, string> Variables added to the app's own environment, such as `{ GIT_TERMINAL_PROMPT = '0' }`.
+---@field timeout? number Milliseconds before the program is stopped. `cb` then gets an error. None when nil.
+
+---A program `app.process.run` is running.
+---@class Proteus.RunHandle
+---@field cancel fun() Stops the program. `cb` gets an error that says it was cancelled. Does nothing once it has ended.
 
 ---@class Proteus.RunResult
 ---@field code integer The exit code. 0 means success for most programs.
@@ -1331,11 +1337,12 @@ function Net.fetch (request, cb) end
 ---@class Proteus.Process
 local Process = {}
 
----Runs a program to completion and reports its output.
+---Runs a program to completion and reports its output. The handle stops it early.
 ---@param program string
 ---@param args string[]
 ---@param opts? Proteus.RunOptions
 ---@param cb fun(result: Proteus.RunResult?, err: string?)
+---@return Proteus.RunHandle
 function Process.run (program, args, opts, cb) end
 
 ---Starts a program that keeps running. It stops when the plugin stops.

@@ -6,7 +6,8 @@ A Git client for any folder that holds a repository. It runs the real `git` prog
 
 - **Changes.** The Changes view lists staged, changed and new files. Stage, unstage or discard a file, or a single hunk in its diff. Git reads each path as a file name, never a pattern, so discarding a file called `*.log` leaves the other `.log` files alone.
 - **Commits.** Write a message and commit, or amend the last commit.
-- **Branches and remotes.** Switch or create a branch, and fetch, pull and push. The status bar shows the branch and the commits to push and to pull.
+- **Branches and remotes.** Switch or create a branch, and fetch, pull and push. The status bar shows the branch and the commits to push and to pull. A branch pushed for the first time goes to the remote its `branch.<name>.remote` setting names, or to the only remote, or to `origin` among several.
+- **No hidden prompts.** Fetch, pull, push and clone never ask for a password or a passphrase on a terminal, since the app has none: Git and ssh fail at once and the error says why. Sign in through a credential helper or an ssh agent instead. A `core.sshCommand` of your own is kept as it is. **Cancel** (or a click on the busy item in the status bar) stops one that is still running.
 - **History.** The History view lists the last 200 commits, and a click shows a commit's diff.
 - **Clone and init.** Clone a repository or start a new one in any folder.
 
