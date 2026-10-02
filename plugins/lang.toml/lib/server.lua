@@ -74,6 +74,7 @@ function M.install (ctx, tool)
         return
       end
       starting = true
+      ctx.schemas.need ()
       tool.locate (function (program)
         starting = false
         if not program then
