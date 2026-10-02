@@ -102,10 +102,16 @@ function M.install (ctx)
         else
           tool.log ('info', 'no Python found, so imports cannot be followed')
         end
+        if ctx.untrusted then
+          tool.log (
+            'info',
+            "the folder's .venv and node_modules wait until you trust the folder (File: Trust This Folder)"
+          )
+        end
         program_module.find (
           app,
           tool,
-          root,
+          not ctx.untrusted and root or nil,
           state.python,
           function (launch, why)
             starting = false

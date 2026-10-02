@@ -52,6 +52,39 @@ function M.serves_headless (major, minor)
   return major > 4 or (major == 4 and minor >= 2)
 end
 
+---A path with `/`, no `/` at the end, and lower case on Windows, which ignores case.
+---@param path string
+---@param os? string
+---@return string
+local function folder_key (path, os)
+  local out = path:gsub ('\\', '/'):gsub ('(.)/+$', '%1')
+  if os == 'windows' then
+    out = out:lower ()
+  end
+  return out
+end
+
+---True when the plugin may start Godot on the project at `root`. Godot runs a project's tool
+---scripts when it opens it, so in the Code Editor the project must be inside the open folder,
+---and the user must trust that folder. Without a folder open there is nothing to trust, and
+---the user turned `gdscript.start_godot` on.
+---@param root string The folder that holds `project.godot`.
+---@param folder? string The folder open in the Code Editor.
+---@param trusted boolean True when the user trusts it.
+---@param os? string
+---@return boolean
+function M.may_start (root, folder, trusted, os)
+  if not folder then
+    return true
+  end
+  if not trusted then
+    return false
+  end
+  local f = folder_key (folder, os)
+  local r = folder_key (root, os)
+  return r == f or r:sub (1, #f + 1) == f .. '/'
+end
+
 ---The arguments that open a project in the Godot editor, with no window, and its language
 ---server on a port.
 ---@param root string The folder that holds `project.godot`.

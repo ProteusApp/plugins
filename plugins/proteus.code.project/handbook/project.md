@@ -2,7 +2,7 @@
 title: Project
 section: Editor and languages
 order: 87
-keywords: project folder open folder root name recent forget files relative absolute excluded pick close code:disk_changed code:disk_renamed code:search_folder disk changes code editor workspace folder gitignore project.exclude project.reopen
+keywords: project folder open folder root name recent forget files relative absolute excluded trusted ask_trust trust pick close code:disk_changed code:disk_renamed code:search_folder disk changes code editor workspace folder gitignore project.exclude project.reopen
 ---
 
 # Project
@@ -87,6 +87,20 @@ for _, name in ipairs (app.use ('project').excluded ()) do
 end
 app.log (skip.node_modules and 'node_modules is skipped' or 'searching all')
 ```
+
+## `project.trusted` and `project.ask_trust`
+
+A folder from somewhere else can run programs of its own: its `.proteus` files, its Git settings, the build scripts of its crates. So nothing in it runs until the user trusts the folder. `project.trusted ()` returns true once they have. `project.ask_trust (reason)` asks them, naming what waits, such as `'Git'`. Trusting reloads the window, so every plugin starts again and reads `trusted` once.
+
+```lua
+local project = app.use ('project')
+if project.root () and not project.trusted () then
+  app.log ('The linter waits until the folder is trusted.')
+  project.ask_trust ('The linter')
+end
+```
+
+`app.kernel.project ().trusted` says the same, for a plugin that runs without the `project` service. See [A folder's own .proteus setup](proteus/project-folders.md).
 
 ## Opening and closing folders
 
@@ -183,14 +197,14 @@ All three events carry full paths on disk, so a restricted plugin hears them onl
 | `project.close` | | **File > Close Folder** |
 | `project.reveal` | | Shows the folder in the system file manager. |
 | `project.copy_path` | | Copies the folder's path. |
-| `project.trust` | | Trusts the folder's `.proteus` files and reloads. |
-| `project.untrust` | | Stops using the folder's `.proteus` files and reloads. |
+| `project.trust` | | **File: Trust This Folder**. Trusts the folder and reloads, so its `.proteus` files, Git and build scripts run. |
+| `project.untrust` | | **File: Stop Trusting This Folder**. Takes the trust back and reloads. |
 
 The status bar shows the folder's name, and a click on it opens a recent folder. The window's title names the folder too.
 
 ## The folder's own setup
 
-A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins, and copies of any app file. It can run code, so it stays off until the user trusts the folder. While it is in use, a **.proteus** item shows in the status bar, and a click on it opens `.proteus/settings.json`. See [A folder's own .proteus setup](proteus/project-folders.md).
+A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins of its own and profiles. It can run code, so it stays off until the user trusts the folder. Each of its plugins asks the user before it gets a permission, and one such as `process` gives full access to the computer. While it is in use, a **.proteus** item shows in the status bar, and a click on it opens `.proteus/settings.json`. See [A folder's own .proteus setup](proteus/project-folders.md).
 
 ## Restricted plugins
 
