@@ -7,6 +7,7 @@ A file tree of the folder open in the Code Editor, in the left dock (**Ctrl+Shif
 - **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste files. **F2** renames, and typed letters jump to a name.
 - A letter after a name shows what Git sees, from `proteus.git`. A dot marks a file with unsaved edits.
 - **Find in Folder…** in the right-click menu opens Search, from `proteus.code.search`, kept to that folder.
+- **Open in Terminal** in a folder's right-click menu opens a terminal there, from `proteus.terminal`.
 
 When it moves a file, open tabs follow it, and it sends `code:disk_renamed` with the old and the new full path. **Find in Folder** sends `code:search_folder` with the folder's full path. Both need `files` to hear.
 
