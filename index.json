@@ -1899,7 +1899,7 @@
       "id": "proteus.sheet",
       "name": "Sheet",
       "description": "A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1933,8 +1933,13 @@
         "README.md",
         "init.lua",
         "sheet_book.lua",
+        "sheet_calendar.lua",
         "sheet_chart.lua",
         "sheet_ctl.lua",
+        "sheet_fn_arrays.lua",
+        "sheet_fn_finance.lua",
+        "sheet_fn_more.lua",
+        "sheet_fn_stats.lua",
         "sheet_format.lua",
         "sheet_formula.lua",
         "sheet_grid.lua",
@@ -1964,8 +1969,8 @@
         "tests/sheet_panels.test.lua",
         "tests/sheet_xlsx.test.lua"
       ],
-      "commit": "765c298646b2f0204a8c3751f157977f7dd79945",
-      "updated": "2026-10-02T17:12:23Z"
+      "commit": "4136d05ee7730b2ff2c331807a2ceefa75bf83ec",
+      "updated": "2026-10-02T17:14:57Z"
     },
     {
       "id": "lang.shell",
