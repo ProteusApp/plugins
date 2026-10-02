@@ -616,8 +616,9 @@ local function compile_flat (doc)
   end
   g[#g + 1] = ''
   g[#g + 1] = 'void main() {'
-  g[#g + 1] = '  vec2 fragCoord = gl_FragCoord.xy;'
-  g[#g + 1] = '  vec2 uv = fragCoord / u_resolution;'
+  -- The place comes from the UV the vertex stage passes, so the shader also runs on a mesh.
+  g[#g + 1] = '  vec2 uv = v_uv;'
+  g[#g + 1] = '  vec2 fragCoord = uv * u_resolution;'
   g[#g + 1] =
     '  vec2 suv = (fragCoord - 0.5 * u_resolution) / u_resolution.y + 0.5;'
   for _, s in ipairs (stmts.glsl) do
@@ -675,11 +676,9 @@ local function compile_flat (doc)
   end
   w[#w + 1] = ''
   w[#w + 1] = '@fragment'
-  w[#w + 1] =
-    'fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {'
-  w[#w + 1] =
-    '  let fragCoord = vec2f(position.x, u.resolution.y - position.y);'
-  w[#w + 1] = '  let uv = fragCoord / u.resolution;'
+  w[#w + 1] = 'fn fs_main(frag_in: VertexOut) -> @location(0) vec4f {'
+  w[#w + 1] = '  let uv = frag_in.uv;'
+  w[#w + 1] = '  let fragCoord = uv * u.resolution;'
   w[#w + 1] =
     '  let suv = (fragCoord - 0.5 * u.resolution) / u.resolution.y + 0.5;'
   for _, s in ipairs (stmts.wgsl) do
@@ -714,6 +713,7 @@ local function compile_flat (doc)
       lines = glsl_lines,
       offset = 0,
       channels = channels,
+      surface = true,
     },
     wgsl = {
       language = 'wgsl',
@@ -726,6 +726,7 @@ local function compile_flat (doc)
       offset = 0,
       channels = channels,
       bindings = bindings,
+      surface = true,
     },
     ir = {
       name = doc.name or 'Untitled',

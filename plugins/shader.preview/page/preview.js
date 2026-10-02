@@ -10,6 +10,12 @@
 // for itself and the buffers after it. When the shader in front is a buffer, the page shows
 // that buffer's picture instead of the image.
 //
+// A view other than flat puts the shader on a mesh: a sphere, a cube, a plane or a torus, which
+// a drag turns and the wheel brings nearer. A program marked `surface` reads its place from the
+// UV the vertex stage passes, so it runs as the fragment shader of the mesh's surface, with
+// u_resolution a square the size of the canvas's shorter side. Any other program draws into a
+// square picture first, and the mesh shows that picture.
+//
 // Messages from the plugin:
 //   { type: 'run', language, show, passes }   passes: { id, program } in the order they draw,
 //                                             program: language, source, vertex, entries,
@@ -17,6 +23,7 @@
 //                                             channel with its index, names and source
 //   { type: 'uniform', key, value }           a new value for one uniform of the pass shown
 //   { type: 'play' } { type: 'pause' } { type: 'restart' } { type: 'scale', scale }
+//   { type: 'view', shape }                   'flat', 'sphere', 'cube', 'plane' or 'torus'
 // Files: the plugin sends each image a channel shows with `send_file`, tagged with its grant.
 // Messages to the plugin:
 //   { type: 'status', ok, language, errors }   after each compile, each error with its pass
@@ -29,6 +36,8 @@
   // GPUBufferUsage and GPUTextureUsage flags, spelled out so the page works where the globals
   // are missing.
   const BUFFER_COPY_DST = 0x08;
+  const BUFFER_INDEX = 0x10;
+  const BUFFER_VERTEX = 0x20;
   const BUFFER_UNIFORM = 0x40;
   const TEXTURE_COPY_DST = 0x02;
   const TEXTURE_BINDING = 0x04;
@@ -86,6 +95,142 @@
   let freshBuffers = true;
 
   const canvas = () => (language === 'glsl' ? glCanvas : gpuCanvas);
+
+  // Meshes ----------------------------------------------------------------------------------
+
+  const SHAPES = new Set(['flat', 'sphere', 'cube', 'plane', 'torus']);
+  let shape = 'flat';
+  const ORBIT = { yaw: 0.6, pitch: 0.35, distance: 3.4 };
+  const orbit = { ...ORBIT };
+  const drag = { on: false, x: 0, y: 0 };
+  // The picture a program that is not a surface draws first, by this id among the buffers.
+  const PICTURE = '__picture';
+
+  /** A grid of vertices from a function of u and v, each position, normal and UV. */
+  function grid(cols, rows, at) {
+    const data = [];
+    const index = [];
+    for (let j = 0; j <= rows; j++) {
+      for (let i = 0; i <= cols; i++) {
+        const u = i / cols;
+        const v = j / rows;
+        data.push(...at(u, v), u, v);
+      }
+    }
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const a = j * (cols + 1) + i;
+        const c = a + cols + 1;
+        index.push(a, a + 1, c + 1, a, c + 1, c);
+      }
+    }
+    return { data, index };
+  }
+
+  /** Grids joined into one mesh. */
+  function join(parts) {
+    const data = [];
+    const index = [];
+    for (const p of parts) {
+      const base = data.length / 8;
+      data.push(...p.data);
+      for (const i of p.index) index.push(base + i);
+    }
+    return { data: new Float32Array(data), index: new Uint32Array(index) };
+  }
+
+  // Seen from the front, each surface's u runs to the right and its v up.
+  function shapeData(name) {
+    if (name === 'sphere') {
+      return join([
+        grid(96, 48, (u, v) => {
+          const th = v * Math.PI;
+          const ph = u * 2 * Math.PI;
+          const x = -Math.cos(ph) * Math.sin(th);
+          const y = -Math.cos(th);
+          const z = Math.sin(ph) * Math.sin(th);
+          return [x, y, z, x, y, z];
+        }),
+      ]);
+    }
+    if (name === 'torus') {
+      return join([
+        grid(96, 48, (u, v) => {
+          const ph = u * 2 * Math.PI;
+          const t = v * 2 * Math.PI + Math.PI;
+          const dx = -Math.cos(ph);
+          const dz = Math.sin(ph);
+          const nx = dx * Math.cos(t);
+          const ny = Math.sin(t);
+          const nz = dz * Math.cos(t);
+          return [dx * 0.75 + nx * 0.32, ny * 0.32, dz * 0.75 + nz * 0.32, nx, ny, nz];
+        }),
+      ]);
+    }
+    if (name === 'cube') {
+      const r = 0.72;
+      const faces = [
+        [[-1, -1, 1], [2, 0, 0], [0, 2, 0], [0, 0, 1]],
+        [[1, -1, -1], [-2, 0, 0], [0, 2, 0], [0, 0, -1]],
+        [[1, -1, 1], [0, 0, -2], [0, 2, 0], [1, 0, 0]],
+        [[-1, -1, -1], [0, 0, 2], [0, 2, 0], [-1, 0, 0]],
+        [[-1, 1, 1], [2, 0, 0], [0, 0, -2], [0, 1, 0]],
+        [[-1, -1, -1], [2, 0, 0], [0, 0, 2], [0, -1, 0]],
+      ];
+      return join(
+        faces.map(([o, a, b, n]) =>
+          grid(1, 1, (u, v) => [
+            (o[0] + a[0] * u + b[0] * v) * r,
+            (o[1] + a[1] * u + b[1] * v) * r,
+            (o[2] + a[2] * u + b[2] * v) * r,
+            ...n,
+          ]),
+        ),
+      );
+    }
+    return join([grid(1, 1, (u, v) => [(u - 0.5) * 2, (v - 0.5) * 2, 0, 0, 0, 1])]);
+  }
+
+  /** What the camera sees as clip space, column by column. WebGPU's depth runs from 0. */
+  function meshMatrix(w, h, zeroToOne) {
+    const near = 0.1;
+    const far = 50;
+    const f = 1 / Math.tan(Math.PI / 8);
+    const p = new Float32Array(16);
+    p[0] = f / Math.max(1e-6, w / h);
+    p[5] = f;
+    p[11] = -1;
+    if (zeroToOne) {
+      p[10] = far / (near - far);
+      p[14] = (near * far) / (near - far);
+    } else {
+      p[10] = (far + near) / (near - far);
+      p[14] = (2 * far * near) / (near - far);
+    }
+    const { yaw, pitch, distance } = orbit;
+    const eye = [distance * Math.cos(pitch) * Math.sin(yaw), distance * Math.sin(pitch), distance * Math.cos(pitch) * Math.cos(yaw)];
+    const len = (v) => Math.hypot(v[0], v[1], v[2]) || 1;
+    const z = eye.map((c) => c / len(eye));
+    const xr = [z[2], 0, -z[0]];
+    const x = xr.map((c) => c / len(xr));
+    const y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const v = new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
+    const out = new Float32Array(16);
+    for (let c = 0; c < 4; c++) {
+      for (let r = 0; r < 4; r++) {
+        let sum = 0;
+        for (let k = 0; k < 4; k++) sum += p[k * 4 + r] * v[c * 4 + k];
+        out[c * 4 + r] = sum;
+      }
+    }
+    return out;
+  }
+
+  /** How the image pass runs now: on the canvas, as a mesh's surface, or as a mesh's picture. */
+  const modeOf = (pass) => (shape === 'flat' || pass.id !== 'image' ? 'flat' : pass.program.surface ? 'surface' : 'picture');
+  /** The side of the square a mesh's surface counts its pixels in. */
+  const squareOf = (w, h) => Math.max(1, Math.min(w, h, 4096));
 
   function report(status) {
     proteus.post({ type: 'status', ok: status.ok, language: status.language, errors: status.errors });
@@ -237,6 +382,17 @@ uniform highp sampler2D picture;
 in vec2 v_uv;
 out vec4 color;
 void main() { color = texture(picture, v_uv); }`;
+  // A mesh: its place from the camera, and its UV for the fragment shader.
+  const GL_MESH_VERTEX = `#version 300 es
+layout(location = 0) in vec3 proteus_position;
+layout(location = 1) in vec3 proteus_normal;
+layout(location = 2) in vec2 proteus_uv;
+uniform mat4 proteus_mvp;
+out vec2 v_uv;
+void main() {
+  v_uv = proteus_uv;
+  gl_Position = proteus_mvp * vec4(proteus_position, 1.0);
+}`;
 
   function glInit() {
     if (glState) return glState;
@@ -259,6 +415,8 @@ void main() { color = texture(picture, v_uv); }`;
       textures: new Map(),
       samplers: new Map(),
       copy: null,
+      meshes: new Map(),
+      meshCopy: null,
     };
     return glState;
   }
@@ -332,8 +490,10 @@ void main() { color = texture(picture, v_uv); }`;
     const errors = [];
     const made = [];
     for (const pass of run.passes) {
-      const p = glMakeProgram(gl, pass.program.vertex || GL_VERTEX, pass.program.source || '', pass.id, errors);
-      if (p) made.push({ ...pass, gl: p });
+      const mode = modeOf(pass);
+      const vertex = mode === 'surface' ? GL_MESH_VERTEX : pass.program.vertex || GL_VERTEX;
+      const p = glMakeProgram(gl, vertex, pass.program.source || '', pass.id, errors);
+      if (p) made.push({ ...pass, gl: p, mode });
     }
     const ok = made.length === run.passes.length;
     if (ok) {
@@ -503,23 +663,89 @@ void main() { color = texture(picture, v_uv); }`;
     return sizes;
   }
 
-  function glRunPass(s, pass, w, h, target) {
+  /** The vertex array of the shape shown now, made once for each shape. */
+  function glMesh(s) {
+    let m = s.meshes.get(shape);
+    if (m) return m;
+    const { gl } = s;
+    const { data, index } = shapeData(shape);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    for (const [loc, size, offset] of [
+      [0, 3, 0],
+      [1, 3, 12],
+      [2, 2, 24],
+    ]) {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 32, offset);
+    }
+    const ibo = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, index, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    m = { vao, count: index.length };
+    s.meshes.set(shape, m);
+    return m;
+  }
+
+  /** Draws the mesh with the program in use, after a clear that keeps depth. */
+  function glDrawMesh(s, prog, mvp) {
+    const { gl } = s;
+    const u = prog.uniforms.get('proteus_mvp');
+    if (u) gl.uniformMatrix4fv(u.loc, false, mvp);
+    const m = glMesh(s);
+    gl.enable(gl.DEPTH_TEST);
+    gl.bindVertexArray(m.vao);
+    gl.drawElements(gl.TRIANGLES, m.count, gl.UNSIGNED_INT, 0);
+    gl.disable(gl.DEPTH_TEST);
+  }
+
+  /** Runs a pass on the canvas or into a target. With `mesh`, it colours the mesh's surface. */
+  function glRunPass(s, pass, w, h, target, mesh) {
     const { gl } = s;
     const prog = pass.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
     gl.viewport(0, 0, w, h);
     gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | (mesh ? gl.DEPTH_BUFFER_BIT : 0));
     gl.useProgram(prog.program);
     const sizes = glBindChannels(s, pass, prog, w, h);
+    // On a mesh, the shader counts its pixels in a square.
+    const rw = mesh ? mesh.size : w;
+    const rh = mesh ? mesh.size : h;
     for (const [name, u] of prog.uniforms) {
-      if (u.type === gl.SAMPLER_2D) continue;
-      const b = BUILTINS.has(name) ? builtin(name, w, h, sizes) : undefined;
+      if (u.type === gl.SAMPLER_2D || name === 'proteus_mvp') continue;
+      const b = BUILTINS.has(name) ? builtin(name, rw, rh, sizes) : undefined;
       const v = b ?? valueOf(pass, name, true);
       if (v) glSet(gl, u, v);
     }
+    if (mesh) {
+      glDrawMesh(s, prog, mesh.mvp);
+      return;
+    }
     gl.bindVertexArray(s.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /** Shows a picture on the mesh. */
+  function glShowMesh(s, tex, w, h, mvp) {
+    const { gl } = s;
+    if (!s.meshCopy) s.meshCopy = glMakeProgram(gl, GL_MESH_VERTEX, GL_COPY, 'show', []);
+    if (!s.meshCopy) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(s.meshCopy.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.bindSampler(0, glSampler(s, { kind: 'buffer' }));
+    const u = s.meshCopy.uniforms.get('picture');
+    if (u) gl.uniform1i(u.loc, 0);
+    glDrawMesh(s, s.meshCopy, mvp);
   }
 
   function glShowBuffer(s, b, w, h) {
@@ -545,8 +771,17 @@ void main() { color = texture(picture, v_uv); }`;
     if (!s || !s.set) return;
     const [w, h] = size();
     const runBuffers = advance || freshBuffers;
+    const square = squareOf(w, h);
+    const mvp = shape === 'flat' ? null : meshMatrix(w, h, false);
     for (const pass of s.set.passes) {
-      if (pass.id === 'image') {
+      if (pass.id === 'image' && mvp && pass.mode === 'surface') {
+        glRunPass(s, pass, w, h, null, { mvp, size: square });
+      } else if (pass.id === 'image' && mvp) {
+        const b = glBuffer(s, PICTURE, square, square);
+        glRunPass(s, pass, square, square, b.back);
+        [b.front, b.back] = [b.back, b.front];
+        glShowMesh(s, b.front.tex, w, h, mvp);
+      } else if (pass.id === 'image') {
         glRunPass(s, pass, w, h, null);
       } else {
         const b = glBuffer(s, pass.id, w, h);
@@ -558,7 +793,8 @@ void main() { color = texture(picture, v_uv); }`;
     if (runBuffers) freshBuffers = false;
     if (s.set.show !== 'image') {
       const b = s.buffers.get(s.set.show);
-      if (b) glShowBuffer(s, b, w, h);
+      if (b && mvp) glShowMesh(s, b.front.tex, w, h, mvp);
+      else if (b) glShowBuffer(s, b, w, h);
     }
   }
 
@@ -600,6 +836,52 @@ fn vs_copy(@builtin(vertex_index) index: u32) -> CopyOut {
 fn fs_copy(input: CopyOut) -> @location(0) vec4f {
   return textureSample(picture, picture_sampler, input.uv);
 }`;
+
+  // A mesh's vertex stage, added to a graph's module so its fragment shader colours the mesh.
+  const GPU_MESH_GROUP = 2;
+  const GPU_MESH_VERTEX = `
+struct ProteusMesh {
+  mvp: mat4x4f,
+}
+@group(${GPU_MESH_GROUP}) @binding(0) var<uniform> proteus_mesh: ProteusMesh;
+@vertex
+fn proteus_mesh_vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f) -> VertexOut {
+  var result: VertexOut;
+  result.position = proteus_mesh.mvp * vec4f(position, 1.0);
+  result.uv = uv;
+  return result;
+}`;
+  // A picture on a mesh. A picture's rows count from its top, so the y of the UV turns over.
+  const GPU_MESH_COPY = `
+struct MeshOut {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+}
+@group(0) @binding(0) var<uniform> mvp: mat4x4f;
+@group(0) @binding(1) var picture: texture_2d<f32>;
+@group(0) @binding(2) var picture_sampler: sampler;
+@vertex
+fn vs_mesh(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f) -> MeshOut {
+  var result: MeshOut;
+  result.position = mvp * vec4f(position, 1.0);
+  result.uv = uv;
+  return result;
+}
+@fragment
+fn fs_mesh(input: MeshOut) -> @location(0) vec4f {
+  return textureSample(picture, picture_sampler, vec2f(input.uv.x, 1.0 - input.uv.y));
+}`;
+  const GPU_MESH_BUFFERS = [
+    {
+      arrayStride: 32,
+      attributes: [
+        { shaderLocation: 0, offset: 0, format: 'float32x3' },
+        { shaderLocation: 1, offset: 12, format: 'float32x3' },
+        { shaderLocation: 2, offset: 24, format: 'float32x2' },
+      ],
+    },
+  ];
+  const GPU_DEPTH = { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'less' };
 
   async function gpuInit() {
     if (gpuState) return gpuState;
@@ -650,6 +932,10 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
           textures: new Map(),
           samplers: new Map(),
           copy: null,
+          meshes: new Map(),
+          meshCopy: null,
+          meshUniform: device.createBuffer({ size: 64, usage: BUFFER_UNIFORM | BUFFER_COPY_DST }),
+          depth: null,
         };
         return gpuState;
       })().catch((err) => {
@@ -780,8 +1066,11 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
   async function gpuMakePass(s, pass, ticket, errors) {
     const { device } = s;
     const program = pass.program;
+    const mode = modeOf(pass);
     device.pushErrorScope('validation');
-    const module = device.createShaderModule({ code: program.source || '' });
+    // On a mesh, a graph's module gets a vertex stage for the mesh after its own lines.
+    const code = (program.source || '') + (mode === 'surface' ? `\n${GPU_MESH_VERTEX}\n` : '');
+    const module = device.createShaderModule({ code });
     const info = await module.getCompilationInfo();
     const mine = [];
     for (const m of info.messages) {
@@ -800,15 +1089,19 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     device.pushErrorScope('validation');
     let pipeline = null;
     try {
+      const surface = mode === 'surface';
       pipeline = await device.createRenderPipelineAsync({
         layout: 'auto',
-        vertex: { module, entryPoint: program.vertex_entry || 'vs_main' },
+        vertex: surface
+          ? { module, entryPoint: 'proteus_mesh_vs', buffers: GPU_MESH_BUFFERS }
+          : { module, entryPoint: program.vertex_entry || 'vs_main' },
         fragment: {
           module,
           entryPoint: program.fragment_entry || 'fs_main',
-          targets: [{ format: pass.id === 'image' ? s.format : s.bufferFormat }],
+          targets: [{ format: pass.id === 'image' && mode !== 'picture' ? s.format : s.bufferFormat }],
         },
         primitive: { topology: 'triangle-list' },
+        depthStencil: surface ? GPU_DEPTH : undefined,
       });
     } catch (err) {
       errors.push({ message: String(err?.message ?? err), stage: 'pipeline', pass: pass.id, severity: 'error' });
@@ -819,7 +1112,7 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     const fields = list(program.layout?.fields);
     const bytes = Math.max(16, Math.ceil((program.layout?.size ?? 16) / 16) * 16);
     const uniformBuffer = fields.length > 0 ? device.createBuffer({ size: bytes, usage: BUFFER_UNIFORM | BUFFER_COPY_DST }) : null;
-    const made = { ...pass, gpu: { pipeline, uniformBuffer, data: new ArrayBuffer(bytes), fields } };
+    const made = { ...pass, mode, gpu: { pipeline, uniformBuffer, data: new ArrayBuffer(bytes), fields } };
     // Binding once now finds a resource the module reads that the page does not give it.
     device.pushErrorScope('validation');
     try {
@@ -881,9 +1174,66 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     s.device.queue.writeBuffer(g.uniformBuffer, 0, g.data);
   }
 
-  function gpuRunPass(s, encoder, pass, w, h, view) {
-    gpuFillUniforms(s, pass, w, h);
+  /** The vertex and index buffers of the shape shown now, made once for each shape. */
+  function gpuMesh(s) {
+    let m = s.meshes.get(shape);
+    if (m) return m;
+    const { data, index } = shapeData(shape);
+    const vertices = s.device.createBuffer({ size: data.byteLength, usage: BUFFER_VERTEX | BUFFER_COPY_DST });
+    s.device.queue.writeBuffer(vertices, 0, data);
+    const indices = s.device.createBuffer({ size: index.byteLength, usage: BUFFER_INDEX | BUFFER_COPY_DST });
+    s.device.queue.writeBuffer(indices, 0, index);
+    m = { vertices, indices, count: index.length };
+    s.meshes.set(shape, m);
+    return m;
+  }
+
+  /** The depth texture at the canvas's size. */
+  function gpuDepth(s, w, h) {
+    if (s.depth && s.depth.w === w && s.depth.h === h) return s.depth.view;
+    s.depth?.texture.destroy();
+    const texture = s.device.createTexture({ size: [w, h], format: GPU_DEPTH.format, usage: TEXTURE_RENDER });
+    s.depth = { w, h, texture, view: texture.createView() };
+    return s.depth.view;
+  }
+
+  /** A render pass that draws the mesh into the canvas, after its bind groups are set. */
+  function gpuMeshPass(s, encoder, view, w, h, pipeline, groups) {
+    const rp = encoder.beginRenderPass({
+      colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+      depthStencilAttachment: { view: gpuDepth(s, w, h), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    rp.setPipeline(pipeline);
+    // An auto layout has a place for every group up to the highest. One the code leaves empty
+    // still needs a bind group.
+    const set = new Set(groups.map((g) => g.group));
+    const top = Math.max(-1, ...set);
+    for (let g = 0; g <= top; g++) {
+      if (!set.has(g)) rp.setBindGroup(g, s.device.createBindGroup({ layout: pipeline.getBindGroupLayout(g), entries: [] }));
+    }
+    for (const { group, bindGroup } of groups) rp.setBindGroup(group, bindGroup);
+    const m = gpuMesh(s);
+    rp.setVertexBuffer(0, m.vertices);
+    rp.setIndexBuffer(m.indices, 'uint32');
+    rp.drawIndexed(m.count);
+    rp.end();
+  }
+
+  /** Runs a pass on the canvas or into a picture. With `mesh`, it colours the mesh's surface. */
+  function gpuRunPass(s, encoder, pass, w, h, view, mesh) {
+    gpuFillUniforms(s, pass, mesh ? mesh.size : w, mesh ? mesh.size : h);
     const groups = gpuBindGroups(s, pass, pass.gpu.uniformBuffer);
+    if (mesh) {
+      groups.push({
+        group: GPU_MESH_GROUP,
+        bindGroup: s.device.createBindGroup({
+          layout: pass.gpu.pipeline.getBindGroupLayout(GPU_MESH_GROUP),
+          entries: [{ binding: 0, resource: { buffer: s.meshUniform } }],
+        }),
+      });
+      gpuMeshPass(s, encoder, view, w, h, pass.gpu.pipeline, groups);
+      return;
+    }
     const rp = encoder.beginRenderPass({
       colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
     });
@@ -891,6 +1241,29 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     for (const { group, bindGroup } of groups) rp.setBindGroup(group, bindGroup);
     rp.draw(3);
     rp.end();
+  }
+
+  /** Shows a picture on the mesh. */
+  function gpuShowMesh(s, encoder, picture, view, w, h) {
+    if (!s.meshCopy) {
+      const module = s.device.createShaderModule({ code: GPU_MESH_COPY });
+      s.meshCopy = s.device.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module, entryPoint: 'vs_mesh', buffers: GPU_MESH_BUFFERS },
+        fragment: { module, entryPoint: 'fs_mesh', targets: [{ format: s.format }] },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: GPU_DEPTH,
+      });
+    }
+    const bindGroup = s.device.createBindGroup({
+      layout: s.meshCopy.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: s.meshUniform } },
+        { binding: 1, resource: picture },
+        { binding: 2, resource: gpuSampler(s, { kind: 'buffer' }) },
+      ],
+    });
+    gpuMeshPass(s, encoder, view, w, h, s.meshCopy, [{ group: 0, bindGroup }]);
   }
 
   function gpuShowBuffer(s, encoder, b, view) {
@@ -926,8 +1299,18 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     const runBuffers = advance || freshBuffers;
     const encoder = s.device.createCommandEncoder();
     const screen = s.context.getCurrentTexture().createView();
+    const square = squareOf(w, h);
+    const mesh = shape !== 'flat';
+    if (mesh) s.device.queue.writeBuffer(s.meshUniform, 0, meshMatrix(w, h, true));
     for (const pass of s.set.passes) {
-      if (pass.id === 'image') {
+      if (pass.id === 'image' && pass.mode === 'surface') {
+        gpuRunPass(s, encoder, pass, w, h, screen, { size: square });
+      } else if (pass.id === 'image' && pass.mode === 'picture') {
+        const b = gpuBuffer(s, PICTURE, square, square);
+        gpuRunPass(s, encoder, pass, square, square, b.back.view);
+        [b.front, b.back] = [b.back, b.front];
+        gpuShowMesh(s, encoder, b.front.view, screen, w, h);
+      } else if (pass.id === 'image') {
         gpuRunPass(s, encoder, pass, w, h, screen);
       } else {
         const b = gpuBuffer(s, pass.id, w, h);
@@ -939,7 +1322,8 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     if (runBuffers) freshBuffers = false;
     if (s.set.show !== 'image') {
       const b = s.buffers.get(s.set.show);
-      if (b) gpuShowBuffer(s, encoder, b, screen);
+      if (b && mesh) gpuShowMesh(s, encoder, b.front.view, screen, w, h);
+      else if (b) gpuShowBuffer(s, encoder, b, screen);
     }
     s.device.queue.submit([encoder.finish()]);
   }
@@ -1041,22 +1425,53 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
     const h = Math.max(1, document.body.clientHeight);
     return [(ev.clientX / w) * c.width, ((h - ev.clientY) / h) * c.height];
   };
+  // On a mesh, a drag turns the camera around it instead.
   document.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
+    if (shape !== 'flat') {
+      Object.assign(drag, { on: true, x: ev.clientX, y: ev.clientY });
+      document.body.setPointerCapture?.(ev.pointerId);
+      return;
+    }
     const [x, y] = at(ev);
     Object.assign(mouse, { x, y, down: true, clickX: x, clickY: y });
     document.body.setPointerCapture?.(ev.pointerId);
     requestDraw();
   });
   document.addEventListener('pointermove', (ev) => {
+    if (drag.on) {
+      orbit.yaw -= (ev.clientX - drag.x) * 0.01;
+      orbit.pitch = Math.max(-1.5, Math.min(1.5, orbit.pitch + (ev.clientY - drag.y) * 0.01));
+      drag.x = ev.clientX;
+      drag.y = ev.clientY;
+      requestDraw();
+      return;
+    }
     if (!mouse.down) return;
     [mouse.x, mouse.y] = at(ev);
     requestDraw();
   });
   const up = () => {
     mouse.down = false;
+    drag.on = false;
     requestDraw();
   };
+  document.addEventListener(
+    'wheel',
+    (ev) => {
+      if (shape === 'flat') return;
+      ev.preventDefault();
+      orbit.distance = Math.max(1.6, Math.min(12, orbit.distance * Math.exp(ev.deltaY * 0.001)));
+      requestDraw();
+    },
+    { passive: false },
+  );
+  // A double click puts the camera back where it started.
+  document.addEventListener('dblclick', () => {
+    if (shape === 'flat') return;
+    Object.assign(orbit, ORBIT);
+    requestDraw();
+  });
   document.addEventListener('pointerup', up);
   document.addEventListener('pointercancel', up);
   new ResizeObserver(() => requestDraw()).observe(document.body);
@@ -1091,6 +1506,15 @@ fn fs_copy(input: CopyOut) -> @location(0) vec4f {
         scale = Math.min(2, Math.max(0.1, Number(msg.scale) || 1));
         requestDraw();
         break;
+      case 'view': {
+        const next = SHAPES.has(msg.shape) ? msg.shape : 'flat';
+        if (next === shape) break;
+        shape = next;
+        // A pass runs with another vertex stage or into another target, so it compiles again.
+        if (lastRun) run(lastRun);
+        else requestDraw();
+        break;
+      }
     }
   });
 })();

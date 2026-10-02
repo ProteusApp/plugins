@@ -269,6 +269,7 @@
 ---@field shadertoy? boolean A Shadertoy `mainImage` shader.
 ---@field channels? Shader.Channel[] The channels it reads, by index.
 ---@field bindings? Shader.Binding[] WGSL: what the module binds.
+---@field surface? boolean It reads its place from the UV the vertex stage passes, so the Preview can run it as the fragment shader of a mesh's surface.
 
 ---@class Shader.CompileError
 ---@field message string
@@ -708,6 +709,7 @@
 ---@field set_playing fun(on: boolean)
 ---@field playing fun(): boolean
 ---@field set_scale fun(s: number)
+---@field set_view fun(shape: string) Shows the shader flat, or on a mesh: `sphere`, `cube`, `plane` or `torus`.
 ---@field uniform fun(path: string, key: string, value: number[])
 ---@field resend fun(grant: string) Sends an image's bytes to the page again when a channel next shows it.
 

@@ -2,7 +2,7 @@
 title: shader: the Shader Builder's core
 section: Shader Builder
 order: 318
-keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format subgraph made node make unpack expand export hlsl godot three.js unity ir shader.core
+keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format subgraph made node make unpack expand surface mesh v_uv export hlsl godot three.js unity ir shader.core
 ---
 
 # shader: the Shader Builder's core
@@ -97,7 +97,7 @@ else
 end
 ```
 
-A program holds the code in `source`, the uniforms the Preview shows controls for, and the channels it reads. `lines` maps a line of the code to the node that wrote it.
+A program holds the code in `source`, the uniforms the Preview shows controls for, and the channels it reads. `lines` maps a line of the code to the node that wrote it. A graph's code finds its place from the UV the vertex stage passes, `v_uv` in GLSL, and `fragCoord` is that UV times `u_resolution`. Such a program is marked `surface`, and the Preview runs it as the fragment shader of a mesh's surface. A GLSL code shader is marked `surface` when it reads `v_uv` and not `gl_FragCoord`.
 
 ## Code shaders
 

@@ -1,13 +1,21 @@
 ---
-title: Graphs in other engines
+title: Meshes and other engines
 section: Learning shaders
 order: 316
-keywords: export engines hlsl direct3d godot gdshader three.js threejs shadermaterial unity shaderlab shader game engine copy build mesh uv surface
+keywords: 3d mesh preview sphere cube plane torus orbit view surface v_uv export engines hlsl direct3d godot gdshader three.js threejs shadermaterial unity shaderlab shader game engine copy build mesh uv surface
 ---
 
-# Graphs in other engines
+# Meshes and other engines
 
-A node graph turns into GLSL and WGSL as it changes, and it can also go to the engines most games and web pages run on: Direct3D through HLSL, Godot, three.js and Unity.
+In a game or a 3D scene, a shader colours the surface of a mesh rather than a flat picture. The Preview shows a shader on a mesh, and a node graph can go to the engines most games and web pages run on: Direct3D through HLSL, Godot, three.js and Unity.
+
+## Seeing a shader on a mesh
+
+The **View** menu in the Preview panel's bar picks what the shader shows on: **Flat**, the whole panel as before, or a **Sphere**, a **Cube**, a **Plane** or a **Torus**. Drag the mesh to turn around it, use the mouse wheel to come nearer or go back, and double-click to put the camera back. While a mesh shows, the mouse turns the camera, so `u_mouse` keeps its last value.
+
+A node graph runs as the fragment shader of the mesh's surface. **UV** runs across the surface from 0 to 1: around a sphere and a torus, and across each face of a cube. `u_resolution` is a square as wide as the panel's shorter side, so **Pixel Position** and **Square UV** count in it, and circles stay round on a plane.
+
+A GLSL code shader does the same when it finds its place from `v_uv` alone. One that reads `gl_FragCoord`, such as a Shadertoy shader, draws a square picture first, and the mesh shows that picture. Either way, the surface shows the shader's colours as they are, without light.
 
 ## Getting the code
 
@@ -27,7 +35,7 @@ Only a node graph exports to other engines, since code shaders can hold any GLSL
 
 ## How the exports read their place
 
-In the Shader Builder the graph draws a whole picture, and **UV** runs from 0 at the bottom left to 1 at the top right. An export reads **UV** from the UV of whatever it draws on instead, so it colours the surface of any mesh, such as a sphere or a quad. **Pixel Position** is the UV times `u_resolution`, which says how many pixels the graph thinks it draws.
+An export reads **UV** from the UV of whatever it draws on, as the Preview does on a mesh, so it colours the surface of any mesh, such as a sphere or a quad. **Pixel Position** is the UV times `u_resolution`, which says how many pixels the graph thinks it draws.
 
 Each file says at its top what it needs each frame:
 

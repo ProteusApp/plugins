@@ -7,6 +7,10 @@
 -- A shader's buffers run before it each frame, and its channels read them, noise, a checker,
 -- or an image the user picks. An image comes through app.grants, so the plugin never sees a
 -- path and needs no permission: the web view gets the file's bytes.
+--
+-- The View menu puts the shader on a mesh, a sphere, a cube, a plane or a torus, which a drag
+-- turns. A graph, or a GLSL shader that reads only v_uv for its place, colours the mesh's
+-- surface as its fragment shader. Any other shader draws a square picture the mesh shows.
 
 -- lang=css
 local CSS = [[
@@ -32,6 +36,15 @@ local CSS = [[
 }
 .sp-seg button.on { background: var(--accent); color: var(--accent-fg, #fff); }
 .sp-seg button:disabled { cursor: default; opacity: 0.5; }
+.sp-view {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
 .sp-surface { position: relative; flex: none; height: 46%; min-height: 160px; border-bottom: 0.5px solid var(--border); }
 .sp-root.large .sp-surface { flex: 1; height: auto; }
 .sp-stats { display: flex; gap: 10px; padding: 3px 8px; color: var(--fg-muted); font-family: var(--font-mono); font-size: 11px; border-bottom: 0.5px solid var(--border); }
@@ -71,6 +84,15 @@ local CSS = [[
 
 local SCALES = { 0.5, 1, 2 }
 
+-- What the picture shows on: the whole panel, or a mesh.
+local SHAPES = {
+  { 'flat', 'Flat' },
+  { 'sphere', 'Sphere' },
+  { 'cube', 'Cube' },
+  { 'plane', 'Plane' },
+  { 'torus', 'Torus' },
+}
+
 -- What a channel can show, as the choices of its menu.
 local SOURCES = {
   { 'none', 'Nothing' },
@@ -91,8 +113,8 @@ local DIMS =
 ---@type Proteus.Plugin
 return {
   name = 'Shader preview',
-  description = 'Runs the shader in front live, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.',
-  version = '1.1.0',
+  description = 'Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.',
+  version = '1.2.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'webview', 'grants' },
@@ -201,6 +223,7 @@ return {
       local uniform_shape = ''
       local channel_shape = ''
       local scale = tonumber (app.store.get ('scale', 1)) or 1
+      local shape = tostring (app.store.get ('view', 'flat'))
       local lang_buttons = {} ---@type table<string, Proteus.El>
       local scale_buttons = {} ---@type table<number, Proteus.El>
       local problems_el = ui.div ({ class = 'sp-section' })
@@ -368,6 +391,7 @@ return {
         surface:widget ('post', message)
       end
       post ({ type = 'scale', scale = scale })
+      post ({ type = 'view', shape = shape })
 
       ---What the page needs of a program, and nothing else. Each channel carries what it shows.
       ---@param p Shader.Program
@@ -394,6 +418,7 @@ return {
           layout = p.layout,
           bindings = p.bindings,
           channels = channels,
+          surface = p.surface,
         }
       end
 
@@ -865,6 +890,24 @@ return {
         end,
       })
 
+      ---@type Proteus.ElementSpec
+      local view_menu = {
+        class = 'sp-view',
+        title = 'Show the shader flat, or on a mesh. Drag a mesh to turn it, and double-click to reset.',
+        onchange = function (ev)
+          local next_shape = tostring (ev.value or 'flat')
+          app.store.set ('view', next_shape)
+          for _, other in ipairs (previews) do
+            other.set_view (next_shape)
+          end
+        end,
+      }
+      for _, o in ipairs (SHAPES) do
+        view_menu[#view_menu + 1] =
+          ui.h ('option', { value = o[1], selected = o[1] == shape, o[2] })
+      end
+      local view_select = ui.h ('select', view_menu)
+
       local scale_seg = ui.div ({ class = 'sp-seg' })
       for _, s in ipairs (SCALES) do
         scale_seg:append (scale_button (s))
@@ -887,6 +930,7 @@ return {
           lang_button ('wgsl', 'WGSL'),
         }),
         ui.span ({ class = 'sp-grow' }),
+        view_select,
         scale_seg,
         not large and ui.button ({
           icon = 'maximize-2',
@@ -921,6 +965,11 @@ return {
           scale = s
           post ({ type = 'scale', scale = s })
           draw_bar ()
+        end,
+        set_view = function (next_shape)
+          shape = next_shape
+          view_select:set ('value', next_shape)
+          post ({ type = 'view', shape = next_shape })
         end,
         uniform = function (path, key, value)
           if path == shown_path then
