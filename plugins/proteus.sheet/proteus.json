@@ -45,6 +45,7 @@
     "sheet_chart.lua",
     "sheet_ctl.lua",
     "sheet_fn_arrays.lua",
+    "sheet_fn_date.lua",
     "sheet_fn_finance.lua",
     "sheet_fn_logic_info.lua",
     "sheet_fn_lookup.lua",
