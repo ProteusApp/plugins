@@ -181,6 +181,11 @@ function M.attach (ctx)
         forget_line (dropped)
       end
     end
+    if dropped and dropped.marked then
+      ctx.forget_marks (function (gone)
+        return gone == dropped
+      end)
+    end
     schedule ()
   end
 
@@ -325,6 +330,9 @@ function M.attach (ctx)
   local function restart (src)
     halt (src)
     src.lines:clear ()
+    ctx.forget_marks (function (line)
+      return line.src == src.id
+    end)
     src.last_time = nil
     if src == ctx.shown or ctx.merged then
       close_detail ()
@@ -367,6 +375,9 @@ function M.attach (ctx)
   ---@param src Logs.Source
   local function remove_source (src)
     halt (src)
+    ctx.forget_marks (function (line)
+      return line.src == src.id
+    end)
     local index = 1
     for i, other in ipairs (ctx.sources) do
       if other == src then

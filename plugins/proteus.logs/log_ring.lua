@@ -26,6 +26,7 @@ local YEAR = math.floor (tonumber (os.date ('%Y')) or 1970)
 ---@field lower? string The plain text in lower case, made the first time the filter needs it.
 ---@field src? integer The id of the source it came from.
 ---@field id? integer A number no other line in the app has, for the merged view.
+---@field marked? boolean True for a line the user bookmarked.
 
 ---What one pass over a source found.
 ---@class Logs.Scan

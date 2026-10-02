@@ -2,6 +2,7 @@
 -- palette and the keys run. The log viewer's init.lua attaches it to the context its modules
 -- share, once the rest is in place.
 
+local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 
 local PAGE_STEP = 2500 -- how far the window moves
@@ -28,6 +29,61 @@ function M.attach (ctx)
   local clear_lines, copy_matching = ctx.clear_lines, ctx.copy_matching
   local copy_selected, toggle_level = ctx.copy_selected, ctx.toggle_level
   local toggle_wrap, focus_filter = ctx.toggle_wrap, ctx.focus_filter
+  local toggle_mark, next_mark = ctx.toggle_mark, ctx.next_mark
+  local list_marks = ctx.list_marks
+
+  -- Export ----------------------------------------------------------------------------------
+
+  ---Writes the lines that match to a file the user picks: as they read, or as CSV when the
+  ---name ends in .csv.
+  local function export_lines ()
+    if not ctx.shown and not ctx.merged then
+      return
+    end
+    local lines = {} ---@type Logs.Line[]
+    for k = ctx.view_first, #ctx.view_all do
+      lines[#lines + 1] = ctx.view_all[k]
+    end
+    local base = ctx.merged and 'logs' or ctx.shown.name
+    app.fs.pick_save ({
+      title = 'Export Matching Lines',
+      default_path = (base:gsub ('%.[^.]*$', '')) .. '-matching.log',
+      filters = {
+        { name = 'Log', extensions = { 'log', 'txt' } },
+        { name = 'CSV', extensions = { 'csv' } },
+      },
+    }, function (path, err)
+      if err then
+        ctx.say_error ('Could not show the file picker. ' .. err)
+        return
+      end
+      if not path then
+        return
+      end
+      local source_of = nil ---@type (fun(line: Logs.Line): string?)?
+      if ctx.merged then
+        source_of = function (line)
+          local tag = ctx.tag_of (line)
+          return tag and tag.name or nil
+        end
+      end
+      local text = lf.is_csv (path) and lf.as_csv (lines, source_of)
+        or lf.as_text (lines)
+      app.fs.write_file (path, text, function (_, write_err)
+        if write_err then
+          ctx.say_error ('Could not export the lines. ' .. write_err)
+          return
+        end
+        ctx.say (
+          'Exported '
+            .. lf.group (#lines)
+            .. (#lines == 1 and ' line to ' or ' lines to ')
+            .. (path:match ('[^/\\]+$') or path)
+            .. '.'
+        )
+      end)
+    end)
+  end
 
   -- Right-click menus -------------------------------------------------------------------------
 
@@ -67,6 +123,13 @@ function M.attach (ctx)
           end,
         }
         items[#items + 1] = {
+          label = line.marked and 'Remove Bookmark' or 'Bookmark Line',
+          icon = line.marked and 'bookmark-minus' or 'bookmark',
+          run = function ()
+            toggle_mark (line)
+          end,
+        }
+        items[#items + 1] = {
           label = 'Hide ' .. LEVEL_PLURALS[line.level],
           icon = 'eye-off',
           run = function ()
@@ -80,6 +143,18 @@ function M.attach (ctx)
         icon = 'clipboard-list',
         disabled = ctx.matched == 0,
         run = copy_matching,
+      }
+      items[#items + 1] = {
+        label = 'Export Matching Lines…',
+        icon = 'download',
+        disabled = ctx.matched == 0,
+        run = export_lines,
+      }
+      items[#items + 1] = {
+        label = 'Go to Bookmark…',
+        icon = 'bookmark',
+        disabled = next (ctx.marks) == nil,
+        run = list_marks,
       }
       items[#items + 1] = {
         label = 'Clear',
@@ -412,6 +487,59 @@ function M.attach (ctx)
     icon = 'clipboard-list',
     when = has_source,
     run = copy_matching,
+  })
+  commands.register ({
+    id = 'logs.export',
+    category = 'Logs',
+    title = 'Export Matching Lines',
+    icon = 'download',
+    when = has_source,
+    run = export_lines,
+  })
+  commands.register ({
+    id = 'logs.bookmark',
+    category = 'Logs',
+    title = 'Toggle Bookmark',
+    key = 'ctrl+f2',
+    icon = 'bookmark',
+    when = function ()
+      return here () and ctx.selected ~= nil
+    end,
+    run = function ()
+      if ctx.selected then
+        toggle_mark (ctx.selected)
+      end
+    end,
+  })
+  commands.register ({
+    id = 'logs.next_bookmark',
+    category = 'Logs',
+    title = 'Next Bookmark',
+    key = 'f2',
+    icon = 'arrow-down',
+    when = has_source,
+    run = function ()
+      next_mark (1)
+    end,
+  })
+  commands.register ({
+    id = 'logs.prev_bookmark',
+    category = 'Logs',
+    title = 'Previous Bookmark',
+    key = 'shift+f2',
+    icon = 'arrow-up',
+    when = has_source,
+    run = function ()
+      next_mark (-1)
+    end,
+  })
+  commands.register ({
+    id = 'logs.bookmarks',
+    category = 'Logs',
+    title = 'Go to Bookmark',
+    icon = 'bookmark',
+    when = has_source,
+    run = list_marks,
   })
   commands.register ({
     id = 'logs.show_all',

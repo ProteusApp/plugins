@@ -148,6 +148,14 @@ local function fake_app ()
       pick_open = function (_, cb)
         cb ({ table.remove (world.picks, 1) })
       end,
+      pick_save = function (opts, cb)
+        world.save_opts = opts
+        cb (world.save_path)
+      end,
+      write_file = function (path, text, cb)
+        world.written = { path = path, text = text }
+        cb (true)
+      end,
       list_dir = function (path, cb)
         world.listed = path
         cb (world.dir or {})
@@ -372,4 +380,71 @@ test ('a rotated log reads its older files first, as one source', function ()
     '/var/log/app.log.1',
   })
   eq (rows (world), { 'old', 'new' })
+end)
+
+test (
+  'bookmarks mark lines, F2 goes to them, and is:marked keeps them',
+  function ()
+    local world = start ()
+    open (world, 'logs.open_file', '/var/log/app.log', {
+      'one',
+      'two',
+      'three',
+      'four',
+    })
+    local html = find (world, 'logs-rows').kids[1].kids[1].props.html
+    local ids = {} ---@type integer[]
+    for id in html:gmatch ('data%-item="(%d+)"') do
+      ids[#ids + 1] = math.floor (tonumber (id) or 0)
+    end
+    local list = find (world, 'logs-list')
+    list:fire ('click', { item = tostring (ids[2]) })
+    world.commands['logs.bookmark'].run ()
+    list:fire ('click', { item = tostring (ids[4]) })
+    list:fire ('keydown', { key = 'm' })
+    list:fire ('click', { item = tostring (ids[1]) })
+    world.commands['logs.next_bookmark'].run ()
+    local title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 2', 1, true), title)
+    world.commands['logs.next_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 4', 1, true), title)
+    world.commands['logs.next_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 2', 1, true), 'it goes round to the first')
+    world.commands['logs.prev_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 4', 1, true), title)
+    filter (world, 'is:marked')
+    eq (rows (world), { 'two', 'four' })
+    world.commands['logs.bookmark'].run ()
+    eq (
+      rows (world),
+      { 'two' },
+      'a line that loses its bookmark leaves the list'
+    )
+  end
+)
+
+test ('Export writes the lines that match, as text or as CSV', function ()
+  local world = start ()
+  open (world, 'logs.open_file', '/var/log/app.log', {
+    '2024-03-01T12:00:00Z ERROR boom',
+    '2024-03-01T12:00:01Z INFO fine',
+  })
+  filter (world, 'level:error')
+  world.save_path = '/tmp/out.log'
+  world.commands['logs.export'].run ()
+  eq (world.save_opts.default_path, 'app-matching.log')
+  eq (world.written, {
+    path = '/tmp/out.log',
+    text = '2024-03-01T12:00:00Z ERROR boom\n',
+  })
+  world.save_path = '/tmp/out.csv'
+  world.commands['logs.export'].run ()
+  ok (
+    world.written.text:find ('^line,time,level,text\r\n1,'),
+    world.written.text
+  )
+  eq (world.said[#world.said], 'Exported 1 line to out.csv.')
 end)

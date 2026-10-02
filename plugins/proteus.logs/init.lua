@@ -12,14 +12,15 @@
 --
 -- This file puts the screen together and wires its events. The rest lives in modules that
 -- share one context, Logs.Ctx: logs_list draws the list of lines, logs_detail shows the line
--- picked in it, logs_sources opens, runs and shows the sources the lines come from, and
--- logs_commands holds the right-click menus and the commands.
+-- picked in it, logs_marks keeps the bookmarks, logs_sources opens, runs and shows the
+-- sources the lines come from, and logs_commands holds the right-click menus and the commands.
 
 local CSS = require ('logs_css') --[[@as string]]
 local commands_m = require ('logs_commands') --[[@as Logs.CommandsModule]]
 local detail_m = require ('logs_detail') --[[@as Logs.DetailModule]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
+local marks_m = require ('logs_marks') --[[@as Logs.MarksModule]]
 local sources_m = require ('logs_sources') --[[@as Logs.SourcesViewModule]]
 
 local FILTER_MS = 150
@@ -63,6 +64,7 @@ local LEVEL_PLURALS = {
 ---@field hidden table<string, boolean> The levels the chips hide.
 ---@field follow boolean True while the list stays at the bottom as lines arrive.
 ---@field selected? Logs.Line The line the detail panel shows.
+---@field marks table<integer, Logs.Line> The bookmarked lines, by id.
 ---@field pending Logs.Line[] Lines that arrived and are not drawn yet.
 ---@field chunks Logs.Chunk[]
 ---@field drawn integer Rows in the chunks.
@@ -116,6 +118,11 @@ local LEVEL_PLURALS = {
 ---@field open_detail fun(line: Logs.Line)
 ---@field select_line fun(id: integer)
 ---@field move_selection fun(step: integer)
+---@field toggle_mark fun(line: Logs.Line) From logs_marks.
+---@field forget_marks fun(gone: fun(line: Logs.Line): boolean)
+---@field next_mark fun(step: integer)
+---@field list_marks fun()
+---@field go_to_line fun(line: Logs.Line): boolean
 ---@field find_source fun(id: number?): Logs.Source? From logs_sources.
 ---@field render_sources fun()
 ---@field show_source fun(src: Logs.Source?)
@@ -187,6 +194,7 @@ return {
       query = lf.parse_query (''),
       hidden = {},
       follow = true,
+      marks = {},
       pending = {},
       chunks = {},
       drawn = 0,
@@ -647,10 +655,15 @@ return {
     local close_detail, select_line = ctx.close_detail, ctx.select_line
     local move_selection = ctx.move_selection
 
+    -- Bookmarks -------------------------------------------------------------------------------
+
+    ctx.picker, ctx.say, ctx.say_error = picker, say, say_error
+    marks_m.attach (ctx)
+    local toggle_mark, forget_marks = ctx.toggle_mark, ctx.forget_marks
+
     -- Sources ---------------------------------------------------------------------------------
 
-    ctx.picker, ctx.desktop, ctx.src_list = picker, desktop, src_list
-    ctx.say, ctx.say_error = say, say_error
+    ctx.desktop, ctx.src_list = desktop, src_list
     sources_m.attach (ctx)
     local show_source, show_merged = ctx.show_source, ctx.show_merged
     local new_source, start = ctx.new_source, ctx.start
@@ -662,9 +675,14 @@ return {
         return
       end
       -- The merged view clears every source.
+      local cleared = {} ---@type table<integer, boolean>
       for _, src in ipairs (view_sources ()) do
         src.lines:clear ()
+        cleared[src.id] = true
       end
+      forget_marks (function (line)
+        return cleared[line.src or 0] == true
+      end)
       close_detail ()
       redraw_list ()
       update_counts ()
@@ -817,6 +835,10 @@ return {
       end
       if ev.key == 'Escape' and ctx.selected then
         close_detail ()
+        return true
+      end
+      if ev.key == 'm' and ctx.selected and not ev.ctrl and not ev.alt then
+        toggle_mark (ctx.selected)
         return true
       end
       return nil

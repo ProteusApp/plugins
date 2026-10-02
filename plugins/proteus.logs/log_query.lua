@@ -21,6 +21,8 @@ local detect_level, level_named = ll.detect_level, ll.level_named
 ---@field exclude_regexes LogRegex.Program[] Regular expressions, from `-/.../`, that hide a line.
 ---@field after? Logs.When Keeps lines from this time on, from `after:`.
 ---@field before? Logs.When Keeps lines up to this time, from `before:`.
+---@field marked? boolean Keeps only bookmarked lines, from `is:marked`.
+---@field unmarked? boolean Hides bookmarked lines, from `-is:marked`.
 ---@field problem? string What the filter could not read, such as a broken regular expression.
 
 ---A stretch of text the filter matched, as byte positions in the plain text.
@@ -43,7 +45,8 @@ local TIME_WORDS =
 
 ---Takes a filter apart. Words must all appear, `-word` hides lines, `"two words"` is one
 ---phrase, `/a|b/` is a regular expression, `level:error` keeps one level and
----`-level:error` hides one, and `after:` and `before:` keep a span of time.
+---`-level:error` hides one, `after:` and `before:` keep a span of time, and `is:marked`
+---keeps the bookmarked lines.
 ---@param text string
 ---@return Logs.Query
 local function parse_query (text)
@@ -108,7 +111,13 @@ local function parse_query (text)
         local level = name and name ~= '' and level_named (name) or nil
         local time_word, time_value = word:match ('^(%a+):(.+)$')
         local keeps_before = time_word and TIME_WORDS[time_word]
-        if level and negate then
+        if word == 'is:marked' or word == 'is:bookmarked' then
+          if negate then
+            query.unmarked = true
+          else
+            query.marked = true
+          end
+        elseif level and negate then
           query.skip[level] = true
         elseif level then
           query.level = level
@@ -157,6 +166,8 @@ end
 ---@return boolean
 local function is_empty (query)
   return query.level == nil
+    and not query.marked
+    and not query.unmarked
     and next (query.skip) == nil
     and not has_words (query)
     and not has_time (query)
@@ -224,6 +235,9 @@ end
 ---@return boolean
 local function matches_line (line, query, newest)
   if query.level and line.level ~= query.level or query.skip[line.level] then
+    return false
+  end
+  if (query.marked and not line.marked) or (query.unmarked and line.marked) then
     return false
   end
   if query.after or query.before then

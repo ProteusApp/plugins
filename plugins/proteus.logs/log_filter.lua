@@ -3,14 +3,16 @@
 -- line. It draws nothing on its own and calls no host function. The rest lives in modules of
 -- its own, and this one hands out all of it, so the plugin and the tests need only this one:
 -- log_text holds small text helpers, log_ansi the colour codes, log_level a line's level,
--- log_query the filter, log_ring the lines and the ring that holds them, and log_sources where
--- lines come from. Regular expressions are in log_regex.lua, and times in log_time.lua.
+-- log_query the filter, log_ring the lines and the ring that holds them, log_sources where
+-- lines come from, and log_export the text of the lines it exports. Regular expressions are
+-- in log_regex.lua, and times in log_time.lua.
 
 local ansi = require ('log_ansi') --[[@as Logs.AnsiModule]]
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
 local lq = require ('log_query') --[[@as Logs.QueryModule]]
 local lr = require ('log_ring') --[[@as Logs.RingModule]]
 local ls = require ('log_sources') --[[@as Logs.SourcesModule]]
+local lx = require ('log_export') --[[@as Logs.ExportModule]]
 local tx = require ('log_text') --[[@as Logs.TextModule]]
 
 local escape, clip = tx.escape, tx.clip
@@ -60,6 +62,10 @@ local highlight = lq.highlight
 ---@field remember fun(list: Logs.SourceSpec[], spec: Logs.SourceSpec, max: integer): Logs.SourceSpec[]
 ---@field clean_specs fun(value: any): Logs.SourceSpec[]
 ---@field clean_levels fun(value: any): Logs.Level[]
+---@field is_csv fun(path: string): boolean
+---@field as_text fun(lines: Logs.Line[]): string
+---@field as_csv fun(lines: Logs.Line[], source_of?: fun(line: Logs.Line): string?): string
+---@field time_text fun(ms: number): string
 
 -- Lines longer than this show cut short in the list. The detail panel shows them whole.
 local MAX_ROW = 4000
@@ -393,6 +399,10 @@ local M = {
   remember = ls.remember,
   clean_specs = ls.clean_specs,
   clean_levels = ls.clean_levels,
+  is_csv = lx.is_csv,
+  as_text = lx.as_text,
+  as_csv = lx.as_csv,
+  time_text = lx.time_text,
 }
 
 return M
