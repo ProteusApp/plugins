@@ -61,7 +61,7 @@ return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
   version = '1.1.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions', 'menus' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'menus' } },
   -- Import and Export read and write CSV and Excel files anywhere on disk, and Paste reads the
   -- clipboard.
   permissions = { 'clipboard', 'files' },

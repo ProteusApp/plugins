@@ -10,42 +10,26 @@
 -- A folder named when the app starts opens first, as in `proteus C:\code\app` or
 -- `proteus --folder C:\code\app`. Otherwise the folder that was open last opens again.
 --
--- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins, and a
--- copy of any file that wins over the workspace and builtin ones. The kernel mounts it before
--- any plugin loads, so this plugin tells the kernel which folder is open. A `.proteus` folder
--- can run code, so it stays off until the user trusts the folder.
+-- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins of its
+-- own and profiles. The kernel mounts it before any plugin loads, so this plugin tells the
+-- kernel which folder is open. A `.proteus` folder can run code, so it stays off until the
+-- user trusts the folder.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local exclude = require ('exclude') --[[@as CodeProject.Exclude]]
+local file_glob = require ('file_glob') --[[@as FileGlob]]
 
 local MAX_RECENT = 12
-
--- Folders that a build or an install fills. Search and Go to File skip them wherever they
--- are, on top of what .gitignore leaves out.
-local EXCLUDE = {
-  'node_modules',
-  'target',
-  'dist',
-  'build',
-  'out',
-  '.venv',
-  'venv',
-  '__pycache__',
-  'dist-newstyle',
-  '.stack-work',
-  '.next',
-  '.cache',
-  'coverage',
-}
 
 ---@type Proteus.Plugin
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.1.0',
+  version = '1.1.3',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = { 'proteus.core.commands', 'proteus.core.settings' },
   optional = {
     'proteus.ui.notify',
@@ -63,11 +47,28 @@ return {
     local desktop = app.platform ~= 'browser'
 
     settings.define ('project.exclude', {
-      title = 'Folders that search leaves out',
+      title = 'Files and folders the Code Editor leaves out',
       type = 'json',
-      default = EXCLUDE,
-      description = 'Folder names that Search and Go to File skip wherever they are, on top of what .gitignore leaves out.',
+      default = exclude.DEFAULT,
+      description = 'Glob patterns, such as node_modules, *.min.js or docs/build. The file tree, Search and Go to File leave out what matches, and everything inside a folder that matches.',
     })
+    -- `project.exclude` once held folder names for search alone, and the file tree hid the
+    -- names in `code.explorer.hide`. One setting holds both now, so what the user had set in
+    -- either is kept, once.
+    if not app.store.get ('exclude_merged') then
+      app.store.set ('exclude_merged', true)
+      local merged = exclude.migrate (
+        settings.source ('project.exclude') == 'user'
+            and settings.get ('project.exclude')
+          or nil,
+        settings.source ('code.explorer.hide') == 'user'
+            and settings.get ('code.explorer.hide')
+          or nil
+      )
+      if merged then
+        settings.set ('project.exclude', merged)
+      end
+    end
     settings.define ('project.reopen', {
       title = 'Reopen the last folder',
       type = 'boolean',
@@ -151,20 +152,21 @@ return {
     app.kernel.set_folder (root or false)
     local layer = app.kernel.project ()
 
+    local fold = disk.folds_case (app.os)
+
+    ---The patterns of `project.exclude`, written so a walk on disk reads them the same way.
     ---@return string[]
     local function excluded ()
-      local list = settings.get ('project.exclude')
-      local out = {} ---@type string[]
-      if type (list) == 'table' then
-        for _, v in
-          ipairs (list --[[@as any[] ]])
-        do
-          if type (v) == 'string' and v ~= '' then
-            out[#out + 1] = v
-          end
-        end
-      end
-      return out
+      return exclude.for_walk (exclude.clean (settings.get ('project.exclude')))
+    end
+
+    ---True when the path from the root, or a folder above it, fits `project.exclude`.
+    ---@param rel string
+    ---@param dir? boolean
+    ---@return boolean
+    local function excludes (rel, dir)
+      return type (rel) == 'string'
+        and exclude.matches (file_glob, excluded (), rel, dir, fold)
     end
 
     ---Reloads the window into `path`, or into no folder. With the editor's session on, open
@@ -268,7 +270,9 @@ return {
 
     local files_cache = nil ---@type string[]?
     local files_known = {} ---@type table<string, boolean>
-    local waiting = nil ---@type (fun(files: string[]?, err: string?))[]?
+    -- True when the walk stopped at its limit, so the list is not every file.
+    local files_cut = false
+    local waiting = nil ---@type (fun(files: string[]?, err: string?, truncated: boolean?))[]?
     -- Goes up each time the list goes stale, so a walk that ends after a change is not kept.
     local generation = 0
 
@@ -280,14 +284,14 @@ return {
 
     settings.watch ('project.exclude', forget_files)
 
-    ---@param cb fun(files: string[]?, err: string?)
+    ---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
     local function files (cb)
       if not root then
         cb (nil, 'No folder is open.')
         return
       end
       if files_cache then
-        cb (files_cache)
+        cb (files_cache, nil, files_cut)
         return
       end
       if waiting then
@@ -296,19 +300,21 @@ return {
       end
       waiting = { cb }
       local started_at = generation
-      app.fs.walk_dir (root, { skip = excluded () }, function (result, err)
+      app.fs.walk_dir (root, { exclude = excluded () }, function (result, err)
         local list = waiting or {}
         waiting = nil
         local found = result and result.files or nil
+        local cut = result ~= nil and result.truncated == true
         if found and started_at == generation then
           files_cache = found
+          files_cut = cut
           files_known = {}
           for _, rel in ipairs (found) do
             files_known[rel] = true
           end
         end
         for _, fn in ipairs (list) do
-          app.try (fn, found, err)
+          app.try (fn, found, err, cut)
         end
       end)
     end
@@ -319,6 +325,28 @@ return {
       if root then
         app.kernel.trust_folder (root, true)
         app.kernel.reload_window ()
+      end
+    end
+
+    ---Asks the user to trust the open folder, for a plugin that waits on it. `reason` says
+    ---what is waiting, such as 'Git'. Trusting reloads the window.
+    ---@param reason? string
+    local function ask_trust (reason)
+      if not root or layer.trusted then
+        return
+      end
+      local text = 'Trust the folder '
+        .. (name or root)
+        .. '? '
+        .. (reason and (tostring (reason) .. ' waits for it. ') or '')
+        .. 'Its .proteus files, its Git settings and its build scripts can run programs, so trust only a folder from someone you trust.'
+      if picker then
+        picker.confirm ({ message = text, yes = 'Trust Folder', on_yes = trust })
+      elseif notify then
+        notify.warn (
+          text,
+          { timeout = 0, action = { label = 'Trust Folder', run = trust } }
+        )
       end
     end
 
@@ -342,7 +370,7 @@ return {
         return
       end
       notify.warn (
-        'This folder has a .proteus folder. It can change settings and run plugins, so it stays off until you trust the folder.',
+        'This folder has a .proteus folder. It can change settings and add plugins, and a plugin you then allow a permission such as process gets full access to this computer. It stays off until you trust the folder.',
         { timeout = 0, action = { label = 'Trust Folder', run = trust } }
       )
     end
@@ -376,14 +404,29 @@ return {
         app.store.set ('current', false)
       end)
       app.fs.watch_dir (folder, function (ev)
-        -- A file that only changed keeps the list. Anything that came, went or moved does not.
+        -- A file that only changed keeps the list. Anything that came, went or moved does not,
+        -- unless it is where the list never looks: what .gitignore leaves out, such as build
+        -- output and logs, and what `project.exclude` leaves out.
         local stale = ev.overflow
+        local patterns = excluded ()
         for _, change in ipairs (ev.changes) do
           local rel = disk.relative (folder, change.path, app.os)
-          if change.kind ~= 'file' then
+          local unlisted = change.ignored == true
+            or (
+              rel ~= nil
+              and exclude.matches (
+                file_glob,
+                patterns,
+                rel,
+                change.kind == 'dir',
+                fold
+              )
+            )
+          if
+            not unlisted
+            and (change.kind ~= 'file' or (rel ~= nil and not files_known[rel]))
+          then
             stale = true
-          else
-            stale = stale or (rel ~= nil and not files_known[rel])
           end
           if
             not layer.loaded
@@ -553,7 +596,7 @@ return {
     commands.register ({
       id = 'project.trust',
       category = 'File',
-      title = "Trust This Folder's .proteus Files",
+      title = 'Trust This Folder',
       icon = 'shield-check',
       when = function ()
         return root ~= nil and not layer.trusted
@@ -563,7 +606,7 @@ return {
     commands.register ({
       id = 'project.untrust',
       category = 'File',
-      title = "Stop Using This Folder's .proteus Files",
+      title = 'Stop Trusting This Folder',
       icon = 'shield-off',
       when = function ()
         return root ~= nil and layer.trusted
@@ -614,9 +657,14 @@ return {
         return root and disk.relative (root, path, app.os) or nil
       end,
       absolute = function (rel)
-        return disk.join (root or '', rel)
+        return root and disk.join (root, rel) or nil
       end,
       excluded = excluded,
+      excludes = excludes,
+      trusted = function ()
+        return root ~= nil and layer.trusted
+      end,
+      ask_trust = ask_trust,
     }
     app.provide ('project', service, { needs = 'files' })
   end,
