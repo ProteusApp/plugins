@@ -2,7 +2,7 @@
   "id": "proteus.kanban",
   "name": "Kanban",
   "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.nodal.app"
@@ -14,16 +14,18 @@
     "proteus.core.commands",
     "proteus.core.settings",
     "proteus.core.themes",
-    "proteus.ui.menus"
+    "proteus.ui.menus",
+    "proteus.ui.views"
   ],
   "permissions": [
     "workspace"
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.3.0",
+    "proteus": ">=0.3.1",
     "features": [
-      "permissions"
+      "permissions",
+      "nodal-docks"
     ]
   },
   "author": {
