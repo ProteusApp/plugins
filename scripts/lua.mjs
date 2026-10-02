@@ -2,7 +2,7 @@
 // same Lua 5.4, to read what they declare. The check and the tests share it.
 
 import { LuaFactory } from 'wasmoon';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
 // Only what a restricted plugin sees in Proteus: no io, os.execute, package or debug.
@@ -109,12 +109,14 @@ export async function engine() {
   return lua;
 }
 
-/** Reads a file inside `dir`, or undefined. The path never leaves the folder. */
+/** Reads a file inside `dir`, or undefined. The path, links followed, never leaves the folder. */
 export function reader(dir) {
   return (rel) => {
     const path = resolve(dir, String(rel));
-    if (!path.startsWith(dir + sep) || !existsSync(path) || statSync(path).isDirectory()) return undefined;
-    return readFileSync(path, 'utf8');
+    if (!path.startsWith(dir + sep) || !existsSync(path)) return undefined;
+    const real = realpathSync(path);
+    if (!real.startsWith(realpathSync(dir) + sep) || statSync(real).isDirectory()) return undefined;
+    return readFileSync(real, 'utf8');
   };
 }
 

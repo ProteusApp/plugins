@@ -1,7 +1,12 @@
--- schemas: the JSON schemas Taplo uses for completion, hover help and checks. Any plugin adds
+-- schemas: the JSON schemas Taplo uses for completion, hover help and checks. A plugin adds
 -- one as a `schema` association in the file association system, as lang.rust does for
 -- Cargo.toml. SchemaStore's catalog covers many common files as well, while the
 -- `toml.schema_catalog` setting is on.
+--
+-- Taplo fetches the address a schema names, and the addresses inside it. So a schema reaches
+-- Taplo only from a plugin that could reach the network itself: one that ships with Proteus,
+-- or one with the `net` permission. Any other plugin could otherwise send workspace data out
+-- in an address.
 --
 -- Taplo 0.10.0 refuses SchemaStore's catalog, because the catalog now names a different
 -- `$schema` address than the one Taplo checks for. So the plugin fetches the catalog itself,
@@ -72,6 +77,31 @@ function M.for_taplo (catalog)
   return { ['$schema'] = TAPLO_CATALOG_SCHEMA, schemas = out }
 end
 
+---True when a schema association may reach Taplo: its value is an address, and the plugin
+---that added it ships with Proteus or has the `net` permission.
+---@param association Proteus.FileAssociation
+---@param plugin_of fun(id: string): Proteus.PluginInfo?
+---@return boolean
+function M.allowed (association, plugin_of)
+  local owner = association.owner
+  if type (association.value) ~= 'string' or type (owner) ~= 'string' then
+    return false
+  end
+  local info = plugin_of (owner)
+  if not info then
+    return false
+  end
+  if info.trusted then
+    return true
+  end
+  for _, permission in ipairs (info.permissions or {}) do
+    if permission == 'net' then
+      return true
+    end
+  end
+  return false
+end
+
 ---@param app Proteus.App
 ---@param settings Proteus.Settings
 ---@param files Proteus.Files
@@ -86,6 +116,7 @@ function M.install (app, settings, files, workspace, log)
   local ready = app.fs.exists (CACHE)
   local fetched, loading, wanted = false, false, false
   local listeners = {} ---@type fun()[]
+  local refused = {} ---@type table<string, boolean>
 
   local function changed ()
     for _, fn in ipairs (listeners) do
@@ -146,7 +177,19 @@ function M.install (app, settings, files, workspace, log)
       -- kind of file, such as JSON, never matches a TOML file, so every one can go in.
       local associations = {} ---@type table<string, string>
       for _, a in ipairs (current) do
-        associations[files.to_regex (a.pattern)] = tostring (a.value)
+        if M.allowed (a, app.kernel.plugin) then
+          associations[files.to_regex (a.pattern)] = a.value --[[@as string]]
+        elseif type (a.value) == 'string' and not refused[a.pattern] then
+          refused[a.pattern] = true
+          log (
+            'err',
+            'Left out the schema '
+              .. tostring (a.owner)
+              .. ' added for '
+              .. a.pattern
+              .. ': only a plugin with the net permission can have Taplo fetch one.'
+          )
+        end
       end
       local catalog = settings.get ('toml.schema_catalog') == true and ready
       return {

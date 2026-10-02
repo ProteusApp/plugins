@@ -14,12 +14,13 @@
 //   test(name, fn)             declares a test
 //   eq(actual, expected, msg)  deep equality, with a readable difference on failure
 //   ok(value, msg)             fails unless value is truthy
-//   read(path)                 reads a file, from the top of the registry
+//   read(path)                 reads a file of a plugin or profile, from the top of the
+//                              registry, such as read('plugins/my.plugin/init.lua')
 //   update, write(path, text)  true with --update, and then writes a file
 // `require('name')` loads name.lua from the plugin's own folder.
 
 import { declaredOf, engine, reader } from './lua.mjs';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -84,6 +85,24 @@ function __run_tests ()
 end
 `;
 
+/**
+ * Reads a file for a test. A submitted plugin's tests run here, and the log is public, so a
+ * test reads only the registry's plugins and profiles: the path, links followed, stays in
+ * plugins/ or profiles/.
+ */
+function readForTest(path) {
+  const shown = String(path);
+  let target;
+  try {
+    target = realpathSync(resolve(ROOT, shown));
+  } catch {
+    throw new Error(`read: ${shown} does not exist`);
+  }
+  const inside = ['plugins', 'profiles'].some((root) => target.startsWith(realpathSync(join(ROOT, root)) + sep));
+  if (!inside || statSync(target).isDirectory()) throw new Error(`read: a test reads only files in plugins/ and profiles/, not ${shown}`);
+  return readFileSync(target, 'utf8');
+}
+
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const list = (v) => (Array.isArray(v) ? v : []);
 
@@ -147,7 +166,7 @@ for (const [root, kind, main] of [
     for (const name of readdirSync(testDir).filter((n) => n.endsWith('.test.lua')).sort()) {
       const file = join(testDir, name);
       const t = await engine();
-      t.global.set('read', (path) => readFileSync(join(ROOT, path), 'utf8'));
+      t.global.set('read', readForTest);
       t.global.set('update', update);
       t.global.set('write', (path, body) => {
         if (!update) throw new Error('write needs --update');
