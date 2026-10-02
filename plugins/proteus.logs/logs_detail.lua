@@ -1,7 +1,7 @@
 -- logs_detail: the log viewer's detail panel. It shows the line picked in the list whole, with
--- its number, level and time, and lays out the JSON the line ends with. The arrow keys move the
--- pick up and down the list. The log viewer's init.lua attaches it to the context its modules
--- share.
+-- its number, level and time, the fields its format shows as columns, and lays out the JSON
+-- the line ends with. The arrow keys move the pick up and down the list. The log viewer's
+-- init.lua attaches it to the context its modules share.
 
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 
@@ -57,7 +57,21 @@ function M.attach (ctx)
           or ''
         )
     )
-    detail_text:text (line.plain)
+    local text = line.plain
+    local fields = line.fields
+    if fields then
+      -- The fields the list shows as columns, one to a line.
+      local parts = {} ---@type string[]
+      for _, name in ipairs (ctx.col_names) do
+        if fields[name] then
+          parts[#parts + 1] = name .. ': ' .. fields[name]
+        end
+      end
+      if #parts > 0 then
+        text = text .. '\n\n' .. table.concat (parts, '\n')
+      end
+    end
+    detail_text:text (text)
     local pretty = nil ---@type string?
     local json = lf.find_json (line.plain)
     if json then

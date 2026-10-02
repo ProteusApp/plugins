@@ -1,6 +1,7 @@
 -- log_query: the log viewer's filter. It takes the text of the filter box apart into words,
--- phrases, regular expressions, levels and a span of time, tells whether a line passes, and
--- finds where the words and expressions appear in a line so the list can mark them.
+-- phrases, regular expressions, levels, fields and a span of time, tells whether a line
+-- passes, and finds where the words and expressions appear in a line so the list can mark
+-- them.
 
 local ansi = require ('log_ansi') --[[@as Logs.AnsiModule]]
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
@@ -21,7 +22,18 @@ local detect_level, level_named = ll.detect_level, ll.level_named
 ---@field exclude_regexes LogRegex.Program[] Regular expressions, from `-/.../`, that hide a line.
 ---@field after? Logs.When Keeps lines from this time on, from `after:`.
 ---@field before? Logs.When Keeps lines up to this time, from `before:`.
+---@field marked? boolean Keeps only bookmarked lines, from `is:marked`.
+---@field unmarked? boolean Hides bookmarked lines, from `-is:marked`.
+---@field fields Logs.FieldTest[] Tests of a line's fields, from `field:value`.
 ---@field problem? string What the filter could not read, such as a broken regular expression.
+
+---A test of one field of a line, such as `status:>=500` or `-user:bot`.
+---@class Logs.FieldTest
+---@field name string The field, as the format names it.
+---@field op ':'|'='|'>'|'<'|'>='|'<=' `:` finds the value in the field, `=` wants it whole, and the rest compare.
+---@field value string In lower case.
+---@field number? number The value as a number, for a comparison.
+---@field negate boolean True for `-field:value`, which hides the lines that pass.
 
 ---A stretch of text the filter matched, as byte positions in the plain text.
 ---@class Logs.Range
@@ -29,7 +41,7 @@ local detect_level, level_named = ll.detect_level, ll.level_named
 ---@field to integer
 
 ---@class Logs.QueryModule
----@field parse_query fun(text: string): Logs.Query
+---@field parse_query fun(text: string, fields?: table<string, string>): Logs.Query
 ---@field is_empty fun(query: Logs.Query): boolean True when the query hides nothing.
 ---@field has_time fun(query: Logs.Query): boolean
 ---@field matches fun(line: string, query: Logs.Query, level?: Logs.Level): boolean
@@ -43,10 +55,14 @@ local TIME_WORDS =
 
 ---Takes a filter apart. Words must all appear, `-word` hides lines, `"two words"` is one
 ---phrase, `/a|b/` is a regular expression, `level:error` keeps one level and
----`-level:error` hides one, and `after:` and `before:` keep a span of time.
+---`-level:error` hides one, `after:` and `before:` keep a span of time, and `is:marked`
+---keeps the bookmarked lines. `fields` maps the lower-case name of each field the formats
+---show to its name, and `name:value` tests that field.
 ---@param text string
+---@param fields? table<string, string>
 ---@return Logs.Query
-local function parse_query (text)
+local function parse_query (text, fields)
+  local known = fields or {}
   ---@type Logs.Query
   local query = {
     terms = {},
@@ -55,6 +71,7 @@ local function parse_query (text)
     skip = {},
     regexes = {},
     exclude_regexes = {},
+    fields = {},
   }
   local i, len = 1, #text
   while i <= len do
@@ -102,13 +119,64 @@ local function parse_query (text)
         end
       else
         local stop = text:find ('%s', i) or len + 1
+        -- A field's value may be in quotes, spaces and all: msg:"disk full".
+        local quote_at = text:match ('^[^%s:"]+:[=<>]*()"', i)
+        if quote_at and quote_at < stop then
+          local close = text:find ('"', quote_at + 1, true)
+          stop = (close or len) + 1
+        end
         local word = text:sub (i, stop - 1):lower ()
         i = stop
+        local field_name, field_rest = word:match ('^([^:]+):(.*)$')
+        local field = field_name and known[field_name] or nil
         local name = word:match ('^level:(.*)$')
         local level = name and name ~= '' and level_named (name) or nil
         local time_word, time_value = word:match ('^(%a+):(.+)$')
         local keeps_before = time_word and TIME_WORDS[time_word]
-        if level and negate then
+        if field and field_name ~= 'level' then
+          local op, value = field_rest:match ('^([=<>]*)(.*)$')
+          value = value:gsub ('^"(.*)"?$', '%1'):gsub ('"$', '')
+          if op == '' then
+            op = ':'
+          end
+          local number = tonumber (value)
+          local compares = op ~= ':' and op ~= '='
+          if
+            value ~= ''
+            and (
+              op == ':'
+              or op == '='
+              or op == '>'
+              or op == '<'
+              or op == '>='
+              or op == '<='
+            )
+          then
+            query.fields[#query.fields + 1] = {
+              name = field,
+              op = op --[[@as ':'|'='|'>'|'<'|'>='|'<=']],
+              value = value,
+              number = compares and number or nil,
+              negate = negate,
+            }
+          elseif value ~= '' then
+            query.problem = 'The test in '
+              .. field_name
+              .. ': is not one it reads. Write '
+              .. field_name
+              .. ':value, '
+              .. field_name
+              .. ':=value or '
+              .. field_name
+              .. ':>10.'
+          end
+        elseif word == 'is:marked' or word == 'is:bookmarked' then
+          if negate then
+            query.unmarked = true
+          else
+            query.marked = true
+          end
+        elseif level and negate then
           query.skip[level] = true
         elseif level then
           query.level = level
@@ -139,7 +207,8 @@ end
 ---@param query Logs.Query
 ---@return boolean
 local function has_words (query)
-  return #query.terms > 0
+  return #query.fields > 0
+    or #query.terms > 0
     or #query.phrases > 0
     or #query.exclude > 0
     or #query.regexes > 0
@@ -157,9 +226,54 @@ end
 ---@return boolean
 local function is_empty (query)
   return query.level == nil
+    and not query.marked
+    and not query.unmarked
     and next (query.skip) == nil
     and not has_words (query)
     and not has_time (query)
+end
+
+---True when a field passes a test.
+---@param value? string
+---@param test Logs.FieldTest
+---@return boolean
+local function field_passes (value, test)
+  if value == nil then
+    return false
+  end
+  local op = test.op
+  if op == ':' then
+    return value:lower ():find (test.value, 1, true) ~= nil
+  elseif op == '=' then
+    return value:lower () == test.value
+  end
+  local a, b = tonumber (value), test.number ---@type number|string?, number|string?
+  if not a or not b then
+    a, b = value:lower (), test.value
+  end
+  if op == '>' then
+    return a > b
+  elseif op == '<' then
+    return a < b
+  elseif op == '>=' then
+    return a >= b
+  end
+  return a <= b
+end
+
+---True when a line's fields pass every test.
+---@param line Logs.Line
+---@param query Logs.Query
+---@return boolean
+local function fields_match (line, query)
+  local fields = line.fields
+  for _, test in ipairs (query.fields) do
+    local value = fields and fields[test.name] or nil
+    if field_passes (value, test) == test.negate then
+      return false
+    end
+  end
+  return true
 end
 
 ---True when lower-case text has every word, phrase and regular expression, and none that
@@ -226,6 +340,9 @@ local function matches_line (line, query, newest)
   if query.level and line.level ~= query.level or query.skip[line.level] then
     return false
   end
+  if (query.marked and not line.marked) or (query.unmarked and line.marked) then
+    return false
+  end
   if query.after or query.before then
     local t = line.time
     if not t then
@@ -240,6 +357,9 @@ local function matches_line (line, query, newest)
   end
   if not has_words (query) then
     return true
+  end
+  if #query.fields > 0 and not fields_match (line, query) then
+    return false
   end
   local lower = line.lower
   if not lower then

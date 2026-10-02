@@ -65,6 +65,9 @@ end
 function El:value ()
   return ''
 end
+function El:html (h)
+  self.inner = h
+end
 -- The kernel refuses a restricted plugin the DOM methods that reach past its elements.
 function El:call (method)
   if method == 'insertAdjacentHTML' or method == 'setAttribute' then
@@ -148,6 +151,18 @@ local function fake_app ()
       pick_open = function (_, cb)
         cb ({ table.remove (world.picks, 1) })
       end,
+      pick_save = function (opts, cb)
+        world.save_opts = opts
+        cb (world.save_path)
+      end,
+      write_file = function (path, text, cb)
+        world.written = { path = path, text = text }
+        cb (true)
+      end,
+      list_dir = function (path, cb)
+        world.listed = path
+        cb (world.dir or {})
+      end,
     },
     process = {
       spawn = function (program, args, opts)
@@ -172,6 +187,14 @@ local function fake_app ()
     status = {
       add = function ()
         return { set = function () end }
+      end,
+    },
+    picker = {
+      pick = function (opts)
+        world.pick = opts
+      end,
+      input = function (opts)
+        world.input = opts
       end,
     },
     notify = {
@@ -353,4 +376,229 @@ test ('a click shows a line, with its time, and arrows move', function ()
   title = find (world, 'logs-detail-title').shown_text
   ok (title:find ('Line 2', 1, true), title)
   ok (title:find ('(from the line above)', 1, true), title)
+end)
+
+test ('a rotated log reads its older files first, as one source', function ()
+  local world = start ()
+  world.dir = { 'app.log', 'app.log.1', 'app.log.2.gz', 'other.log' }
+  open (world, 'logs.open_rotated', '/var/log/app.log.1', { 'old', 'new' })
+  eq (world.listed, '/var/log')
+  local proc = world.spawned[#world.spawned]
+  eq (proc.program, 'sh')
+  eq ({ proc.args[4], proc.args[5], proc.args[6] }, {
+    '/var/log/app.log',
+    '/var/log/app.log.2.gz',
+    '/var/log/app.log.1',
+  })
+  eq (rows (world), { 'old', 'new' })
+end)
+
+test (
+  'bookmarks mark lines, F2 goes to them, and is:marked keeps them',
+  function ()
+    local world = start ()
+    open (world, 'logs.open_file', '/var/log/app.log', {
+      'one',
+      'two',
+      'three',
+      'four',
+    })
+    local html = find (world, 'logs-rows').kids[1].kids[1].props.html
+    local ids = {} ---@type integer[]
+    for id in html:gmatch ('data%-item="(%d+)"') do
+      ids[#ids + 1] = math.floor (tonumber (id) or 0)
+    end
+    local list = find (world, 'logs-list')
+    list:fire ('click', { item = tostring (ids[2]) })
+    world.commands['logs.bookmark'].run ()
+    list:fire ('click', { item = tostring (ids[4]) })
+    list:fire ('keydown', { key = 'm' })
+    list:fire ('click', { item = tostring (ids[1]) })
+    world.commands['logs.next_bookmark'].run ()
+    local title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 2', 1, true), title)
+    world.commands['logs.next_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 4', 1, true), title)
+    world.commands['logs.next_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 2', 1, true), 'it goes round to the first')
+    world.commands['logs.prev_bookmark'].run ()
+    title = find (world, 'logs-detail-title').shown_text
+    ok (title:find ('Line 4', 1, true), title)
+    filter (world, 'is:marked')
+    eq (rows (world), { 'two', 'four' })
+    world.commands['logs.bookmark'].run ()
+    eq (
+      rows (world),
+      { 'two' },
+      'a line that loses its bookmark leaves the list'
+    )
+  end
+)
+
+test ('Export writes the lines that match, as text or as CSV', function ()
+  local world = start ()
+  open (world, 'logs.open_file', '/var/log/app.log', {
+    '2024-03-01T12:00:00Z ERROR boom',
+    '2024-03-01T12:00:01Z INFO fine',
+  })
+  filter (world, 'level:error')
+  world.save_path = '/tmp/out.log'
+  world.commands['logs.export'].run ()
+  eq (world.save_opts.default_path, 'app-matching.log')
+  eq (world.written, {
+    path = '/tmp/out.log',
+    text = '2024-03-01T12:00:00Z ERROR boom\n',
+  })
+  world.save_path = '/tmp/out.csv'
+  world.commands['logs.export'].run ()
+  ok (
+    world.written.text:find ('^line,time,level,text\r\n1,'),
+    world.written.text
+  )
+  eq (world.said[#world.said], 'Exported 1 line to out.csv.')
+end)
+
+---The text of each column of each drawn row, in order.
+---@param world table
+---@return string[][]
+local function cells (world)
+  local out = {} ---@type string[][]
+  for _, chunk in ipairs (find (world, 'logs-rows').kids) do
+    for _, batch in ipairs (chunk.kids) do
+      for row in
+        (batch.props.html or ''):gmatch ('<div class="logs%-row.-</div>')
+      do
+        local values = {} ---@type string[]
+        for v in row:gmatch ('<span class="logs%-f"[^>]*>(.-)</span>') do
+          values[#values + 1] = v
+        end
+        out[#out + 1] = values
+      end
+    end
+  end
+  return out
+end
+
+test (
+  'a format shows fields as columns, sorts by them and filters by them',
+  function ()
+    local world = start ()
+    open (world, 'logs.open_file', '/var/log/app.log', {
+      'level=info status=200 msg="all good"',
+      'level=error status=503 msg="db down"',
+      'level=warn status=404 msg=missing',
+    })
+    world.commands['logs.new_format'].run ()
+    local kinds = {} ---@type string[]
+    for _, item in ipairs (world.pick.items) do
+      kinds[#kinds + 1] = item.value
+    end
+    eq (kinds, { 'regex', 'json', 'logfmt' })
+    world.pick.on_pick (world.pick.items[3])
+    world.input.on_submit ('Web')
+    eq (
+      world.input.value,
+      'level, status, msg',
+      'it suggests the fields it found'
+    )
+    world.input.on_submit ('status, msg')
+    tick (world)
+    eq (cells (world), {
+      { '200', 'all good' },
+      { '503', 'db down' },
+      { '404', 'missing' },
+    })
+    local head = find (world, 'logs-head')
+    ok (head.visible)
+    ok (head.inner:find ('data-item="col:status"', 1, true), head.inner)
+    head:fire ('click', { item = 'col:status' })
+    eq (cells (world)[1], { '200', 'all good' })
+    eq (cells (world)[3], { '503', 'db down' })
+    head:fire ('click', { item = 'col:status' })
+    eq (cells (world)[1], { '503', 'db down' }, 'a second click sorts down')
+    head:fire ('click', { item = 'col:status' })
+    eq (
+      cells (world)[1],
+      { '200', 'all good' },
+      'a third goes back to the order they came'
+    )
+    filter (world, 'status:>=400 -msg:missing')
+    eq (cells (world), { { '503', 'db down' } })
+    world.save_path = '/tmp/web.csv'
+    world.commands['logs.export'].run ()
+    ok (
+      world.written.text:find (
+        'line,time,level,status,msg,text\r\n2,,error,503,db down,',
+        1,
+        true
+      ),
+      world.written.text
+    )
+    eq (
+      find (world, 'logs-chip-n', 1).shown_text,
+      '1',
+      'the level field sets the level'
+    )
+  end
+)
+
+test ('a regular expression format keeps its named groups', function ()
+  local world = start ()
+  open (world, 'logs.open_file', '/var/log/app.log', {
+    '12:00:01 [db] connected',
+    '12:00:02 [web] listening',
+  })
+  world.commands['logs.new_format'].run ()
+  world.pick.on_pick (world.pick.items[1])
+  world.input.on_submit ('Mine')
+  eq (
+    world.input.validate ('(no name)'),
+    'The regular expression names no group. Name one for each field, such as (?<level>\\w+).'
+  )
+  world.input.on_submit ('^\\S+ \\[(?<part>\\w+)\\]')
+  tick (world)
+  eq (cells (world), { { 'db' }, { 'web' } })
+  ok (
+    world.said[#world.said]:find ('It reads 2 of the last 2 lines.', 1, true),
+    world.said[#world.said]
+  )
+  world.commands['logs.format'].run ()
+  eq (world.pick.items[2].hint, 'In use')
+  world.pick.on_pick (world.pick.items[1])
+  eq (cells (world), { {}, {} }, 'No Format takes the columns away')
+  ok (not find (world, 'logs-head').visible)
+end)
+
+test ('the histogram shows lines over time, and a drag keeps a span', function ()
+  local world = start ()
+  open (world, 'logs.open_file', '/var/log/app.log', {
+    '2024-03-01T12:00:00Z INFO a',
+    '2024-03-01T12:00:30Z ERROR b',
+    '2024-03-01T12:05:00Z INFO c',
+    '2024-03-01T12:09:59Z INFO d',
+  })
+  local hist = find (world, 'logs-hist')
+  ok (hist.visible)
+  local bars = find (world, 'logs-hist-bars')
+  ok (bars.inner:find ('logs-hb-error', 1, true), bars.inner)
+  eq (find (world, 'logs-hist-step').shown_text, 'Each bar is 10 seconds')
+  bars:fire ('mousedown', { item = '1', button = 0 })
+  bars:fire ('mouseover', { item = '4' })
+  ok (find (world, 'logs-hist-sel').visible)
+  bars:fire ('mouseup', {})
+  eq (rows (world), {
+    '2024-03-01T12:00:00Z INFO a',
+    '2024-03-01T12:00:30Z ERROR b',
+  })
+  eq (
+    find (world, 'logs-hist-step').shown_text,
+    'Each bar is 500 milliseconds',
+    'the bars zoom in'
+  )
+  world.commands['logs.all_time'].run ()
+  eq (#rows (world), 4)
+  world.commands['logs.histogram'].run ()
+  ok (not hist.visible, 'Toggle Histogram hides it')
 end)

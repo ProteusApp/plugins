@@ -2,6 +2,7 @@
 -- palette and the keys run. The log viewer's init.lua attaches it to the context its modules
 -- share, once the rest is in place.
 
+local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 
 local PAGE_STEP = 2500 -- how far the window moves
@@ -23,10 +24,76 @@ function M.attach (ctx)
     ctx.find_source, ctx.show_source, ctx.show_merged
   local stop, restart, close_source = ctx.stop, ctx.restart, ctx.close_source
   local open_file, run_command = ctx.open_file, ctx.run_command
+  local open_rotated = ctx.open_rotated
   local paste_log, open_recent = ctx.paste_log, ctx.open_recent
   local clear_lines, copy_matching = ctx.clear_lines, ctx.copy_matching
   local copy_selected, toggle_level = ctx.copy_selected, ctx.toggle_level
   local toggle_wrap, focus_filter = ctx.toggle_wrap, ctx.focus_filter
+  local toggle_mark, next_mark = ctx.toggle_mark, ctx.next_mark
+  local list_marks = ctx.list_marks
+  local choose_format, new_format = ctx.choose_format, ctx.new_format
+  local edit_format, delete_format = ctx.edit_format, ctx.delete_format
+
+  ---Adds a word to the filter, such as `user:"ann"`.
+  ---@param word string
+  local function add_filter_word (word)
+    local text = ctx.filter_text:gsub ('%s+$', '')
+    ctx.set_filter (text == '' and word or (text .. ' ' .. word))
+  end
+
+  -- Export ----------------------------------------------------------------------------------
+
+  ---Writes the lines that match to a file the user picks: as they read, or as CSV when the
+  ---name ends in .csv.
+  local function export_lines ()
+    if not ctx.shown and not ctx.merged then
+      return
+    end
+    local lines = {} ---@type Logs.Line[]
+    for k = ctx.view_first, #ctx.view_all do
+      lines[#lines + 1] = ctx.view_all[k]
+    end
+    local base = ctx.merged and 'logs' or ctx.shown.name
+    app.fs.pick_save ({
+      title = 'Export Matching Lines',
+      default_path = (base:gsub ('%.[^.]*$', '')) .. '-matching.log',
+      filters = {
+        { name = 'Log', extensions = { 'log', 'txt' } },
+        { name = 'CSV', extensions = { 'csv' } },
+      },
+    }, function (path, err)
+      if err then
+        ctx.say_error ('Could not show the file picker. ' .. err)
+        return
+      end
+      if not path then
+        return
+      end
+      local source_of = nil ---@type (fun(line: Logs.Line): string?)?
+      if ctx.merged then
+        source_of = function (line)
+          local tag = ctx.tag_of (line)
+          return tag and tag.name or nil
+        end
+      end
+      local text = lf.is_csv (path)
+          and lf.as_csv (lines, source_of, ctx.col_names)
+        or lf.as_text (lines)
+      app.fs.write_file (path, text, function (_, write_err)
+        if write_err then
+          ctx.say_error ('Could not export the lines. ' .. write_err)
+          return
+        end
+        ctx.say (
+          'Exported '
+            .. lf.group (#lines)
+            .. (#lines == 1 and ' line to ' or ' lines to ')
+            .. (path:match ('[^/\\]+$') or path)
+            .. '.'
+        )
+      end)
+    end)
+  end
 
   -- Right-click menus -------------------------------------------------------------------------
 
@@ -66,6 +133,35 @@ function M.attach (ctx)
           end,
         }
         items[#items + 1] = {
+          label = line.marked and 'Remove Bookmark' or 'Bookmark Line',
+          icon = line.marked and 'bookmark-minus' or 'bookmark',
+          run = function ()
+            toggle_mark (line)
+          end,
+        }
+        -- Each column the line has a value in can keep the lines with that value.
+        local fields = line.fields or {}
+        for _, name in ipairs (ctx.col_names) do
+          local value = fields[name]
+          if
+            value
+            and value ~= ''
+            and #value <= 80
+            and not value:find ('[\r\n"]')
+          then
+            local word = name
+              .. ':'
+              .. (value:find ('%s') and ('"' .. value .. '"') or value)
+            items[#items + 1] = {
+              label = 'Keep ' .. name .. ' = ' .. value,
+              icon = 'filter',
+              run = function ()
+                add_filter_word (word)
+              end,
+            }
+          end
+        end
+        items[#items + 1] = {
           label = 'Hide ' .. LEVEL_PLURALS[line.level],
           icon = 'eye-off',
           run = function ()
@@ -79,6 +175,18 @@ function M.attach (ctx)
         icon = 'clipboard-list',
         disabled = ctx.matched == 0,
         run = copy_matching,
+      }
+      items[#items + 1] = {
+        label = 'Export Matching Lines…',
+        icon = 'download',
+        disabled = ctx.matched == 0,
+        run = export_lines,
+      }
+      items[#items + 1] = {
+        label = 'Go to Bookmark…',
+        icon = 'bookmark',
+        disabled = next (ctx.marks) == nil,
+        run = list_marks,
       }
       items[#items + 1] = {
         label = 'Clear',
@@ -108,6 +216,11 @@ function M.attach (ctx)
             run = function ()
               open_file (true)
             end,
+          },
+          {
+            label = 'Open Rotated Log File',
+            icon = 'files',
+            run = open_rotated,
           },
           {
             label = 'All Sources, by Time',
@@ -145,6 +258,13 @@ function M.attach (ctx)
           end,
         }
       end
+      items[#items + 1] = {
+        label = 'Format…',
+        icon = 'table',
+        run = function ()
+          choose_format (s)
+        end,
+      }
       if s.spec.kind ~= 'paste' then
         items[#items + 1] = {
           label = 'Restart',
@@ -227,6 +347,14 @@ function M.attach (ctx)
     run = function ()
       open_file (true)
     end,
+  })
+  commands.register ({
+    id = 'logs.open_rotated',
+    category = 'Logs',
+    title = 'Open Rotated Log File',
+    icon = 'files',
+    when = here,
+    run = open_rotated,
   })
   commands.register ({
     id = 'logs.merged',
@@ -398,6 +526,139 @@ function M.attach (ctx)
     icon = 'clipboard-list',
     when = has_source,
     run = copy_matching,
+  })
+  commands.register ({
+    id = 'logs.format',
+    category = 'Logs',
+    title = 'Set Format',
+    icon = 'table',
+    when = function ()
+      return here () and ctx.shown ~= nil
+    end,
+    run = function ()
+      if ctx.shown then
+        choose_format (ctx.shown)
+      end
+    end,
+  })
+  commands.register ({
+    id = 'logs.new_format',
+    category = 'Logs',
+    title = 'New Format',
+    icon = 'plus',
+    when = here,
+    run = function ()
+      new_format (ctx.shown)
+    end,
+  })
+  commands.register ({
+    id = 'logs.edit_format',
+    category = 'Logs',
+    title = 'Change Format',
+    icon = 'pencil',
+    when = function ()
+      return here () and #ctx.formats > 0
+    end,
+    run = edit_format,
+  })
+  commands.register ({
+    id = 'logs.delete_format',
+    category = 'Logs',
+    title = 'Delete Format',
+    icon = 'trash-2',
+    when = function ()
+      return here () and #ctx.formats > 0
+    end,
+    run = delete_format,
+  })
+  commands.register ({
+    id = 'logs.unsort',
+    category = 'Logs',
+    title = 'Show Lines in the Order They Came',
+    icon = 'arrow-down-wide-narrow',
+    when = function ()
+      return here () and ctx.sort ~= nil
+    end,
+    run = function ()
+      ctx.sort = nil
+      ctx.redraw_list ()
+    end,
+  })
+  commands.register ({
+    id = 'logs.histogram',
+    category = 'Logs',
+    title = 'Toggle Histogram',
+    icon = 'chart-column',
+    when = here,
+    run = function ()
+      ctx.toggle_hist ()
+      ctx.render_toggles ()
+    end,
+  })
+  commands.register ({
+    id = 'logs.all_time',
+    category = 'Logs',
+    title = 'Show All Times',
+    icon = 'zoom-out',
+    when = function ()
+      return here () and lf.has_time (ctx.query)
+    end,
+    run = function ()
+      ctx.set_filter (lf.without_range (ctx.filter_text))
+    end,
+  })
+  commands.register ({
+    id = 'logs.export',
+    category = 'Logs',
+    title = 'Export Matching Lines',
+    icon = 'download',
+    when = has_source,
+    run = export_lines,
+  })
+  commands.register ({
+    id = 'logs.bookmark',
+    category = 'Logs',
+    title = 'Toggle Bookmark',
+    key = 'ctrl+f2',
+    icon = 'bookmark',
+    when = function ()
+      return here () and ctx.selected ~= nil
+    end,
+    run = function ()
+      if ctx.selected then
+        toggle_mark (ctx.selected)
+      end
+    end,
+  })
+  commands.register ({
+    id = 'logs.next_bookmark',
+    category = 'Logs',
+    title = 'Next Bookmark',
+    key = 'f2',
+    icon = 'arrow-down',
+    when = has_source,
+    run = function ()
+      next_mark (1)
+    end,
+  })
+  commands.register ({
+    id = 'logs.prev_bookmark',
+    category = 'Logs',
+    title = 'Previous Bookmark',
+    key = 'shift+f2',
+    icon = 'arrow-up',
+    when = has_source,
+    run = function ()
+      next_mark (-1)
+    end,
+  })
+  commands.register ({
+    id = 'logs.bookmarks',
+    category = 'Logs',
+    title = 'Go to Bookmark',
+    icon = 'bookmark',
+    when = has_source,
+    run = list_marks,
   })
   commands.register ({
     id = 'logs.show_all',

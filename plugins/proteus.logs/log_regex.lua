@@ -1,7 +1,9 @@
 -- log_regex: regular expressions for the log filter, since Lua's patterns have no `|` and no
 -- groups. It reads the common syntax: `.`, `[...]` and `[^...]`, `\d \w \s` and their capitals,
 -- `\b`, `^` and `$`, groups `(...)` and `(?:...)`, `|`, and `* + ? {n} {n,} {n,m}`, each with
--- a `?` after it to take as little as it can. It matches bytes, and backtracks.
+-- a `?` after it to take as little as it can. It matches bytes, and backtracks. `match` also
+-- gives what each group took, and a group named with `(?<name>...)` or `(?P<name>...)` is
+-- found by its name too.
 --
 -- A pattern compiles once into a tree of nodes. Matching walks the tree with continuations,
 -- and a repeat of one character, such as `.*` or `\d+`, loops instead of recursing, so a long
@@ -15,6 +17,7 @@
 ---@field test? LogRegex.Test What a `set` lets through.
 ---@field neg? boolean For `word`: `\B` rather than `\b`.
 ---@field alts? LogRegex.Node[][] The branches of a `group`.
+---@field cap? integer The number of a group that keeps what it took.
 ---@field node? LogRegex.Node What a `rep` repeats.
 ---@field min? integer
 ---@field max? integer Nil for no limit.
@@ -22,6 +25,8 @@
 
 ---@class LogRegex.Program
 ---@field find fun(s: string, init?: integer): integer?, integer? The first match at or after `init`: where it starts and ends, or nil.
+---@field match fun(s: string, init?: integer): table<string|integer, string>? What the first match's groups took, by number and by name, or nil when it does not match. A group that took nothing has no entry.
+---@field names string[] The names of the named groups, in the order they open.
 
 local BYTE_0, BYTE_9 = 48, 57
 local BYTE_A, BYTE_Z = 65, 90
@@ -105,9 +110,11 @@ end
 ---@param pattern string
 ---@param fold boolean Letters match in either case.
 ---@return LogRegex.Node[][]
+---@return (string|false)[] groups The name of each group that keeps what it took, or false.
 local function parse (pattern, fold)
   local pos = 1
   local len = #pattern
+  local groups = {} ---@type (string|false)[]
 
   ---@return string
   local function peek ()
@@ -244,17 +251,32 @@ local function parse (pattern, fold)
     local c = peek ()
     if c == '(' then
       pos = pos + 1
+      local cap = nil ---@type integer?
       if pattern:sub (pos, pos + 1) == '?:' then
         pos = pos + 2
       elseif peek () == '?' then
-        fail ('(? is supported only as (?:')
+        local name, after = pattern:match ('^%?P?<([%a_][%w_]*)>()', pos)
+        if not name then
+          fail ('(? is supported only as (?: and (?<name>')
+        end
+        for _, other in ipairs (groups) do
+          if other == name then
+            fail ('two groups are named ' .. name)
+          end
+        end
+        groups[#groups + 1] = name
+        cap = #groups
+        pos = after --[[@as integer]]
+      else
+        groups[#groups + 1] = false
+        cap = #groups
       end
       local alts = alternation ()
       if peek () ~= ')' then
         fail ('a ( has no )')
       end
       pos = pos + 1
-      return { t = 'group', alts = alts }
+      return { t = 'group', alts = alts, cap = cap }
     elseif c == '[' then
       pos = pos + 1
       return set ()
@@ -368,7 +390,7 @@ local function parse (pattern, fold)
   if pos <= len then
     fail ('a ) has no (')
   end
-  return alts
+  return alts, groups
 end
 
 ---@param node LogRegex.Node
@@ -384,18 +406,23 @@ end
 ---@return string?
 local function compile (pattern, opts)
   local fold = opts ~= nil and opts.fold == true
-  local ok, alts = pcall (parse, pattern, fold)
+  local ok, parsed, groups = pcall (parse, pattern, fold)
   if not ok then
-    local message = tostring (alts)
+    local message = tostring (parsed)
     if message:sub (1, #STOP) == STOP then
       return nil, message:sub (#STOP + 1)
     end
     return nil, message
   end
+  local alts = parsed --[[@as LogRegex.Node[][] ]]
   local top = { t = 'group', alts = alts } ---@type LogRegex.Node
 
   local subject = ''
   local slen = 0
+  -- While `match` runs, where each group's last pass starts and ends.
+  local capturing = false
+  local cap_from = {} ---@type table<integer, integer>
+  local cap_to = {} ---@type table<integer, integer>
 
   ---True when one byte matches a single-byte node.
   ---@param node LogRegex.Node
@@ -447,8 +474,22 @@ local function compile (pattern, opts)
       end
       return nil
     elseif t == 'group' then
+      local cap = capturing and node.cap or nil
+      local next_step = after
+      if cap then
+        -- The group keeps where it took, and gives it back when what follows fails.
+        next_step = function (j)
+          local old_from, old_to = cap_from[cap], cap_to[cap]
+          cap_from[cap], cap_to[cap] = i, j - 1
+          local stop = after (j)
+          if not stop then
+            cap_from[cap], cap_to[cap] = old_from, old_to
+          end
+          return stop
+        end
+      end
       for _, seq in ipairs (node.alts) do
-        local stop = match_seq (seq, 1, i, after)
+        local stop = match_seq (seq, 1, i, next_step)
         if stop then
           return stop
         end
@@ -566,7 +607,45 @@ local function compile (pattern, opts)
     return nil, nil
   end
 
-  return { find = find }, nil
+  local names = {} ---@type string[]
+  for _, name in
+    ipairs (groups --[[@as (string|false)[] ]])
+  do
+    if name then
+      names[#names + 1] = name
+    end
+  end
+
+  ---@param s string
+  ---@param init? integer
+  ---@return table<string|integer, string>?
+  local function match (s, init)
+    capturing = true
+    cap_from, cap_to = {}, {}
+    local ok_find, from, to = pcall (find, s, init)
+    capturing = false
+    if not ok_find then
+      error (from, 0)
+    end
+    if not from or not to then
+      return nil
+    end
+    local out = { [0] = s:sub (from, to) } ---@type table<string|integer, string>
+    for n, name in
+      ipairs (groups --[[@as (string|false)[] ]])
+    do
+      local a, b = cap_from[n], cap_to[n]
+      if a and b then
+        out[n] = s:sub (a, b)
+        if name then
+          out[name] = out[n]
+        end
+      end
+    end
+    return out
+  end
+
+  return { find = find, match = match, names = names }, nil
 end
 
 return { compile = compile }

@@ -1,5 +1,5 @@
 -- logs_css: the log viewer's styles: the bar with the filter and the level chips, the list
--- of lines with their colours, the detail panel, and the Sources view.
+-- of lines with their colours and columns, the detail panel, and the Sources view.
 
 -- lang=css
 return [[
@@ -408,6 +408,105 @@ return [[
 .logs-src-close:hover {
   color: var(--fg);
   background: var(--bg-hover);
+}
+.logs-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  white-space: pre;
+  border-left: 2px solid transparent;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+.logs-hcol,
+.logs-f {
+  flex: none;
+  box-sizing: content-box;
+  padding-right: 1ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.logs-hcol {
+  cursor: pointer;
+}
+.logs-hcol:hover {
+  color: var(--fg);
+}
+.logs-hcol.on {
+  color: var(--accent);
+}
+.logs-f {
+  color: var(--syn-property);
+}
+.logs-hist {
+  flex: none;
+  padding: 6px 12px 2px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  user-select: none;
+}
+.logs-hist-plot {
+  position: relative;
+  height: 44px;
+}
+.logs-hist-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 100%;
+  cursor: crosshair;
+}
+.logs-hbin {
+  flex: 1 1 0;
+  min-width: 1px;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 1px;
+}
+.logs-hbin:hover {
+  background: var(--bg-hover);
+}
+.logs-hbin i {
+  display: block;
+  flex: none;
+  min-height: 1px;
+  background: var(--fg-faint);
+}
+.logs-hbin .logs-hb-error {
+  background: var(--danger);
+}
+.logs-hbin .logs-hb-warn {
+  background: var(--warning);
+}
+.logs-hbin .logs-hb-info {
+  background: var(--accent);
+}
+.logs-hbin .logs-hb-debug {
+  background: var(--fg-muted);
+}
+.logs-hist-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  opacity: 0.25;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.logs-hist-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 .logs-src-none {
   padding: 16px 8px;

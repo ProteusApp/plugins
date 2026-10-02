@@ -12,14 +12,19 @@
 --
 -- This file puts the screen together and wires its events. The rest lives in modules that
 -- share one context, Logs.Ctx: logs_list draws the list of lines, logs_detail shows the line
--- picked in it, logs_sources opens, runs and shows the sources the lines come from, and
--- logs_commands holds the right-click menus and the commands.
+-- picked in it, logs_hist draws the bars of lines over time above it, logs_marks keeps the
+-- bookmarks, logs_formats the formats whose fields show as columns, logs_sources opens, runs
+-- and shows the sources the lines come from, and logs_commands holds the right-click menus and
+-- the commands.
 
 local CSS = require ('logs_css') --[[@as string]]
 local commands_m = require ('logs_commands') --[[@as Logs.CommandsModule]]
 local detail_m = require ('logs_detail') --[[@as Logs.DetailModule]]
+local formats_m = require ('logs_formats') --[[@as Logs.FormatsModule]]
+local hist_m = require ('logs_hist') --[[@as Logs.HistModule]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
+local marks_m = require ('logs_marks') --[[@as Logs.MarksModule]]
 local sources_m = require ('logs_sources') --[[@as Logs.SourcesViewModule]]
 
 local FILTER_MS = 150
@@ -60,9 +65,17 @@ local LEVEL_PLURALS = {
 ---@field by_id table<integer, Logs.Line> The drawn lines by id.
 ---@field view_newest? number The time of the view's newest line, for a filter such as after:-15m.
 ---@field query Logs.Query
+---@field filter_text string What the filter box holds.
+---@field formats Logs.Format[] The formats the user defined.
+---@field col_names string[] The fields the formats of the view's sources show as columns.
+---@field cols_key string The column names, joined, to tell when they change.
+---@field known_fields table<string, string> The column names by their lower-case names, for `field:value`.
+---@field cols? Logs.Columns The columns of the drawn window, with their widths.
+---@field sort? Logs.Sort The column the list is sorted by, or nil for the order lines came in.
 ---@field hidden table<string, boolean> The levels the chips hide.
 ---@field follow boolean True while the list stays at the bottom as lines arrive.
 ---@field selected? Logs.Line The line the detail panel shows.
+---@field marks table<integer, Logs.Line> The bookmarked lines, by id.
 ---@field pending Logs.Line[] Lines that arrived and are not drawn yet.
 ---@field chunks Logs.Chunk[]
 ---@field drawn integer Rows in the chunks.
@@ -72,6 +85,7 @@ local LEVEL_PLURALS = {
 ---@field filter_box Proteus.El
 ---@field problem_el Proteus.El
 ---@field list Proteus.El
+---@field head_el Proteus.El The row of column names.
 ---@field rows_el Proteus.El
 ---@field earlier_bar Proteus.El
 ---@field earlier_text Proteus.El
@@ -96,6 +110,7 @@ local LEVEL_PLURALS = {
 ---@field update_counts fun()
 ---@field set_follow fun(on: boolean)
 ---@field reset_filter fun()
+---@field set_filter fun(text: string) Puts text in the filter box and filters by it.
 ---@field clear_lines fun()
 ---@field copy_matching fun()
 ---@field copy_selected fun()
@@ -103,6 +118,7 @@ local LEVEL_PLURALS = {
 ---@field toggle_wrap fun()
 ---@field focus_filter fun()
 ---@field redraw_list fun() From logs_list.
+---@field sort_by fun(field: string)
 ---@field show_window fun(from: integer)
 ---@field page fun(step: integer)
 ---@field reveal fun(id: integer)
@@ -116,6 +132,23 @@ local LEVEL_PLURALS = {
 ---@field open_detail fun(line: Logs.Line)
 ---@field select_line fun(id: integer)
 ---@field move_selection fun(step: integer)
+---@field toggle_mark fun(line: Logs.Line) From logs_marks.
+---@field forget_marks fun(gone: fun(line: Logs.Line): boolean)
+---@field next_mark fun(step: integer)
+---@field list_marks fun()
+---@field go_to_line fun(line: Logs.Line): boolean
+---@field parser_for fun(name?: string): Logs.Parser? From logs_formats.
+---@field set_format fun(src: Logs.Source, name?: string)
+---@field choose_format fun(src: Logs.Source)
+---@field new_format fun(src?: Logs.Source)
+---@field edit_format fun()
+---@field delete_format fun()
+---@field save_open fun() From logs_sources.
+---@field hist_el Proteus.El From logs_hist.
+---@field render_hist fun()
+---@field schedule_hist fun()
+---@field toggle_hist fun()
+---@field hist_shown fun(): boolean
 ---@field find_source fun(id: number?): Logs.Source? From logs_sources.
 ---@field render_sources fun()
 ---@field show_source fun(src: Logs.Source?)
@@ -126,6 +159,7 @@ local LEVEL_PLURALS = {
 ---@field restart fun(src: Logs.Source)
 ---@field close_source fun(src: Logs.Source)
 ---@field open_file fun(whole: boolean)
+---@field open_rotated fun()
 ---@field run_command fun()
 ---@field paste_log fun()
 ---@field open_recent fun()
@@ -134,7 +168,7 @@ local LEVEL_PLURALS = {
 return {
   name = 'Logs',
   description = 'Follow a log file or a program, filter the lines, and spot errors.',
-  version = '1.2.1',
+  version = '1.3.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the programs the user names, and follows a log file anywhere on disk with one. Paste
   -- Log reads the clipboard.
@@ -184,8 +218,14 @@ return {
       view_first = 1,
       by_id = {},
       query = lf.parse_query (''),
+      filter_text = '',
+      formats = {},
+      col_names = {},
+      cols_key = '',
+      known_fields = {},
       hidden = {},
       follow = true,
+      marks = {},
       pending = {},
       chunks = {},
       drawn = 0,
@@ -200,6 +240,8 @@ return {
 
     ---@type fun()
     local redraw_list
+
+    hist_m.attach (ctx)
 
     ---@param text string
     local function say (text)
@@ -267,6 +309,13 @@ return {
       ui.icon ('text-wrap', 14),
       'Wrap',
     })
+    local hist_btn = ui.button ({
+      variant = 'ghost',
+      class = 'logs-toggle',
+      title = 'Show how many lines were written over time',
+      ui.icon ('chart-column', 14),
+      'Histogram',
+    })
     local clear_btn = ui.button ({
       variant = 'ghost',
       title = 'Clear the lines (Ctrl+K)',
@@ -317,9 +366,12 @@ return {
     earlier_bar:show (false)
     later_bar:show (false)
     local rows_el = ui.div ({ class = 'logs-rows' })
+    local head_el = ui.div ({ class = 'logs-head' })
+    head_el:show (false)
     local list = ui.div ({
       class = 'logs-list',
       attrs = { tabindex = '0' },
+      head_el,
       earlier_bar,
       rows_el,
       later_bar,
@@ -361,9 +413,11 @@ return {
         ui.div ({ class = 'ui-grow' }),
         follow_btn,
         wrap_btn,
+        hist_btn,
         clear_btn,
         problem_el,
       }),
+      ctx.hist_el,
       ui.div ({ class = 'logs-body', list, empty }),
       detail,
     })
@@ -430,6 +484,7 @@ return {
     local function render_toggles ()
       follow_btn:class ('on', ctx.follow)
       wrap_btn:class ('on', wrap)
+      hist_btn:class ('on', ctx.hist_shown ())
     end
 
     local function scroll_bottom ()
@@ -495,7 +550,11 @@ return {
         st_state.set (
           ctx.shown.name
             .. ': '
-            .. lf.state_label (ctx.shown.state, ctx.shown.code)
+            .. lf.state_label (
+              ctx.shown.state,
+              ctx.shown.code,
+              ctx.shown.spec.kind == 'file'
+            )
         )
       end
       local total = view_total ()
@@ -535,9 +594,16 @@ return {
       })
     end
 
+    ---@param text string
+    ---@return Logs.Query
+    local function parse (text)
+      return lf.parse_query (text, ctx.known_fields)
+    end
+
     local function reset_filter ()
       filter_box:value ('')
-      ctx.query = lf.parse_query ('')
+      ctx.filter_text = ''
+      ctx.query = parse ('')
       ctx.hidden = {}
       app.store.set ('hidden', {})
       render_chip_states ()
@@ -609,7 +675,7 @@ return {
           or 'Lines show here as the program prints them.'
       elseif src then
         title = 'No lines'
-        text = lf.state_label (src.state, src.code)
+        text = lf.state_label (src.state, src.code, src.spec.kind == 'file')
           .. (src.detail and ('. ' .. src.detail) or '.')
       end
       empty:set_children ({
@@ -622,7 +688,7 @@ return {
     -- The line list -----------------------------------------------------------------------------
 
     ctx.filter_box, ctx.problem_el = filter_box, problem_el
-    ctx.list, ctx.rows_el = list, rows_el
+    ctx.list, ctx.rows_el, ctx.head_el = list, rows_el, head_el
     ctx.earlier_bar, ctx.earlier_text = earlier_bar, earlier_text
     ctx.later_bar, ctx.later_text = later_bar, later_text
     ctx.render_toggles, ctx.scroll_bottom = render_toggles, scroll_bottom
@@ -642,10 +708,19 @@ return {
     local close_detail, select_line = ctx.close_detail, ctx.select_line
     local move_selection = ctx.move_selection
 
+    -- Bookmarks -------------------------------------------------------------------------------
+
+    ctx.picker, ctx.say, ctx.say_error = picker, say, say_error
+    marks_m.attach (ctx)
+    local toggle_mark, forget_marks = ctx.toggle_mark, ctx.forget_marks
+
+    -- Formats ---------------------------------------------------------------------------------
+
+    formats_m.attach (ctx)
+
     -- Sources ---------------------------------------------------------------------------------
 
-    ctx.picker, ctx.desktop, ctx.src_list = picker, desktop, src_list
-    ctx.say, ctx.say_error = say, say_error
+    ctx.desktop, ctx.src_list = desktop, src_list
     sources_m.attach (ctx)
     local show_source, show_merged = ctx.show_source, ctx.show_merged
     local new_source, start = ctx.new_source, ctx.start
@@ -657,9 +732,14 @@ return {
         return
       end
       -- The merged view clears every source.
+      local cleared = {} ---@type table<integer, boolean>
       for _, src in ipairs (view_sources ()) do
         src.lines:clear ()
+        cleared[src.id] = true
       end
+      forget_marks (function (line)
+        return cleared[line.src or 0] == true
+      end)
       close_detail ()
       redraw_list ()
       update_counts ()
@@ -726,16 +806,29 @@ return {
       filter_box:select ()
     end
 
+    ---@param text string
+    local function set_filter (text)
+      if filter_cancel then
+        filter_cancel ()
+        filter_cancel = nil
+      end
+      filter_box:value (text)
+      ctx.filter_text = text
+      ctx.query = parse (text)
+      redraw_list ()
+    end
+
     -- Events ----------------------------------------------------------------------------------
 
     filter_box:on ('input', function (ev)
       local text = ev.value or ''
+      ctx.filter_text = text
       if filter_cancel then
         filter_cancel ()
       end
       filter_cancel = app.timer.after (FILTER_MS, function ()
         filter_cancel = nil
-        ctx.query = lf.parse_query (text)
+        ctx.query = parse (text)
         redraw_list ()
       end)
       return nil
@@ -743,14 +836,8 @@ return {
 
     filter_box:on ('keydown', function (ev)
       if ev.key == 'Escape' then
-        if filter_box:value () ~= '' then
-          if filter_cancel then
-            filter_cancel ()
-            filter_cancel = nil
-          end
-          filter_box:value ('')
-          ctx.query = lf.parse_query ('')
-          redraw_list ()
+        if filter_box:value () ~= '' or ctx.filter_text ~= '' then
+          set_filter ('')
         else
           list:focus ()
         end
@@ -777,6 +864,11 @@ return {
     end)
     wrap_btn:on ('click', function ()
       toggle_wrap ()
+      return nil
+    end)
+    hist_btn:on ('click', function ()
+      ctx.toggle_hist ()
+      render_toggles ()
       return nil
     end)
     clear_btn:on ('click', function ()
@@ -814,6 +906,10 @@ return {
         close_detail ()
         return true
       end
+      if ev.key == 'm' and ctx.selected and not ev.ctrl and not ev.alt then
+        toggle_mark (ctx.selected)
+        return true
+      end
       return nil
     end)
 
@@ -833,7 +929,7 @@ return {
     -- Menus and commands ------------------------------------------------------------------------
 
     ctx.menus, ctx.level_plurals, ctx.here = menus, LEVEL_PLURALS, here
-    ctx.reset_filter = reset_filter
+    ctx.reset_filter, ctx.set_filter = reset_filter, set_filter
     ctx.clear_lines, ctx.copy_matching = clear_lines, copy_matching
     ctx.copy_selected, ctx.toggle_level = copy_selected, toggle_level
     ctx.toggle_wrap, ctx.focus_filter = toggle_wrap, focus_filter

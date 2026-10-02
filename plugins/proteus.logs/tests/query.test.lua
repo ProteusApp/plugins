@@ -204,3 +204,20 @@ test ('matches finds the level only when the query needs it', function ()
   ok (lq.matches ('DEBUG boom', lq.parse_query ('level:error'), 'error'))
   ok (not lq.matches ('DEBUG boom', lq.parse_query ('level:error')))
 end)
+
+test (
+  'is:marked keeps the bookmarked lines, and -is:marked hides them',
+  function ()
+    local marked = line (1, 'kept')
+    marked.marked = true
+    local plain = line (2, 'other')
+    local query = q ('is:marked')
+    ok (query.marked)
+    ok (not lf.is_empty (query))
+    ok (lf.matches_line (marked, query))
+    ok (not lf.matches_line (plain, query))
+    local hide = q ('-is:bookmarked')
+    ok (not lf.matches_line (marked, hide))
+    ok (lf.matches_line (plain, hide))
+  end
+)
