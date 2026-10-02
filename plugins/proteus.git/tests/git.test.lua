@@ -1318,3 +1318,51 @@ test ('graph svg draws lines, curves and a dot', function ()
   has (html, '<div class="git-graph-list">')
   has (html, 'data-item="aaaa"><svg class="git-graph"')
 end)
+
+---------------------------------------------------------------------------------------------
+-- Stashes
+---------------------------------------------------------------------------------------------
+
+test ('stash command lines', function ()
+  eq (m.stash_args ('  ', false), { 'stash', 'push' })
+  eq (
+    m.stash_args (' try it ', true),
+    { 'stash', 'push', '--include-untracked', '--message', 'try it' }
+  )
+  eq (m.stash_list_args (), { 'stash', 'list', m.STASH_FORMAT })
+  eq (
+    m.stash_action_args ('apply', 'stash@{1}'),
+    { 'stash', 'apply', 'stash@{1}' }
+  )
+  eq (m.stash_action_args ('pop', 'stash@{0}'), { 'stash', 'pop', 'stash@{0}' })
+  eq (
+    m.stash_action_args ('drop', 'stash@{2}'),
+    { 'stash', 'drop', '--quiet', 'stash@{2}' }
+  )
+  local show = m.stash_show_args ('stash@{0}')
+  eq ({ show[1], show[2], show[#show] }, { 'stash', 'show', 'stash@{0}' })
+end)
+
+test ('parse_stashes reads git stash list', function ()
+  -- Real output from git 2.43.
+  local text = 'stash@{0}\031On master: try it\0310 seconds ago\n'
+    .. 'stash@{1}\031WIP on master: 91ff88d move\0312 days ago\r\n'
+    .. 'not a stash line\n'
+  eq (m.parse_stashes (text), {
+    {
+      ref = 'stash@{0}',
+      message = 'On master: try it',
+      date = '0 seconds ago',
+    },
+    {
+      ref = 'stash@{1}',
+      message = 'WIP on master: 91ff88d move',
+      date = '2 days ago',
+    },
+  })
+  eq (m.parse_stashes (''), {})
+  local html =
+    m.stash_html ({ ref = 'stash@{0}', message = 'a <b>', date = 'now' })
+  has (html, 'a &lt;b&gt;')
+  has (html, '<span class="git-hash">stash@{0}</span>')
+end)

@@ -122,6 +122,12 @@
 ---@field graph? string[] SVG to draw at the start of each row, as `git_graph.rows_svg` gives.
 ---@field empty? string What to say when there is no commit.
 
+---One entry of `git stash list`.
+---@class Git.Stash
+---@field ref string Such as `'stash@{0}'`.
+---@field message string Such as `'On main: try the new parser'`.
+---@field date string Relative, such as `'2 hours ago'`.
+
 ---@class Git.ListOptions
 ---@field selected? string The key of the selected row, such as `'u:src/a.txt'`.
 ---@field icons? table<string, string> SVG for the row buttons: `stage`, `unstage` and `discard`.
@@ -146,6 +152,7 @@ local NO_NEWLINE = 'No newline at end of file'
 M.LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ar%x1f%D%x1f%P%x1f%s%x1e'
 M.SHOW_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%P%x1f%B%x1e'
 M.BRANCH_FORMAT = '--format=%(HEAD)%09%(refname)%09%(upstream:short)'
+M.STASH_FORMAT = '--format=%gd%x1f%gs%x1f%cr'
 
 -- How many rows each list in the Changes view draws until Show All is clicked. A repository
 -- with thousands of new files stays quick to draw.
@@ -1104,6 +1111,75 @@ function M.push_args (st, remote)
 end
 
 ---------------------------------------------------------------------------------------------
+-- git stash
+---------------------------------------------------------------------------------------------
+
+---Saves the changes away and leaves the files as the last commit has them. `untracked` takes
+---the new files too.
+---@param message string Empty for Git's own message.
+---@param untracked boolean
+---@return string[]
+function M.stash_args (message, untracked)
+  local args = { 'stash', 'push' }
+  if untracked then
+    args[#args + 1] = '--include-untracked'
+  end
+  local text = trim (message)
+  if text ~= '' then
+    args[#args + 1] = '--message'
+    args[#args + 1] = text
+  end
+  return args
+end
+
+---@return string[]
+function M.stash_list_args ()
+  return { 'stash', 'list', M.STASH_FORMAT }
+end
+
+---Reads `git stash list` output in `STASH_FORMAT`, newest first.
+---@param text string
+---@return Git.Stash[]
+function M.parse_stashes (text)
+  local out = {} ---@type Git.Stash[]
+  for _, raw in ipairs (lines_of (text)) do
+    local f = split (strip_cr (raw), US)
+    if #f >= 3 and f[1]:find ('^stash@{%d+}$') then
+      out[#out + 1] = { ref = f[1], message = f[2], date = f[3] }
+    end
+  end
+  return out
+end
+
+---What one of the stash actions runs: `apply` keeps the stash, `pop` drops it once it
+---applies cleanly, and `drop` throws it away.
+---@param action 'apply'|'pop'|'drop'
+---@param ref string
+---@return string[]
+function M.stash_action_args (action, ref)
+  if action == 'drop' then
+    return { 'stash', 'drop', '--quiet', ref }
+  end
+  return { 'stash', action, ref }
+end
+
+---The diff a stash holds, against the commit it was made on.
+---@param ref string
+---@return string[]
+function M.stash_show_args (ref)
+  return {
+    'stash',
+    'show',
+    '--patch',
+    '--no-color',
+    '--no-ext-diff',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    ref,
+  }
+end
+
+---------------------------------------------------------------------------------------------
 -- git diff
 ---------------------------------------------------------------------------------------------
 
@@ -1714,6 +1790,19 @@ function M.commit_html (c)
   end
   out[#out + 1] = '</div>'
   return table.concat (out)
+end
+
+---The header above a stash's diff: its message, its name and when it was made.
+---@param st Git.Stash
+---@return string
+function M.stash_html (st)
+  return '<div class="git-commit-view"><div class="git-commit-title">'
+    .. esc (st.message)
+    .. '</div><div class="git-commit-info"><span class="git-hash">'
+    .. esc (st.ref)
+    .. '</span><span>'
+    .. esc (st.date)
+    .. '</span></div></div>'
 end
 
 ---Splits a path into its file name and its folder.

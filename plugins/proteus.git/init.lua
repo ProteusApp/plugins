@@ -144,10 +144,11 @@ local CSS = [[
 
 ---What the main area shows.
 ---@class Git.Selection
----@field kind 'file'|'commit'
+---@field kind 'file'|'commit'|'stash'
 ---@field group? string `'s'` for the Staged list, `'u'` for the Changes list.
 ---@field path? string
 ---@field hash? string
+---@field ref? string A stash, such as `'stash@{0}'`.
 
 ---@param s string
 ---@return boolean
@@ -795,6 +796,38 @@ return {
       end)
     end
 
+    ---Shows what a stash holds.
+    ---@param st Git.Stash
+    local function show_stash (st)
+      show_root ()
+      selection = { kind = 'stash', ref = st.ref }
+      shown_key = nil
+      render_changes ()
+      render_history ()
+      diff_seq = diff_seq + 1
+      local seq = diff_seq
+      git (m.stash_show_args (st.ref), nil, function (res, err)
+        if seq ~= diff_seq then
+          return
+        end
+        if not res or res.code ~= 0 then
+          show_main (
+            m.message_html ('Could not show the stash', m.error_text (res, err))
+          )
+          return
+        end
+        local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
+        shown_files, shown_staged, shown_key = files, false, 'z:' .. st.ref
+        show_main (
+          m.stash_html (st)
+            .. m.diff_html (
+              files,
+              { empty = 'This stash holds no changes.', cut = cut }
+            )
+        )
+      end)
+    end
+
     -- Loading -------------------------------------------------------------------------------
 
     ---Reads the history again: as many commits as are listed now, or a page when `more` asks
@@ -1191,6 +1224,126 @@ return {
                 done ('Switched to ' .. name .. '.')
               end)
             end
+          end,
+        })
+      end)
+    end
+
+    ---Saves the changes away, with a message the user may type. `untracked` takes new files
+    ---too.
+    ---@param untracked boolean
+    local function stash (untracked)
+      if not picker then
+        fail ('Stash needs the command palette to ask for a message.')
+        return
+      end
+      picker.input ({
+        prompt = untracked and 'Stash the changes and new files'
+          or 'Stash the changes',
+        placeholder = "A message, or nothing for Git's own",
+        select = false,
+        on_submit = function (text)
+          act (m.stash_args (text, untracked), nil, function (res)
+            local summary = m.summary (res)
+            done (summary ~= '' and summary or 'Stashed.')
+          end)
+        end,
+      })
+    end
+
+    ---Applies, pops or drops a stash. Dropping asks first.
+    ---@param action 'apply'|'pop'|'drop'
+    ---@param st Git.Stash
+    local function stash_action (action, st)
+      ---@type table<string, string>
+      local DONE = {
+        apply = 'Applied ',
+        pop = 'Applied and dropped ',
+        drop = 'Dropped ',
+      }
+      local function run ()
+        act (m.stash_action_args (action, st.ref), nil, function ()
+          done (DONE[action] .. st.ref .. '.')
+          local sel = selection
+          if sel and sel.kind == 'stash' and action ~= 'apply' then
+            selection, shown_key = nil, nil
+            show_placeholder ()
+          end
+        end)
+      end
+      if action == 'drop' then
+        confirm (
+          'Drop ' .. st.ref .. ' (' .. st.message .. ')? This cannot be undone.',
+          'Drop',
+          run
+        )
+      else
+        run ()
+      end
+    end
+
+    ---Lists the stashes, then what to do with the one picked.
+    local function pick_stash ()
+      if not picker then
+        fail ('Stashes needs the command palette.')
+        return
+      end
+      git (m.stash_list_args (), nil, function (res, err)
+        if not res or res.code ~= 0 then
+          fail (m.error_text (res, err))
+          return
+        end
+        local list = m.parse_stashes (res.stdout)
+        if #list == 0 then
+          tell ('There are no stashes.')
+          return
+        end
+        local items = {} ---@type Proteus.PickItem[]
+        for _, st in ipairs (list) do
+          items[#items + 1] = {
+            label = st.message,
+            detail = st.ref .. ' · ' .. st.date,
+            icon = 'archive',
+            value = st,
+          }
+        end
+        picker.pick ({
+          items = items,
+          placeholder = 'Pick a stash',
+          on_pick = function (item)
+            local st = item.value --[[@as Git.Stash]]
+            picker.pick ({
+              placeholder = st.message,
+              items = {
+                {
+                  label = 'Apply',
+                  detail = 'and keep the stash',
+                  icon = 'archive-restore',
+                  value = 'apply',
+                },
+                {
+                  label = 'Pop',
+                  detail = 'apply, then drop the stash',
+                  icon = 'package-open',
+                  value = 'pop',
+                },
+                { label = 'Show Changes', icon = 'file-diff', value = 'show' },
+                {
+                  label = 'Drop',
+                  detail = 'throw it away',
+                  icon = 'trash-2',
+                  value = 'drop',
+                },
+              },
+              on_pick = function (choice)
+                local what = choice.value --[[@as string]]
+                if what == 'show' then
+                  show_stash (st)
+                else
+                  stash_action (what --[[@as 'apply'|'pop'|'drop']], st)
+                end
+              end,
+            })
           end,
         })
       end)
@@ -1850,6 +2003,46 @@ return {
       icon = 'check',
       when = has_repo,
       run = commit,
+    })
+    commands.register ({
+      id = 'git.stash',
+      category = 'Git',
+      title = 'Stash Changes…',
+      icon = 'archive',
+      when = has_repo,
+      run = function ()
+        stash (false)
+      end,
+    })
+    commands.register ({
+      id = 'git.stash_all',
+      category = 'Git',
+      title = 'Stash Changes and New Files…',
+      icon = 'archive',
+      when = has_repo,
+      run = function ()
+        stash (true)
+      end,
+    })
+    commands.register ({
+      id = 'git.stash_pop',
+      category = 'Git',
+      title = 'Pop Latest Stash',
+      icon = 'package-open',
+      when = has_repo,
+      run = function ()
+        act ({ 'stash', 'pop' }, nil, function ()
+          done ('Applied and dropped the latest stash.')
+        end)
+      end,
+    })
+    commands.register ({
+      id = 'git.stashes',
+      category = 'Git',
+      title = 'Stashes…',
+      icon = 'archive',
+      when = has_repo,
+      run = pick_stash,
     })
     commands.register ({
       id = 'git.stage_all',
