@@ -2,7 +2,7 @@
 // same Lua 5.4, to read what they declare. The check and the tests share it.
 
 import { LuaFactory } from 'wasmoon';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
 // Only what a restricted plugin sees in Proteus: no io, os.execute, package or debug.
@@ -92,7 +92,7 @@ function __declared (src, path)
   if not ok then return json ({ error = tostring (m) }) end
   if type (m) ~= 'table' then return json ({ error = path .. ' must return a table' }) end
   local out = {}
-  for _, k in ipairs ({ 'name', 'description', 'version', 'depends', 'optional', 'permissions', 'folders', 'exports', 'requires', 'plugins' }) do
+  for _, k in ipairs ({ 'name', 'description', 'version', 'depends', 'optional', 'permissions', 'folders', 'exports', 'requires', 'plugins', 'extends' }) do
     local v = m[k]
     if type (v) ~= 'function' then out[k] = v end
   end
@@ -109,20 +109,22 @@ export async function engine() {
   return lua;
 }
 
-/** Reads a file inside `dir`, or undefined. The path never leaves the folder. */
+/** Reads a file inside `dir`, or undefined. The path, links followed, never leaves the folder. */
 export function reader(dir) {
   return (rel) => {
     const path = resolve(dir, String(rel));
-    if (!path.startsWith(dir + sep) || !existsSync(path) || statSync(path).isDirectory()) return undefined;
-    return readFileSync(path, 'utf8');
+    if (!path.startsWith(dir + sep) || !existsSync(path)) return undefined;
+    const real = realpathSync(path);
+    if (!real.startsWith(realpathSync(dir) + sep) || statSync(real).isDirectory()) return undefined;
+    return readFileSync(real, 'utf8');
   };
 }
 
 
 /**
  * What a plugin's init.lua or a profile's profile.lua declares: name, description, version,
- * depends, optional, permissions, folders, requires and plugins. `error` is set when the file
- * did not load.
+ * depends, optional, permissions, folders, requires, plugins and a profile's `extends`.
+ * `error` is set when the file did not load.
  */
 export async function declaredOf(dir, main, shown = main) {
   const lua = await engine();
