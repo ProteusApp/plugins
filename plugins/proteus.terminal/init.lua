@@ -38,12 +38,13 @@ local CSS = [[
 ---@field tab Proteus.El
 ---@field name Proteus.El
 ---@field exited boolean
+---@field closed boolean True once its tab is gone. An exit reported after that is dropped.
 
 ---@type Proteus.Plugin
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, which start in the folder open in the Code Editor.',
-  version = '1.0.0',
+  version = '1.0.1',
   -- `process` runs the shell in each terminal. `files` lets it start in the Code Editor's
   -- folder, which the `project` service hands out. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
@@ -107,6 +108,7 @@ return {
 
     ---@param term CodeTerminal.Term
     local function close_term (term)
+      term.closed = true
       for i, t in ipairs (terms) do
         if t == term then
           table.remove (terms, i)
@@ -131,13 +133,15 @@ return {
         cwd = root or '',
         font_size = tonumber (settings.get ('terminal.font_size')) or 13,
         on_started = function ()
-          if term then
+          if term and not term.closed then
+            -- A terminal started again after it exited drops "(exited N)" from its tab.
             term.exited = false
             term.tab:class ('exited', false)
+            term.name:text (term.title)
           end
         end,
         on_exit = function (code)
-          if term then
+          if term and not term.closed then
             term.exited = true
             term.tab:class ('exited', true)
             term.name:text (
@@ -146,7 +150,7 @@ return {
           end
         end,
         on_title = function (title)
-          if term and title ~= '' then
+          if term and not term.closed and title ~= '' then
             term.title = title
             term.name:text (title)
           end
@@ -170,6 +174,7 @@ return {
         tab = tab,
         name = name,
         exited = false,
+        closed = false,
       }
       tab:on ('click', function ()
         focus_term (term)
