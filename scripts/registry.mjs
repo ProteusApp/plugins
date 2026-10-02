@@ -591,49 +591,106 @@ export function manifestFor(sub, author, issue) {
   };
 }
 
+/** How many past versions of a plugin or profile the index keeps, newest first. */
+export const MAX_VERSIONS = 20;
+
+/** The fields of an index entry that come from one version of a folder's proteus.json. */
+function versionFields(kind, manifest, commit, updated) {
+  const requires = manifest.requires ? { requires: manifest.requires } : {};
+  const own =
+    kind === 'profile'
+      ? { ...requires, plugins: manifest.plugins ?? [] }
+      : {
+          depends: manifest.depends ?? [],
+          optional: manifest.optional ?? [],
+          permissions: manifest.permissions ?? [],
+          folders: manifest.folders ?? [],
+          ...(manifest.exports?.length ? { exports: manifest.exports } : {}),
+          ...requires,
+        };
+  return {
+    version: manifest.version,
+    ...(manifest.changes ? { changes: manifest.changes } : {}),
+    ...own,
+    files: manifest.files ?? [],
+    commit,
+    updated,
+  };
+}
+
 /**
  * The index the app reads: one entry per plugin and one per profile, each list in name order.
  * `commit` is the last commit that changed the folder, so the app installs exactly what was
  * approved. The format stays 1, since a version of the app that knows only plugins reads the
- * `plugins` list and leaves `profiles` alone.
+ * `plugins` list and leaves `profiles` alone, and one that knows no `versions` or `issue`
+ * leaves them alone too.
+ *
+ * Each entry may carry `versions`, the past versions historyOf found, newest first, and
+ * `issue`, the number of the issue that first submitted it, whose reactions the marketplace
+ * shows as its rating.
  */
 export function buildIndex(entries) {
   const byName = (a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
-  const base = ({ manifest }) => ({
-    id: manifest.id,
-    name: manifest.name,
-    description: manifest.description,
-    version: manifest.version,
-    author: manifest.author?.login ?? '',
-    ...(manifest.changes ? { changes: manifest.changes } : {}),
-    ...(manifest.requires && kindOf(manifest) === 'profile' ? { requires: manifest.requires } : {}),
-  });
+  const build = (kind) => (e) => {
+    const { version, ...fields } = versionFields(kind, e.manifest, e.commit, e.updated);
+    return {
+      id: e.manifest.id,
+      name: e.manifest.name,
+      description: e.manifest.description,
+      version,
+      author: e.manifest.author?.login ?? '',
+      ...fields,
+      ...(Number.isInteger(e.issue) && e.issue > 0 ? { issue: e.issue } : {}),
+      ...(e.versions?.length ? { versions: e.versions.slice(0, MAX_VERSIONS) } : {}),
+    };
+  };
   const plugins = entries
     .filter((e) => kindOf(e.manifest) === 'plugin')
-    .map((e) => ({
-      ...base(e),
-      depends: e.manifest.depends ?? [],
-      optional: e.manifest.optional ?? [],
-      permissions: e.manifest.permissions ?? [],
-      folders: e.manifest.folders ?? [],
-      ...(e.manifest.exports?.length ? { exports: e.manifest.exports } : {}),
-      ...(e.manifest.requires ? { requires: e.manifest.requires } : {}),
-      files: e.manifest.files ?? [],
-      commit: e.commit,
-      updated: e.updated,
-    }))
+    .map(build('plugin'))
     .sort(byName);
   const profiles = entries
     .filter((e) => kindOf(e.manifest) === 'profile')
-    .map((e) => ({
-      ...base(e),
-      plugins: e.manifest.plugins ?? [],
-      files: e.manifest.files ?? [],
-      commit: e.commit,
-      updated: e.updated,
-    }))
+    .map(build('profile'))
     .sort(byName);
   return { format: 1, plugins, profiles };
+}
+
+/**
+ * The past versions of a plugin or profile, from the history of its folder. `log` lists the
+ * commits that changed the folder, newest first, starting at the one the index names, each as
+ * `{ commit, updated, manifest, files }`: its proteus.json then (or null) and the paths in the
+ * folder apart from proteus.json.
+ *
+ * The walk stops where the folder was gone, since a plugin taken down and listed again starts
+ * afresh, and where someone else published it, so an old version is always the same author's
+ * code. A commit whose files do not match its proteus.json is skipped. Each version counts at
+ * the last commit that had it, and only versions below the current one count.
+ *
+ * Returns `versions`, newest first, each with what the app needs to show and install it,
+ * `issue`, the oldest submission issue in that span, or null, and `issues`, every issue there.
+ */
+export function historyOf(log) {
+  const empty = { versions: [], issue: null, issues: [] };
+  const current = log?.[0];
+  if (!current?.manifest) return empty;
+  const kind = kindOf(current.manifest);
+  const { id, author } = current.manifest;
+  const seen = new Set([current.manifest.version]);
+  const versions = [];
+  const issues = [];
+  for (const step of log) {
+    const m = step?.manifest;
+    if (!m || kindOf(m) !== kind || m.id !== id) break;
+    if ((m.author?.id ?? null) !== (author?.id ?? null)) break;
+    if (Number.isInteger(m.issue) && m.issue > 0 && !issues.includes(m.issue)) issues.push(m.issue);
+    if ([...(m.files ?? [])].sort().join('\n') !== [...(step.files ?? [])].sort().join('\n')) continue;
+    if (typeof m.version !== 'string' || !VERSION.test(m.version) || seen.has(m.version)) continue;
+    seen.add(m.version);
+    if (compareVersions(m.version, current.manifest.version) >= 0) continue;
+    versions.push(versionFields(kind, m, step.commit, step.updated));
+  }
+  versions.sort((a, b) => compareVersions(b.version, a.version));
+  return { versions, issue: issues.length ? issues[issues.length - 1] : null, issues };
 }
 
 /** Fields every index entry carries, since the app installs and shows by them. */
@@ -642,17 +699,27 @@ const INDEX_REQUIRED = {
   profile: ['id', 'name', 'version', 'author', 'files', 'commit', 'updated', 'plugins'],
 };
 
+/** True when two index fields say the same. Git writes a UTC date with Z or with +00:00, depending on its version. */
+function sameField(field, a, b) {
+  return field === 'updated' ? Date.parse(a) === Date.parse(b) : JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * Every way index.json departs from the history of main, as sentences. The app installs each
  * entry's files from its `commit`, and shows its permissions before the install, so each
  * entry must say what the folder held at that commit, and nothing else.
  *
  * `at(kind, id, commit)` looks in the checkout. It returns null when the commit is not in
- * the history of the branch checked out, and otherwise `{ manifest, files, last, updated }`:
- * the folder's proteus.json at that commit (or null), the paths in the folder then, apart
- * from proteus.json, the last commit up to then that changed the folder, and the commit's
- * date. An entry may lag behind the folder, since the index workflow rebuilds it after a
- * merge, but never name a commit that did not change the folder or fields it did not hold.
+ * the history of the branch checked out, and otherwise `{ manifest, files, last, updated,
+ * history }`: the folder's proteus.json at that commit (or null), the paths in the folder then,
+ * apart from proteus.json, the last commit up to then that changed the folder, the commit's
+ * date, and the log historyOf reads, from that commit back. An entry may lag behind the folder,
+ * since the index workflow rebuilds it after a merge, but never name a commit that did not
+ * change the folder or fields it did not hold.
+ *
+ * Each past version in `versions` must be one historyOf finds from the entry's commit, with the
+ * same fields, so an old version is installable at its commit too. `issue` must be a submission
+ * issue of that span.
  */
 export function indexProblems(index, at) {
   if (!index || typeof index !== 'object' || index.format !== 1) return ['index.json is not an index of format 1.'];
@@ -700,16 +767,46 @@ export function indexProblems(index, at) {
       for (const field of INDEX_REQUIRED[kind]) {
         if (!(field in entry)) problems.push(`index.json gives ${name} no ${field}.`);
       }
-      // An index from before a field was added may lack it, but what it says must hold. Git
-      // writes a UTC date with Z or with +00:00, depending on its version.
-      const same = (field) =>
-        field === 'updated'
-          ? Date.parse(entry.updated) === Date.parse(built.updated)
-          : JSON.stringify(entry[field]) === JSON.stringify(built[field]);
+      // An index from before a field was added may lack it, but what it says must hold.
       for (const field of Object.keys(entry)) {
+        if (field === 'versions' || field === 'issue') continue;
         if (!(field in built)) problems.push(`index.json gives ${name} a ${field}, which proteus.json does not have.`);
-        else if (!same(field)) {
+        else if (!sameField(field, entry[field], built[field])) {
           problems.push(`index.json says ${field} of ${name} is ${JSON.stringify(entry[field])}, but at ${entry.commit.slice(0, 7)} it is ${JSON.stringify(built[field])}.`);
+        }
+      }
+      if (!('versions' in entry) && !('issue' in entry)) continue;
+      const past = historyOf(found.history ?? [{ commit: entry.commit, updated: found.updated, manifest: found.manifest, files: found.files }]);
+      if ('issue' in entry && !past.issues.includes(entry.issue)) {
+        problems.push(`index.json gives ${name} the issue ${JSON.stringify(entry.issue)}, which no version of it up to ${entry.commit.slice(0, 7)} was submitted in.`);
+      }
+      if (!('versions' in entry)) continue;
+      if (!Array.isArray(entry.versions)) {
+        problems.push(`index.json gives ${name} versions that are not a list.`);
+        continue;
+      }
+      if (entry.versions.length > MAX_VERSIONS) problems.push(`index.json gives ${name} more than ${MAX_VERSIONS} past versions.`);
+      const listed = new Set();
+      for (const v of entry.versions) {
+        const label = `${name} ${JSON.stringify(v?.version)}`;
+        if (listed.has(v?.version)) problems.push(`index.json lists ${label} twice.`);
+        listed.add(v?.version);
+        const real = past.versions.find((p) => p.version === v?.version);
+        if (!real) {
+          problems.push(`index.json lists ${label} as a past version, but no commit of its folder up to ${entry.commit.slice(0, 7)} by the same author holds it.`);
+          continue;
+        }
+        const fields = new Set([...Object.keys(v), ...Object.keys(real)]);
+        for (const field of fields) {
+          if (!(field in v) || !(field in real) || !sameField(field, v[field], real[field])) {
+            problems.push(`index.json says ${field} of ${label} is ${JSON.stringify(v[field])}, but the history says ${JSON.stringify(real[field])}.`);
+          }
+        }
+      }
+      for (let i = 1; i < entry.versions.length; i++) {
+        if (compareVersions(entry.versions[i - 1]?.version, entry.versions[i]?.version) <= 0) {
+          problems.push(`index.json lists the past versions of ${name} out of order, newest first.`);
+          break;
         }
       }
     }

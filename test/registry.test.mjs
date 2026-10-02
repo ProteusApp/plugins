@@ -11,7 +11,9 @@ import {
   commandOf,
   compareVersions,
   folderFor,
+  historyOf,
   indexProblems,
+  MAX_VERSIONS,
   isSubmission,
   kindOf,
   manifestFor,
@@ -501,4 +503,107 @@ test('indexProblems holds each entry to the commit it names', () => {
   assert.deepEqual(indexProblems(older, at), [], 'an index from before a field was added still holds');
   delete older.plugins[0].permissions;
   assert.match(indexProblems(older, at)[0], /no permissions/);
+});
+
+/** One step of a folder's log, the way index.mjs reads it: a commit, its date, proteus.json and files. */
+function step(commit, version, { author = { login: 'ann', id: 1 }, issue = null, permissions = [], files } = {}) {
+  const manifest = manifestFor(good({ version, permissions }), author, issue);
+  return { commit: commit.repeat(40), updated: '2026-01-01T00:00:00Z', manifest, files: files ?? [...manifest.files] };
+}
+
+test('historyOf keeps each past version at the last commit that had it', () => {
+  const log = [step('d', '1.2.0', { issue: 9 }), step('c', '1.1.0', { permissions: ['net'] }), step('b', '1.1.0'), step('a', '1.0.0', { issue: 4 })];
+  const past = historyOf(log);
+  assert.deepEqual(
+    past.versions.map((v) => [v.version, v.commit[0]]),
+    [
+      ['1.1.0', 'c'],
+      ['1.0.0', 'a'],
+    ],
+  );
+  assert.deepEqual(past.versions[0].permissions, ['net'], 'each version says what it asked for then');
+  assert.deepEqual(past.versions[0].files, ['README.md', 'init.lua', 'lib/util.lua']);
+  assert.equal('id' in past.versions[0], false);
+  assert.equal(past.issue, 4, 'the issue that first submitted it');
+  assert.deepEqual(past.issues, [9, 4]);
+});
+
+test('historyOf stops where the folder was gone or someone else published it', () => {
+  const gone = [step('c', '2.0.0'), { commit: 'b'.repeat(40), updated: '', manifest: null, files: [] }, step('a', '1.0.0', { issue: 3 })];
+  assert.deepEqual(historyOf(gone), { versions: [], issue: null, issues: [] });
+  const taken = [step('c', '2.0.0'), step('b', '1.0.0', { author: { login: 'eve', id: 2 } })];
+  assert.deepEqual(historyOf(taken).versions, []);
+  const mismatched = [step('c', '2.0.0'), step('b', '1.5.0', { files: ['init.lua'] }), step('a', '1.0.0')];
+  assert.deepEqual(
+    historyOf(mismatched).versions.map((v) => v.version),
+    ['1.0.0'],
+    'a commit whose files do not match its proteus.json is skipped',
+  );
+  const higher = [step('c', '1.0.0'), step('b', '1.5.0')];
+  assert.deepEqual(historyOf(higher).versions, [], 'only versions below the current one count');
+  assert.deepEqual(historyOf([]), { versions: [], issue: null, issues: [] });
+});
+
+test('buildIndex carries past versions and the submission issue', () => {
+  const log = [step('c', '1.2.0', { issue: 9 }), step('b', '1.1.0'), step('a', '1.0.0', { issue: 4 })];
+  const { versions, issue } = historyOf(log);
+  const [entry] = buildIndex([{ manifest: log[0].manifest, commit: log[0].commit, updated: log[0].updated, versions, issue }]).plugins;
+  assert.equal(entry.issue, 4);
+  assert.deepEqual(
+    entry.versions.map((v) => v.version),
+    ['1.1.0', '1.0.0'],
+  );
+  const [plain] = buildIndex([{ manifest: log[0].manifest, commit: log[0].commit, updated: '', versions: [], issue: null }]).plugins;
+  assert.equal('versions' in plain, false);
+  assert.equal('issue' in plain, false);
+  const many = Array.from({ length: MAX_VERSIONS + 5 }, (_, i) => ({ version: `0.${i}.0` }));
+  assert.equal(buildIndex([{ manifest: log[0].manifest, commit: 'c', updated: '', versions: many }]).plugins[0].versions.length, MAX_VERSIONS);
+});
+
+test('indexProblems holds each past version to its commit', () => {
+  const log = [step('c', '1.2.0', { issue: 9 }), step('b', '1.1.0', { permissions: ['net'] }), step('a', '1.0.0', { issue: 4 })];
+  const { versions, issue } = historyOf(log);
+  const top = log[0];
+  const at = (kind, id, c) => (c === top.commit ? { manifest: top.manifest, files: top.files, last: top.commit, updated: top.updated, history: log } : null);
+  const index = buildIndex([{ manifest: top.manifest, commit: top.commit, updated: top.updated, versions, issue }]);
+  assert.deepEqual(indexProblems(index, at), []);
+
+  const fewer = structuredClone(index);
+  fewer.plugins[0].versions.pop();
+  assert.deepEqual(indexProblems(fewer, at), [], 'an index may keep fewer versions than the history has');
+
+  const wider = structuredClone(index);
+  wider.plugins[0].versions[0].permissions = [];
+  assert.match(indexProblems(wider, at)[0], /permissions of plugins\/hello\.world "1\.1\.0" is \[\], but the history says \["net"\]/);
+
+  const moved = structuredClone(index);
+  moved.plugins[0].versions[1].commit = 'b'.repeat(40);
+  assert.match(indexProblems(moved, at)[0], /commit of plugins\/hello\.world "1\.0\.0"/);
+
+  const invented = structuredClone(index);
+  invented.plugins[0].versions.push({ ...invented.plugins[0].versions[1], version: '0.9.0' });
+  assert.match(indexProblems(invented, at)[0], /"0\.9\.0" as a past version, but no commit/);
+
+  const twice = structuredClone(index);
+  twice.plugins[0].versions.push(twice.plugins[0].versions[1]);
+  assert.ok(indexProblems(twice, at).some((p) => /twice/.test(p)));
+
+  const shuffled = structuredClone(index);
+  shuffled.plugins[0].versions.reverse();
+  assert.ok(indexProblems(shuffled, at).some((p) => /out of order/.test(p)));
+
+  const otherIssue = structuredClone(index);
+  otherIssue.plugins[0].issue = 12;
+  assert.match(indexProblems(otherIssue, at)[0], /the issue 12/);
+  otherIssue.plugins[0].issue = 9;
+  assert.deepEqual(indexProblems(otherIssue, at), [], 'any submission issue of the span holds');
+
+  const notList = structuredClone(index);
+  notList.plugins[0].versions = 'all';
+  assert.match(indexProblems(notList, at)[0], /not a list/);
+
+  // Someone else's code at the same id is never a past version.
+  const taken = [top, step('b', '1.1.0', { author: { login: 'eve', id: 2 } }), log[2]];
+  const atTaken = (kind, id, c) => ({ ...at(kind, id, c), history: taken });
+  assert.ok(indexProblems(index, atTaken).some((p) => /"1\.1\.0" as a past version/.test(p)));
 });
