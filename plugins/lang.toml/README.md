@@ -11,7 +11,7 @@ The language server starts when the first TOML file opens.
 
 ## What it needs
 
-Nothing to install. When `taplo` is not on the PATH, the plugin offers to download the official release, checked against its pinned checksum. `cargo install taplo-cli --locked` or `scoop install taplo` puts one on the PATH instead.
+Nothing to install. When `taplo` is not on the PATH, the plugin downloads the official release, checked against its pinned checksum. `cargo install taplo-cli --locked` or `scoop install taplo` puts one on the PATH instead.
 
 ## Schemas for other plugins
 

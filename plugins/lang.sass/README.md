@@ -15,13 +15,11 @@ The language server starts when the first `.scss` or `.sass` file opens. Sass fi
 
 ## What it needs
 
-Node.js 20 or later, and the server from npm:
+Node.js 20 or later on the PATH. When the server is nowhere else, the first Sass or SCSS file that opens has npm install some-sass-language-server 2.3.8 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```sh
 npm install --global some-sass-language-server
 ```
-
-The Tools panel shows Some Sass as missing until the program is on the PATH. **Look again** finds it after the install.
 
 ## Formatting
 

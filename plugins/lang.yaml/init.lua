@@ -30,7 +30,7 @@ local PROGRAM = 'yaml-language-server'
 return {
   name = 'YAML',
   description = 'YAML with yaml-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- yaml-language-server is a program it runs, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -100,6 +100,8 @@ return {
       program = app.os == 'windows' and (PROGRAM .. '.cmd') or PROGRAM,
       kind = 'server',
       install = 'npm install --global yaml-language-server',
+      npm = { packages = { 'yaml-language-server@1.24.0' }, bin = PROGRAM },
+      languages = { 'yaml' },
       homepage = 'https://github.com/redhat-developer/yaml-language-server',
       settings = {
         'yaml.enabled',

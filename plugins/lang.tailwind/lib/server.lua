@@ -14,6 +14,10 @@ local program_module = require ('lib.program') --[[@as LangTailwind.ProgramModul
 ---@class LangTailwind.ServerModule
 local M = {}
 
+-- The editor languages of the files the server serves. The editor calls `.vue` and `.svelte`
+-- files `html`, and `.scss` files `css`.
+local SERVED = { 'css', 'html', 'javascript', 'jsx', 'markdown', 'tsx', 'typescript' }
+
 ---Calls `cb (true)` when the folder uses Tailwind: a config file first, then a stylesheet
 ---or a package.json that names it.
 ---@param app Proteus.App
@@ -75,9 +79,19 @@ function M.install (ctx, tool, client)
     return project and project.root () or disk.parent (ctx.to_disk (doc))
   end
 
+  ---Tells the Tools panel the editor languages the server serves. An older app has no
+  ---`set_languages`, and then the server shows in the status bar for every file.
+  ---@param list string[]
+  local function set_languages (list)
+    if tool.set_languages then
+      tool.set_languages (list)
+    end
+  end
+
   ---@param root string
   local function launch (root)
-    program_module.find (app, root, function (found, why)
+    set_languages (SERVED)
+    program_module.find (app, tool, root, function (found, why)
       starting = false
       if not found then
         tool.set_path (nil)
@@ -104,6 +118,7 @@ function M.install (ctx, tool, client)
       end
       local root = root_for (doc)
       if known[root] == false then
+        set_languages ({})
         tool.set_state ('stopped', 'the open folder does not use Tailwind CSS')
         return
       end
@@ -116,7 +131,8 @@ function M.install (ctx, tool, client)
         known[root] = yes
         if not yes then
           starting = false
-          tool.set_state ('stopped', 'the open folder does not use Tailwind CSS')
+          set_languages ({})
+        tool.set_state ('stopped', 'the open folder does not use Tailwind CSS')
           return
         end
         launch (root)

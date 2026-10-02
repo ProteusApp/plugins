@@ -51,7 +51,7 @@ local select_module = require ('lib.select') --[[@as LangPython.SelectModule]]
 return {
   name = 'Python',
   description = "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- basedpyright, Ruff and Python are programs it runs, on files anywhere on disk. The
   -- tools registry downloads Ruff for it.

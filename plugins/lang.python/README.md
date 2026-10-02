@@ -30,7 +30,7 @@ basedpyright reads `pyrightconfig.json`, or `[tool.basedpyright]` in `pyproject.
 
 ## What it needs
 
-basedpyright, from npm or from pip:
+basedpyright. When it is nowhere else and Node.js is on the PATH, the first Python file that opens has npm install basedpyright 1.40.1 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead, use npm or pip:
 
 ```text
 npm install --global basedpyright
@@ -46,7 +46,7 @@ pip install ruff
 uv tool install ruff
 ```
 
-A Ruff in the project's virtual environment comes first, then the PATH. On Windows, when there is none, the plugin offers to download the official release, checked against its pinned checksum. Ruff ships Linux and macOS files only in a form the download cannot open, so there it must be installed.
+A Ruff in the project's virtual environment comes first, then the PATH. When there is none, the plugin downloads the official release, checked against its pinned checksum.
 
 The **Tools** panel shows each server's state, version and log, with buttons to start, stop and look again.
 

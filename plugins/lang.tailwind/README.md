@@ -26,7 +26,7 @@ The CSS shows for the first matches in the list. The server sends every class ea
 ## What it needs
 
 - **Node.js** on the PATH.
-- **The language server.** `npm install --global @tailwindcss/language-server` installs it. A copy in the project's own `node_modules` wins over the global one.
+- **The language server.** When it is nowhere else, the first file with classes in a Tailwind folder has npm install @tailwindcss/language-server 0.16.0 into the app's cache folder. `npm install --global @tailwindcss/language-server` installs it by hand. A copy in the project's own `node_modules` wins over both.
 - **The project's own `tailwindcss` package**, installed with `npm install`. Tailwind 3 needs it to read `tailwind.config.js`. Tailwind 4 uses it when it is there, and the server's built-in copy otherwise.
 
 The Tools panel shows the server's state. **Tailwind CSS: Restart the Language Server** starts it again, and looks for Tailwind in the folder again.

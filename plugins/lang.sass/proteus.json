@@ -2,7 +2,7 @@
   "id": "lang.sass",
   "name": "Sass",
   "description": "Sass and SCSS with Some Sass: completion across @use and @import, hover help, go to definition and problems.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",

@@ -189,7 +189,7 @@ function M.install (ctx, tool)
       end
       local root = root_for (doc)
       starting = true
-      program_module.find (app, root, function (found, why)
+      program_module.find (app, tool, root, function (found, why)
         starting = false
         if not found then
           tool.set_path (nil)

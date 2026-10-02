@@ -60,10 +60,12 @@ end
 
 ---Finds the server through npm's files, or on the PATH.
 ---@param app Proteus.App
+---@param tool Proteus.ToolHandle
 ---@param root string? The project folder.
 ---@param cb fun(found: LangPython.Launch?, why: string?)
-local function from_npm (app, root, cb)
-  app.process.which (launch.PROGRAM, function (program)
+local function from_npm (app, tool, root, cb)
+  ---@param program string?
+  local function search (program)
     first_script (
       app,
       launch.package_dirs (root, program),
@@ -73,6 +75,7 @@ local function from_npm (app, root, cb)
             cb ({ program = program, args = { STDIO }, script = program })
           else
             cb (nil, launch.PROGRAM .. ' is not installed')
+            tool.offer ()
           end
           return
         end
@@ -90,17 +93,26 @@ local function from_npm (app, root, cb)
         end)
       end
     )
+  end
+  -- The PATH first, then the copy the Tools panel installed.
+  app.process.which (launch.PROGRAM, function (on_path)
+    if on_path then
+      search (on_path)
+    else
+      tool.cached (search)
+    end
   end)
 end
 
 ---Finds the server. `cb` gets nil and the reason when it is not installed.
 ---@param app Proteus.App
+---@param tool Proteus.ToolHandle
 ---@param root string? The project folder.
 ---@param python string? The project's Python.
 ---@param cb fun(found: LangPython.Launch?, why: string?)
-function M.find (app, root, python, cb)
+function M.find (app, tool, root, python, cb)
   if not python then
-    from_npm (app, root, cb)
+    from_npm (app, tool, root, cb)
     return
   end
   local beside = venv.beside (python, launch.PROGRAM, app.os)
@@ -109,7 +121,7 @@ function M.find (app, root, python, cb)
       cb ({ program = beside, args = { STDIO }, script = beside })
       return
     end
-    from_npm (app, root, cb)
+    from_npm (app, tool, root, cb)
   end)
 end
 

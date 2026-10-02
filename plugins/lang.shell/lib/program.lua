@@ -54,11 +54,14 @@ local function first_script (app, dirs, cb)
 end
 
 ---Finds `node` and the server's script. `cb` gets nil and the reason when either is missing.
+---When the package is nowhere, the Tools panel offers to install it.
 ---@param app Proteus.App
+---@param tool Proteus.ToolHandle
 ---@param root string? The project folder.
 ---@param cb fun(found: LangShell.Launch?, why: string?)
-function M.find (app, root, cb)
-  app.process.which (launch.PROGRAM, function (program)
+function M.find (app, tool, root, cb)
+  ---@param program string?
+  local function search (program)
     first_script (
       app,
       launch.package_dirs (root, program),
@@ -69,6 +72,7 @@ function M.find (app, root, cb)
             cb ({ program = program, args = { 'start' }, script = program })
           else
             cb (nil, launch.PROGRAM .. ' is not installed')
+            tool.offer ()
           end
           return
         end
@@ -86,6 +90,14 @@ function M.find (app, root, cb)
         end)
       end
     )
+  end
+  -- The PATH first, then the copy the Tools panel installed.
+  app.process.which (launch.PROGRAM, function (on_path)
+    if on_path then
+      search (on_path)
+    else
+      tool.cached (search)
+    end
   end)
 end
 

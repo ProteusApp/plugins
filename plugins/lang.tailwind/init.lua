@@ -44,7 +44,7 @@ local SECTION = 'tailwindCSS'
 return {
   name = 'Tailwind CSS',
   description = 'Tailwind CSS class completion, with the CSS each class makes, and problems such as conflicting classes, in HTML, CSS, JSX, TSX, Vue and Svelte files.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server is a program it runs. It reads files anywhere on disk, and the
   -- plugin searches the open folder for Tailwind.
@@ -117,6 +117,12 @@ return {
       program = 'tailwindcss-language-server',
       kind = 'server',
       install = 'npm install --global @tailwindcss/language-server',
+      npm = {
+        packages = { '@tailwindcss/language-server@0.16.0' },
+        bin = 'tailwindcss-language-server',
+      },
+      -- None until the open folder turns out to use Tailwind CSS.
+      languages = {},
       homepage = 'https://github.com/tailwindlabs/tailwindcss-intellisense',
       settings = {
         'tailwind.enabled',

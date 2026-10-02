@@ -33,7 +33,7 @@ local PROGRAM = 'vscode-html-language-server'
 return {
   name = 'HTML',
   description = "HTML with VS Code's language server: completion, hover help and problems, also inside style and script, and a live preview.",
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions', 'webview' } },
   -- The language server is a program it runs. The `editor` service, which hands over the
   -- text of open files, needs `files`.
@@ -84,6 +84,8 @@ return {
       program = app.os == 'windows' and (PROGRAM .. '.cmd') or PROGRAM,
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
+      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = PROGRAM },
+      languages = { 'html' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = { 'html.enabled', 'html.validate' },
       start = function ()

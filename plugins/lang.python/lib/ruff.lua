@@ -62,6 +62,7 @@ function M.install (ctx)
     program = 'ruff',
     kind = 'server',
     install = 'pip install ruff, or uv tool install ruff',
+    languages = { 'python' },
     homepage = 'https://docs.astral.sh/ruff/',
     settings = { 'python.ruff', 'python.format' },
     release = release,

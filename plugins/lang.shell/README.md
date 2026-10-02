@@ -14,7 +14,7 @@ The editor treats `.sh`, `.bash`, `.zsh`, `.bashrc`, `.zshrc` and `.profile` fil
 
 ## What it needs
 
-Node.js, and the language server:
+Node.js on the PATH. When the server is nowhere else, the first shell script file that opens has npm install bash-language-server 5.8.1 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```text
 npm install --global bash-language-server
@@ -22,7 +22,7 @@ npm install --global bash-language-server
 
 A project that has `bash-language-server` in its own `node_modules` uses that copy.
 
-ShellCheck and shfmt each have a row in the **Tools** panel. When one is not on the PATH, the plugin offers to download its official release, checked against a pinned checksum. shfmt downloads on Windows, Linux and macOS, though not on Windows on ARM. ShellCheck downloads only on Windows on Intel or AMD, since its other files are tar archives, which Proteus cannot unpack. Elsewhere a package manager installs it:
+ShellCheck and shfmt each have a row in the **Tools** panel. When one is not on the PATH, the plugin offers to download its official release, checked against a pinned checksum. Both download on Windows, Linux and macOS, though not on Windows on ARM. There a package manager installs ShellCheck:
 
 ```text
 brew install shellcheck

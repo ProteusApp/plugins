@@ -45,6 +45,7 @@ function M.install (ctx)
     program = 'rust-analyzer',
     kind = 'server',
     install = 'rustup component add rust-analyzer',
+    languages = { 'rust' },
     homepage = 'https://rust-analyzer.github.io',
     settings = SETTINGS,
     release = release,

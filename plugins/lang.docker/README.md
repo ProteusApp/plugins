@@ -21,7 +21,7 @@ The editor knows a Dockerfile by its whole name: `Dockerfile` or `Containerfile`
 
 ## What it needs
 
-Node.js, and the language server:
+Node.js on the PATH. When the server is nowhere else, the first Dockerfile file that opens has npm install dockerfile-language-server-nodejs 0.15.0 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```text
 npm install --global dockerfile-language-server-nodejs
