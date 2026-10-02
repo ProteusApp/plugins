@@ -1224,7 +1224,7 @@
       "id": "proteus.code.plugins",
       "name": "Project Plugins",
       "description": "Builds Proteus plugins in the open folder's .proteus folder, for everyone who opens it.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1255,8 +1255,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "ecc9bbbc6c99ba05aa9658a5f4d251bd840c5e3f",
+      "updated": "2026-10-02T05:13:13Z"
     },
     {
       "id": "lang.python",

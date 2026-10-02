@@ -33,6 +33,11 @@ To take a plugin or profile down, delete its folder in a pull request, and add i
 
 Leave `index.json` out of pull requests. The index workflow writes it after each merge, and the check refuses a pull request that changes it. The app installs each entry's files from the commit it names and shows its permissions before the install, so the check also holds every entry to that commit.
 
+Authors take back what they sent from Proteus, with **Withdraw from the Registry**:
+
+- A submission still in review: Proteus closes its issue. The workflow then closes the pull request and deletes its branch. A maintainer closing an issue leaves the pull request alone.
+- A listed plugin or profile: Proteus opens an issue titled `Removal request: <id>`, or `Profile removal request: <id>`. When the person who opened it is the author `proteus.json` names, the workflow opens a pull request that deletes the folder and keeps the id with them in `removed.json`, and anyone else gets a comment saying no. Approve it like a submission, with `/approve` on the issue or by merging.
+
 ## Set up the repository
 
 The workflows need four things, set once.
