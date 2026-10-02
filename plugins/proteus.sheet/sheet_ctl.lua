@@ -33,6 +33,7 @@
 ---@field type_text fun(text: string) Types into the open cell editor at its cursor, or starts editing the active cell with `text`.
 ---@field cell_rect fun(row: integer, col: integer): Proteus.Rect? Where a cell is on screen, in window pixels, or nil when it is out of view.
 ---@field measure fun(text: string, style?: Sheet.Style): number The width of a text in pixels, in a style's font.
+---@field follow_link fun(row: integer, col: integer) Follows the link on a cell: shows the place in the book, or copies a web address.
 ---@field root fun(): Proteus.El The app's root element. Pop-ups go inside it with `position: fixed`.
 ---@field focus fun() Gives the keyboard back to the grid.
 ---@field chart fun(): string? The selected chart's id.

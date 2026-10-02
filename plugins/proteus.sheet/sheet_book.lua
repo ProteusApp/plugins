@@ -100,6 +100,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field row_styles? table<string, Sheet.Style>
 ---@field merges? string[]
 ---@field notes? table<string, string>
+---@field links? table<string, string> Addresses to links: a web or mail address, or a place in the book after `#`, such as `#Sheet2!A1`.
 ---@field filter? Sheet.Filter
 ---@field rules? Sheet.Rule[]
 ---@field validation? Sheet.Validation[]
@@ -2275,6 +2276,9 @@ local function sheet_json (data)
   end
   if data.notes then
     write_map (out, 'notes', data.notes)
+  end
+  if data.links then
+    write_map (out, 'links', data.links)
   end
   local filter = data.filter
   if filter then

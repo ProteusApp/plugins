@@ -37,6 +37,26 @@
 ---@field series Sheet.ChartSeries[]
 ---@field numbers? (number|nil)[] The category cells as numbers, when they held numbers.
 
+---The working out behind `data_from`.
+---@class Sheet.ChartPlan
+---@field rows integer
+---@field cols integer
+---@field by_rows boolean
+---@field ni integer How many lines run along the categories.
+---@field nj integer How many lines run along the series.
+---@field at fun(i: integer, j: integer): Sheet.Value
+---@field labels boolean
+---@field headers boolean
+
+---Where a chart's parts sit in the block it reads. See `layout_of`.
+---@class Sheet.ChartLayout
+---@field rows integer
+---@field cols integer
+---@field by_rows boolean True when each series runs along a row.
+---@field labels boolean True when the first column, or row with `by_rows`, holds the categories.
+---@field headers boolean True when the first row, or column with `by_rows`, names the series.
+---@field series integer[] The column of each series in the block, or its row with `by_rows`.
+
 ---@class Sheet.ChartType
 ---@field id Sheet.ChartKind
 ---@field label string
@@ -445,13 +465,13 @@ end
 -- Reading a range
 ---------------------------------------------------------------------------------------------
 
----Reads a block of cell values into categories and series. `values` holds rows, top to
----bottom. Text, booleans and errors in the data count as missing numbers.
+---How a block of values splits into categories and series, before any value is read: its
+---size once blank rows and columns at the end are dropped, which way the series run, and
+---whether the first row and column hold headings. Nil for a block with nothing in it.
 ---@param values Sheet.Value[][]
----@param opts? Sheet.ChartDataOptions
----@return Sheet.ChartData
-function M.data_from (values, opts)
-  opts = opts or {}
+---@param opts Sheet.ChartDataOptions
+---@return Sheet.ChartPlan?
+local function plan_of (values, opts)
   local rows, cols = 0, 0
   for r, row in pairs (values) do
     if math.type (r) == 'integer' and type (row) == 'table' then
@@ -509,7 +529,7 @@ function M.data_from (values, opts)
     cols = cols - 1
   end
   if rows == 0 or cols == 0 then
-    return { categories = {}, series = {} }
+    return nil
   end
 
   local by_rows = opts.series_in == 'rows'
@@ -579,6 +599,32 @@ function M.data_from (values, opts)
     headers = headers and ni >= 2
   end
 
+  ---@type Sheet.ChartPlan
+  return {
+    rows = rows,
+    cols = cols,
+    by_rows = by_rows,
+    ni = ni,
+    nj = nj,
+    at = at,
+    labels = labels,
+    headers = headers,
+  }
+end
+
+---Reads a block of cell values into categories and series. `values` holds rows, top to
+---bottom. Text, booleans and errors in the data count as missing numbers.
+---@param values Sheet.Value[][]
+---@param opts? Sheet.ChartDataOptions
+---@return Sheet.ChartData
+function M.data_from (values, opts)
+  opts = opts or {}
+  local plan = plan_of (values, opts)
+  if not plan then
+    return { categories = {}, series = {} }
+  end
+  local ni, nj, at = plan.ni, plan.nj, plan.at
+  local labels, headers = plan.labels, plan.headers
   local first_i = headers and 2 or 1
   local first_j = labels and 2 or 1
 
@@ -633,6 +679,42 @@ function M.data_from (values, opts)
     data.numbers = numbers
   end
   return data
+end
+
+---Where the parts of a chart sit in the block it reads, counting from 1 in the block: the
+---rows and columns that hold data, which way the series run, whether the first row and
+---column hold headings, and the line of the block each series reads. An Excel file names
+---each series by its cells, so this is what it writes.
+---@param values Sheet.Value[][]
+---@param opts? Sheet.ChartDataOptions
+---@return Sheet.ChartLayout?
+function M.layout_of (values, opts)
+  local plan = plan_of (values, opts or {})
+  if not plan then
+    return nil
+  end
+  local first_i = plan.headers and 2 or 1
+  local series = {} ---@type integer[]
+  for j = plan.labels and 2 or 1, plan.nj do
+    local used = plan.headers and plan.at (1, j) ~= nil
+    for i = first_i, plan.ni do
+      if plan.at (i, j) ~= nil then
+        used = true
+      end
+    end
+    if used then
+      series[#series + 1] = j
+    end
+  end
+  ---@type Sheet.ChartLayout
+  return {
+    rows = plan.rows,
+    cols = plan.cols,
+    by_rows = plan.by_rows,
+    labels = plan.labels,
+    headers = plan.headers,
+    series = series,
+  }
 end
 
 ---------------------------------------------------------------------------------------------

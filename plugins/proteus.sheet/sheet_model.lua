@@ -81,6 +81,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@class Sheet.Band
 ---@field cells table<integer, Sheet.CellState>
 ---@field notes table<integer, string>
+---@field links table<integer, string>
 ---@field styles table<integer, Sheet.Style> Row or column styles.
 ---@field sizes table<integer, number> Heights or widths.
 ---@field hidden table<integer, boolean>
@@ -104,6 +105,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field literals? string[][] Each value as text that types back to it, for pasting values.
 ---@field merges? Sheet.Rect[] Merged blocks, counting rows and columns from 1 in the clip.
 ---@field notes? table<integer, string> Notes by `i * KEY + j` in the clip.
+---@field links? table<integer, string> Links by `i * KEY + j` in the clip.
 ---@field row? integer The top row they came from, so pasted formulas can move.
 ---@field col? integer
 ---@field sheet? Sheet.Sheet The sheet they came from.
@@ -144,6 +146,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field hidden_rows table<integer, boolean> Rows the user hid.
 ---@field hidden_cols table<integer, boolean>
 ---@field notes table<integer, string> Notes by `row * KEY + col`.
+---@field links table<integer, string> Links by `row * KEY + col`: a web or mail address, or a place in the book after `#`, such as `#Sheet2!A1`.
 ---@field merges Sheet.Rect[]
 ---@field freeze_rows integer
 ---@field freeze_cols integer
@@ -831,6 +834,7 @@ function M.blank (book, name, rows, cols)
   self.hidden_rows = {}
   self.hidden_cols = {}
   self.notes = {}
+  self.links = {}
   self.merges = {}
   self.freeze_rows = 0
   self.freeze_cols = 0
@@ -1394,6 +1398,14 @@ function Sheet:note (row, col)
   return self.notes[row * KEY + col]
 end
 
+---The link on a cell, or nil.
+---@param row integer
+---@param col integer
+---@return string?
+function Sheet:link (row, col)
+  return self.links[row * KEY + col]
+end
+
 ---@return integer rows
 ---@return integer cols
 function Sheet:freeze ()
@@ -1626,7 +1638,7 @@ function Sheet:put_prop (field, key, value)
     local map = t[field] --[[@as table<any, any>]]
     map[key] = value
   end
-  if field ~= 'notes' and field ~= 'name' then
+  if field ~= 'notes' and field ~= 'links' and field ~= 'name' then
     -- Sizes, row and column styles and the lists may change how tall any row needs to be.
     self.touched = true
   end
@@ -1685,7 +1697,14 @@ function Sheet:move_band (axis, at, count)
   local is_row = axis == 'row'
   ---@type Sheet.Band?
   local band = count < 0
-      and { cells = {}, notes = {}, styles = {}, sizes = {}, hidden = {} }
+      and {
+        cells = {},
+        notes = {},
+        links = {},
+        styles = {},
+        sizes = {},
+        hidden = {},
+      }
     or nil
   local cells = {} ---@type table<integer, Sheet.Cell>
   for key, cell in pairs (self.cells) do
@@ -1703,22 +1722,30 @@ function Sheet:move_band (axis, at, count)
     end
   end
   self.cells = cells
-  local notes = {} ---@type table<integer, string>
-  for key, text in pairs (self.notes) do
-    local row = math.floor (key / KEY)
-    local col = key - row * KEY
-    local np = moved_to (is_row and row or col, at, count)
-    if np then
-      if is_row then
-        notes[np * KEY + col] = text
-      else
-        notes[row * KEY + np] = text
+  ---Moves a map by cell, keeping what the deleted cells held in `lost`.
+  ---@param map table<integer, string>
+  ---@param lost? table<integer, string>
+  ---@return table<integer, string>
+  local function move_keys (map, lost)
+    local out = {} ---@type table<integer, string>
+    for key, text in pairs (map) do
+      local row = math.floor (key / KEY)
+      local col = key - row * KEY
+      local np = moved_to (is_row and row or col, at, count)
+      if np then
+        if is_row then
+          out[np * KEY + col] = text
+        else
+          out[row * KEY + np] = text
+        end
+      elseif lost then
+        lost[key] = text
       end
-    elseif band then
-      band.notes[key] = text
     end
+    return out
   end
-  self.notes = notes
+  self.notes = move_keys (self.notes, band and band.notes)
+  self.links = move_keys (self.links, band and band.links)
   ---@generic T
   ---@param map table<integer, T>
   ---@param lost? table<integer, T>
@@ -1762,6 +1789,9 @@ function Sheet:put_band (axis, band)
   end
   for key, text in pairs (band.notes) do
     self.notes[key] = text
+  end
+  for key, text in pairs (band.links or {}) do
+    self.links[key] = text
   end
   local styles = axis == 'row' and self.row_styles or self.col_styles
   local sizes = axis == 'row' and self.heights or self.widths
@@ -1968,7 +1998,7 @@ end
 ---Clears a block as one undo step. `what` is `contents` (the default), which keeps styles and
 ---notes as spreadsheets do on Delete, or `formats`, `notes` or `all`.
 ---@param rect Sheet.Rect
----@param what? 'contents'|'formats'|'notes'|'all'
+---@param what? 'contents'|'formats'|'notes'|'links'|'all'
 function Sheet:clear (rect, what)
   local r = tidy (rect)
   local w = what or 'contents'
@@ -1983,17 +2013,21 @@ function Sheet:clear (rect, what)
   if w == 'formats' or w == 'all' then
     self:clear_format (r)
   end
-  if w == 'notes' or w == 'all' then
-    local keys = {} ---@type integer[]
-    for key in pairs (self.notes) do
-      local row = math.floor (key / KEY)
-      local col = key - row * KEY
-      if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
-        keys[#keys + 1] = key
+  for _, field in ipairs ({ 'notes', 'links' }) do
+    if w == field or w == 'all' then
+      local keys = {} ---@type integer[]
+      for key in
+        pairs ((self --[[@as table<string, table<integer, string>>]])[field])
+      do
+        local row = math.floor (key / KEY)
+        local col = key - row * KEY
+        if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
+          keys[#keys + 1] = key
+        end
       end
-    end
-    for _, key in ipairs (keys) do
-      self:set_prop ('notes', key, nil)
+      for _, key in ipairs (keys) do
+        self:set_prop (field, key, nil)
+      end
     end
   end
   self:finish ()
@@ -2472,6 +2506,23 @@ function Sheet:set_note (row, col, text)
   self:finish ()
 end
 
+---Sets the link on a cell, or takes it away with nil or `''`, as one undo step.
+---@param row integer
+---@param col integer
+---@param target? string
+function Sheet:set_link (row, col, target)
+  local value = target
+  if value == '' then
+    value = nil
+  end
+  self:begin ({
+    select = { r1 = row, c1 = col, r2 = row, c2 = col },
+    label = 'Link',
+  })
+  self:set_prop ('links', row * KEY + col, value)
+  self:finish ()
+end
+
 ---Merges a block, or each row of it on its own with `across`. The block shows its top left
 ---cell, so the text of the other cells goes. Merges inside the block join it. A block that
 ---cuts across another merge's edge is refused, with the reason. One undo step.
@@ -2912,14 +2963,21 @@ function Sheet:copy (rect)
       }
     end
   end
-  local notes = {} ---@type table<integer, string>
-  for key, text in pairs (self.notes) do
-    local row = math.floor (key / KEY)
-    local col = key - row * KEY
-    if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
-      notes[(row - r.r1 + 1) * KEY + (col - r.c1 + 1)] = text
+  ---@param map table<integer, string>
+  ---@return table<integer, string>
+  local function in_clip (map)
+    local out = {} ---@type table<integer, string>
+    for key, text in pairs (map) do
+      local row = math.floor (key / KEY)
+      local col = key - row * KEY
+      if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
+        out[(row - r.r1 + 1) * KEY + (col - r.c1 + 1)] = text
+      end
     end
+    return out
   end
+  local notes = in_clip (self.notes)
+  local links = in_clip (self.links)
   return {
     texts = texts,
     bold = bold,
@@ -2927,6 +2985,7 @@ function Sheet:copy (rect)
     literals = literals,
     merges = merges,
     notes = notes,
+    links = links,
     row = r.r1,
     col = r.c1,
     sheet = self,
@@ -3147,14 +3206,20 @@ function Sheet:paste (row, col, clip, fill, opts)
       end
     end
     source:unmerge (src)
-    for key in pairs (clip.notes or {}) do
-      local i = math.floor (key / KEY)
-      local j = key - i * KEY
-      source:set_prop (
-        'notes',
-        (from_row + i - 1) * KEY + (from_col + j - 1),
-        nil
-      )
+    for _, field in ipairs ({ 'notes', 'links' }) do
+      for key in
+        pairs (
+          (clip --[[@as table<string, table<integer, string>?>]])[field] or {}
+        )
+      do
+        local i = math.floor (key / KEY)
+        local j = key - i * KEY
+        source:set_prop (
+          field,
+          (from_row + i - 1) * KEY + (from_col + j - 1),
+          nil
+        )
+      end
     end
   end
   if with_style and clip.merges then
@@ -3230,15 +3295,18 @@ function Sheet:paste (row, col, clip, fill, opts)
     end
     self:set_prop ('merges', nil, list)
   end
-  if only == nil and clip.notes then
-    for key, text in pairs (clip.notes) do
-      local i = math.floor (key / KEY)
-      local j = key - i * KEY
-      local oi, oj = i - 1, j - 1
-      if turn then
-        oi, oj = j - 1, i - 1
+  for _, field in ipairs ({ 'notes', 'links' }) do
+    local map = (clip --[[@as table<string, table<integer, string>?>]])[field]
+    if only == nil and map then
+      for key, text in pairs (map) do
+        local i = math.floor (key / KEY)
+        local j = key - i * KEY
+        local oi, oj = i - 1, j - 1
+        if turn then
+          oi, oj = j - 1, i - 1
+        end
+        self:set_prop (field, (target.r1 + oi) * KEY + (target.c1 + oj), text)
       end
-      self:set_prop ('notes', (target.r1 + oi) * KEY + (target.c1 + oj), text)
     end
   end
   if src and not turn then
@@ -3463,6 +3531,7 @@ function Sheet:clone (name)
     'hidden_rows',
     'hidden_cols',
     'notes',
+    'links',
   }) do
     local src = (self --[[@as table<string, any>]])[field] --[[@as table<any, any>]]
     local dst = (copy --[[@as table<string, any>]])[field] --[[@as table<any, any>]]
@@ -3709,16 +3778,20 @@ function Sheet:load (data)
     end
     self.merges = list
   end
-  if type (data.notes) == 'table' then
-    for addr, text in
-      pairs (data.notes --[[@as table<any, any>]])
-    do
-      local row, col = nil, nil ---@type integer?, integer?
-      if type (addr) == 'string' then
-        row, col = M.parse_address (addr)
-      end
-      if row and col and type (text) == 'string' and text ~= '' then
-        self.notes[row * KEY + col] = text
+  for _, field in ipairs ({ 'notes', 'links' }) do
+    local map = (data --[[@as table<string, any>]])[field]
+    if type (map) == 'table' then
+      local into = (self --[[@as table<string, table<integer, string>>]])[field]
+      for addr, text in
+        pairs (map --[[@as table<any, any>]])
+      do
+        local row, col = nil, nil ---@type integer?, integer?
+        if type (addr) == 'string' then
+          row, col = M.parse_address (addr)
+        end
+        if row and col and type (text) == 'string' and text ~= '' then
+          into[row * KEY + col] = text
+        end
       end
     end
   end
@@ -3853,6 +3926,13 @@ function Sheet:to_data ()
     for key, text in pairs (self.notes) do
       local row = math.floor (key / KEY)
       data.notes[M.address (row, key - row * KEY)] = text
+    end
+  end
+  if next (self.links) then
+    data.links = {}
+    for key, text in pairs (self.links) do
+      local row = math.floor (key / KEY)
+      data.links[M.address (row, key - row * KEY)] = text
     end
   end
   local f = self.filter

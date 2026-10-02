@@ -308,6 +308,7 @@ function M.sort (sheet, rect, keys, opts)
   ---@type table<integer, { text: string, style: Sheet.Style }>
   local states = {}
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   local lo, hi = r.c1, r.c2
   if across then
     lo, hi = r.r1, r.r2
@@ -322,6 +323,7 @@ function M.sort (sheet, rect, keys, opts)
       states[key] =
         { text = sheet:text (row, col), style = sheet:style_at (row, col) }
       notes[key] = sheet:note (row, col)
+      links[key] = sheet:link (row, col)
     end
   end
   local sizes = across and sheet.widths or sheet.heights
@@ -364,6 +366,7 @@ function M.sort (sheet, rect, keys, opts)
           style = sheet:own_for (row, col, state.style),
         })
         sheet:set_prop ('notes', row * KEY + col, notes[src_row * KEY + src_col])
+        sheet:set_prop ('links', row * KEY + col, links[src_row * KEY + src_col])
       end
     end
   end
@@ -433,10 +436,12 @@ function M.remove_duplicates (sheet, rect, opts)
   -- Read every source before writing, since the rows that stay move onto rows being read.
   local texts = {} ---@type table<integer, string>
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   for row = first, r.r2 do
     for c = r.c1, r.c2 do
       texts[row * KEY + c] = sheet:text (row, c)
       notes[row * KEY + c] = sheet:note (row, c)
+      links[row * KEY + c] = sheet:link (row, c)
     end
   end
   sheet:begin ({ select = r, label = 'Remove duplicates' })
@@ -444,13 +449,15 @@ function M.remove_duplicates (sheet, rect, opts)
     local to, from = first + i - 1, keep[i]
     if from ~= to then
       for c = r.c1, r.c2 do
-        local text, note = '', nil ---@type string, string?
+        local text, note, link = '', nil, nil ---@type string, string?, string?
         if from then
           text = formula.shift (texts[from * KEY + c], to - from, 0)
           note = notes[from * KEY + c]
+          link = links[from * KEY + c]
         end
         sheet:record (to, c, { text = text, style = sheet:own_style (to, c) })
         sheet:set_prop ('notes', to * KEY + c, note)
+        sheet:set_prop ('links', to * KEY + c, link)
       end
     end
   end
@@ -1888,6 +1895,14 @@ function M.write_xlsx (book)
       return nil, nil
     end
     return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
+  end, function (index)
+    local sheet = book.sheets[index]
+    local rows = {} ---@type integer[]
+    for row in pairs (sheet and sheet.filter and sheet.filter.hidden or {}) do
+      rows[#rows + 1] = row
+    end
+    table.sort (rows)
+    return rows
   end)
 end
 

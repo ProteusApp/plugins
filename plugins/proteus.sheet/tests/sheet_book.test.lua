@@ -923,6 +923,7 @@ local function full_book ()
   s:set_freeze (4, 1)
   s:merge ({ r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   s:set_note (5, 2, 'Rent went up in March.')
+  s:set_link (1, 1, 'https://example.com/budget')
   s:set_field ('filter', {
     rect = { r1 = 4, c1 = 1, r2 = 6, c2 = 2 },
     columns = { [1] = { values = { 'Rent' } } },
@@ -974,6 +975,7 @@ test ('decode (encode (book)) gives the same book back', function ()
   eq ({ s:freeze () }, { 4, 1 })
   eq (s:merge_at (1, 2), { r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   eq (s:note (5, 2), 'Rent went up in March.')
+  eq (s:link (1, 1), 'https://example.com/budget')
   -- The filter's hidden rows are worked out on load.
   ok (s:row_hidden (6) and not s:row_hidden (5))
   eq (text (back.sheets[2], 'B2'), 'Say "hi"\n\ttab\\')

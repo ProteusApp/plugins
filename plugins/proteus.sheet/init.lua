@@ -227,6 +227,9 @@ return {
       cell_rect = function (row, col)
         return grid.cell_rect (row, col)
       end,
+      follow_link = function (row, col)
+        grid.follow_link (row, col)
+      end,
       measure = function (text, style)
         return grid.measure (text, style)
       end,
@@ -1642,8 +1645,9 @@ return {
     local function cell_items ()
       local s = grid.sheet ()
       local has_note = s and s:note (grid.sel.r, grid.sel.c) ~= nil
+      local has_link = s and s:link (grid.sel.r, grid.sel.c) ~= nil
       ---@type Proteus.MenuItem[]
-      return {
+      local items = {
         {
           label = 'Cut',
           icon = 'scissors',
@@ -1756,10 +1760,28 @@ return {
           'sticky-note',
           'sheet.note'
         ),
+        run_item (
+          has_link and 'Edit link' or 'Insert link',
+          'link',
+          'sheet.link'
+        ),
         run_item ('Insert chart', 'chart-column', 'sheet.chart'),
         run_item ('Conditional formatting', 'palette', 'sheet.rules'),
         run_item ('Data validation', 'list-checks', 'sheet.validation'),
       }
+      if has_link then
+        for i, item in ipairs (items) do
+          if item.label == 'Edit link' then
+            table.insert (
+              items,
+              i + 1,
+              run_item ('Follow link', 'external-link', 'sheet.follow_link')
+            )
+            break
+          end
+        end
+      end
+      return items
     end
 
     ---@param axis 'row'|'col'

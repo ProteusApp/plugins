@@ -173,6 +173,7 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field autofit fun(cols?: integer[])
 ---@field autofit_row fun(rows: integer[])
 ---@field fill_to_end fun()
+---@field follow_link fun(row: integer, col: integer)
 ---@field count_label fun(what: string, axis: 'row'|'col'): string
 ---@field stats_later fun()
 ---@field begin_edit fun(source: 'cell'|'bar', text: string, typed: boolean)
@@ -258,6 +259,7 @@ local CSS = [[
 .sheet-grid-cs { position: absolute; top: 0; right: -1px; width: 5px; height: 100%; cursor: col-resize; }
 .sheet-grid-rs { position: absolute; left: 0; bottom: -1px; height: 5px; width: 100%; cursor: row-resize; }
 .sheet-grid-cs:hover, .sheet-grid-rs:hover { background: var(--accent); }
+.sheet-grid-t td.sheet-grid-ln > div { color: var(--accent); text-decoration: underline; }
 .sheet-grid-t td.sheet-grid-nt { background-image: linear-gradient(225deg, var(--warning) 50%, transparent 50%);
   background-size: 8px 8px; background-position: right top; background-repeat: no-repeat; }
 .sheet-grid-t td.sheet-grid-dd, .sheet-grid-t td.sheet-grid-fb { padding-right: 18px; background-repeat: no-repeat;
@@ -1843,6 +1845,21 @@ function M.new (app, env)
     return rect ~= nil and x >= rect.right - calc.BUTTON_W and x <= rect.right
   end
 
+  ---The link on the cell a click landed on, or on the merged block it starts.
+  ---@param s Sheet.Sheet
+  ---@param hit Sheet.GridHit
+  ---@return string?
+  local function link_at (s, hit)
+    if hit.zone ~= 'cell' or hit.past_x ~= 0 or hit.past_y ~= 0 then
+      return nil
+    end
+    local m = s:merge_at (hit.row, hit.col)
+    if m then
+      return s:link (m.r1, m.c1)
+    end
+    return s:link (hit.row, hit.col)
+  end
+
   ---Opens the filter menu of a column, or the dropdown of a list cell, when a click lands on
   ---its button. Returns true when it did.
   ---@param x number
@@ -2023,6 +2040,11 @@ function M.new (app, env)
       d.last = hit.row .. ',' .. hit.col
     elseif not ev.shift and press_button (x, hit.row, hit.col) then
       G.select_cell (hit.row, hit.col)
+    elseif (ev.ctrl or ev.meta) and not ev.shift and link_at (s, hit) then
+      -- Ctrl+click follows a link, as in other spreadsheets.
+      G.select_cell (hit.row, hit.col)
+      local m = s:merge_at (hit.row, hit.col)
+      G.follow_link (m and m.r1 or hit.row, m and m.c1 or hit.col)
     else
       G.select_cell (hit.row, hit.col, ev.shift)
       local d = start_drag ('cells', ev)
@@ -2105,6 +2127,15 @@ function M.new (app, env)
         r, c = m.r1, m.c1
       end
       note = s:note (r, c)
+      local link = s:link (r, c)
+      if link then
+        local how = string.sub (link, 1, 1) == '#' and 'go there' or 'copy it'
+        note = (note and (note .. '\n\n') or '')
+          .. link
+          .. '\nCtrl+click to '
+          .. how
+          .. '.'
+      end
       if note then
         key = r .. ',' .. c
       end

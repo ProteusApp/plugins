@@ -1043,10 +1043,16 @@ test ('an Excel file round trip keeps cells, formats and values', function ()
       true
     )
   )
-  ok (#warnings > 0)
+  -- Notes, rules, the filter and charts all come across now.
+  eq (warnings, {})
   local back, notes = ops.read_xlsx (files, { clock = clock })
   ok (back, tostring (notes))
+  eq (notes, {})
   local sheet = (back --[[@as Sheet.Book]]).sheets[1]
+  local first = book.sheets[1]
+  eq (sheet.notes, first.notes)
+  eq (sheet.rules, first.rules)
+  eq (#sheet.charts, #first.charts)
   eq (sheet:text (11, 2), '=SUM(B5:B10)')
   eq ((sheet:display (11, 2)), '$2,155.00')
   eq ((sheet:display (17, 3)), '$3,200.00')

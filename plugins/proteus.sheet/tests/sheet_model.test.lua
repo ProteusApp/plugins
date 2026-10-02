@@ -424,6 +424,45 @@ test ('notes are set, changed and removed', function ()
   eq (s:note (1, 1), nil)
 end)
 
+test ('links follow their cells through edits, files and undo', function ()
+  local s = sheet_of ({ A1 = 'Site', A2 = 'Totals' })
+  s:set_link (1, 1, 'https://example.com')
+  s:set_link (2, 1, '#Sheet1!B9')
+  eq (s:link (1, 1), 'https://example.com')
+  -- An insert moves them, and undo puts them back.
+  s:insert_rows (1, 2)
+  eq ({ s:link (3, 1), s:link (4, 1), s:link (1, 1) }, {
+    'https://example.com',
+    '#Sheet1!B9',
+    nil,
+  })
+  s.book:undo ()
+  eq (s:link (1, 1), 'https://example.com')
+  -- A delete drops the links of its rows, and undo brings them back.
+  s:delete_rows (1, 1)
+  eq ({ s:link (1, 1), s:link (2, 1) }, { '#Sheet1!B9', nil })
+  s.book:undo ()
+  eq (s:link (1, 1), 'https://example.com')
+  -- Copy and paste carry them, and the file keeps them.
+  local clip = s:copy (r ('A1:A2'))
+  s:paste (5, 3, clip)
+  eq (s:link (5, 3), 'https://example.com')
+  local data = m.to_data (s)
+  eq (data.sheets[1].links, {
+    A1 = 'https://example.com',
+    A2 = '#Sheet1!B9',
+    C5 = 'https://example.com',
+    C6 = '#Sheet1!B9',
+  })
+  local back = m.from_data (data)
+  eq (back:link (6, 3), '#Sheet1!B9')
+  -- Clearing everything takes them away, and so does an empty link.
+  s:clear (r ('C5:C6'), 'all')
+  eq (s:link (5, 3), nil)
+  s:set_link (1, 1, '')
+  eq (s:link (1, 1), nil)
+end)
+
 test (
   'merging keeps the top left text and refuses to cut another merge',
   function ()

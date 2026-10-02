@@ -271,6 +271,45 @@ function M.install (grid)
     })
   end
 
+  -- Links ----------------------------------------------------------------------------------
+
+  ---Follows the link on a cell. A place in the book, such as `#Sheet2!A1`, shows that sheet
+  ---and selects the cells. A web or mail address is copied, since the app opens no pages.
+  ---@param row integer
+  ---@param col integer
+  function G.follow_link (row, col)
+    local s, book = G.sheet (), G.cur_book
+    local link = s and s:link (row, col)
+    if not s or not book or not link then
+      return
+    end
+    if string.sub (link, 1, 1) ~= '#' then
+      app.system.clipboard (link)
+      env.say (
+        'info',
+        'Copied ' .. link .. '. Paste it in a browser to open it.'
+      )
+      return
+    end
+    local rect, sheet_name = model.parse_ref (string.sub (link, 2))
+    if not rect then
+      env.say ('warn', 'The link points at ' .. link .. ', which is not a cell.')
+      return
+    end
+    if sheet_name then
+      local target = book:find (sheet_name)
+      if not target then
+        env.say ('warn', 'There is no sheet named "' .. sheet_name .. '".')
+        return
+      end
+      local index = book:index_of (target)
+      if index and index ~= book.active then
+        G.show_sheet (index)
+      end
+    end
+    G.select (rect)
+  end
+
   -- Measuring ------------------------------------------------------------------------------
 
   ---The inline CSS for a style's font.

@@ -447,6 +447,7 @@ function M.table_parts (sheet, geo, opts)
   local spills = sheet.watch.spills
   local row_styles, col_styles = sheet.row_styles, sheet.col_styles
   local notes = sheet.notes
+  local links = sheet.links
   local areas = look_areas (sheet)
   local filter = sheet.filter
   local filter_row = filter and filter.rect.r1 or nil
@@ -723,6 +724,9 @@ function M.table_parts (sheet, geo, opts)
             end
             if note then
               classes[#classes + 1] = 'sheet-grid-nt'
+            end
+            if links[k] then
+              classes[#classes + 1] = 'sheet-grid-ln'
             end
             if look and look.list then
               classes[#classes + 1] = 'sheet-grid-dd'
