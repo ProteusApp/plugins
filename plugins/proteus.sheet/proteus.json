@@ -56,6 +56,7 @@
     "sheet_format.lua",
     "sheet_formula.lua",
     "sheet_formula_eval.lua",
+    "sheet_formula_kit.lua",
     "sheet_formula_lex.lua",
     "sheet_formula_parse.lua",
     "sheet_grid.lua",
