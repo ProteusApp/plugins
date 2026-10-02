@@ -2,7 +2,7 @@
   "id": "proteus.code.explorer",
   "name": "Project Explorer",
   "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",
@@ -25,7 +25,7 @@
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.3.0",
+    "proteus": ">=0.3.1",
     "features": [
       "permissions"
     ]
