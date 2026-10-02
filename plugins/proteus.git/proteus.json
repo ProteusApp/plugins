@@ -2,7 +2,7 @@
   "id": "proteus.git",
   "name": "Git",
   "description": "Stage, commit, branch and browse the history of a Git repository.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.shell",
@@ -37,6 +37,8 @@
   "issue": null,
   "files": [
     "README.md",
+    "git_blame.lua",
+    "git_graph.lua",
     "git_parse.lua",
     "init.lua",
     "tests/git.test.lua"

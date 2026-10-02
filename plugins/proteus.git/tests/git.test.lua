@@ -500,6 +500,7 @@ test ('parse_log reads commits and full ref names', function ()
     author = 'Ada',
     date = '4 weeks ago',
     refs = { { name = 'main', kind = 'branch', current = true } },
+    parents = {},
     subject = 'Second commit',
   })
   eq (log[2].refs, {
@@ -827,7 +828,10 @@ test ('command lines', function ()
     '--branch',
     '--untracked-files=all',
   })
-  eq (m.log_args (200), { 'log', '-n', '200', '--decorate=full', m.LOG_FORMAT })
+  eq (
+    m.log_args (200),
+    { 'log', '-n', '200', '--date-order', '--decorate=full', m.LOG_FORMAT }
+  )
   eq (m.branch_args (), { 'branch', '-a', m.BRANCH_FORMAT })
   local renamed = entry ('new name.txt', 'R ', 'renamed', true, 'old.txt')
   eq (m.diff_args (renamed), {
@@ -940,7 +944,7 @@ test ('diff_html draws files, hunks and lines', function ()
     html,
     '<div class="git-line git-l-del"><span class="git-ln">18</span>'
       .. '<span class="git-ln"></span><span class="git-sign">−</span>'
-      .. '<span class="git-code">line 18</span></div>'
+      .. '<span class="git-code">line <span class="git-w">18</span></span></div>'
   )
   local staged = m.diff_html (files, { buttons = true, staged = true })
   eq (count (staged, 'Unstage Hunk'), 2)
@@ -1113,6 +1117,723 @@ test ('error_text and summary pick what Git printed', function ()
   eq (m.is_binary_error ('C:/a.png: stream did not contain valid UTF-8'), true)
   eq (m.is_binary_error ('C:/a.txt: The system cannot find the file'), false)
   eq (m.is_binary_error (nil), false)
+end)
+
+---------------------------------------------------------------------------------------------
+-- Large repositories
+---------------------------------------------------------------------------------------------
+
+test (
+  'parse_diff stops at max_lines and marks the hunk it stopped in',
+  function ()
+    local files, cut = m.parse_diff (DIFF_A_STAGED, 8)
+    eq (cut, true)
+    eq (#files, 1)
+    eq (#files[1].hunks, 2)
+    eq (#files[1].hunks[1].lines, 6)
+    eq (#files[1].hunks[2].lines, 2)
+    eq (files[1].hunks[1].partial, nil)
+    eq (files[1].hunks[2].partial, true)
+    -- A hunk read only in part cannot be staged, and draws no button.
+    eq (m.hunk_patch (files[1], files[1].hunks[2]), nil)
+    local html = m.diff_html (files, { buttons = true, cut = cut })
+    eq (count (html, 'Stage Hunk'), 1)
+    has (html, 'Showing the first 8 lines. The rest is left out.')
+    local all, more = m.parse_diff (DIFF_A_STAGED, 13)
+    eq ({ more, #all[1].hunks[2].lines }, { false, 7 })
+    local show = m.parse_show (SHOW_RENAME, 1)
+    eq (show.cut, true)
+    ok (show.commit)
+  end
+)
+
+test ('status_args follows status.showUntrackedFiles', function ()
+  eq (m.status_args ('normal\n')[5], '--untracked-files=normal')
+  eq (m.status_args ('no')[5], '--untracked-files=no')
+  eq (m.status_args ('all')[5], '--untracked-files=all')
+  eq (m.status_args ('true')[5], '--untracked-files=all')
+  eq (m.status_args (nil)[5], '--untracked-files=all')
+end)
+
+test ('focus_gap waits longer after a slow status read', function ()
+  eq (m.focus_gap (20), 1000)
+  eq (m.focus_gap (400), 4000)
+  eq (m.focus_gap (30000), 60000)
+end)
+
+test ('changes_html draws a long list up to its limit', function ()
+  local text = { '## main' }
+  for i = 1, 12 do
+    text[#text + 1] = '?? f' .. i .. '.txt'
+  end
+  local st = m.parse_status (table.concat (text, '\n') .. '\n')
+  local html = m.changes_html (st, { limit = 5 })
+  eq (count (html, 'data-item="open:u:'), 5)
+  has (html, 'data-item="show-all-u">Show all 12 files')
+  local whole = m.changes_html (st, { limit = 5, all = { u = true } })
+  eq (count (whole, 'data-item="open:u:'), 12)
+  lacks (whole, 'show-all-u')
+  eq ({ m.parse_item ('show-all-u') }, { 'show-all-u' })
+end)
+
+---------------------------------------------------------------------------------------------
+-- History
+---------------------------------------------------------------------------------------------
+
+test ('log_args pages, searches and follows one file', function ()
+  eq (
+    m.log_args (200),
+    { 'log', '-n', '200', '--date-order', '--decorate=full', m.LOG_FORMAT }
+  )
+  eq (
+    m.log_args (200, { skip = 400, search = '  fix bug ', path = 'src/a b.txt' }),
+    {
+      'log',
+      '-n',
+      '200',
+      '--date-order',
+      '--decorate=full',
+      m.LOG_FORMAT,
+      '--skip=400',
+      '--regexp-ignore-case',
+      '--fixed-strings',
+      '--grep=fix bug',
+      '--follow',
+      '--',
+      'src/a b.txt',
+    }
+  )
+  eq (
+    m.search_args ('author: Ada'),
+    { '--regexp-ignore-case', '--fixed-strings', '--author=Ada' }
+  )
+  eq (m.search_args ('   '), {})
+  eq (#m.log_args (5, { skip = 0, search = '' }), 6)
+end)
+
+test ('append_commits adds a page without repeats', function ()
+  local log = m.parse_log (LOG_FULL)
+  local both = m.append_commits ({ log[1] }, log)
+  eq (#both, 2)
+  eq ({ both[1].short, both[2].short }, { '509d303', '6258eaf' })
+end)
+
+test (
+  'log_html ends in a Load More row, and says when nothing matches',
+  function ()
+    local log = m.parse_log (LOG_FULL)
+    has (m.log_html (log, nil, { more = true }), 'data-item="more"')
+    lacks (m.log_html (log, nil), 'data-item="more"')
+    has (
+      m.log_html ({}, nil, { empty = 'No commits match' }),
+      'No commits match'
+    )
+  end
+)
+
+test ('relative reads a full path from the repository root', function ()
+  eq (m.relative ('C:/work/repo', 'C:\\work\\repo\\src\\a.txt'), 'src/a.txt')
+  eq (m.relative ('/home/r/', '/home/r/a.txt'), 'a.txt')
+  eq (m.relative ('/home/r', '/home/rx/a.txt'), nil)
+  eq (m.relative ('/home/r', '/home/r'), nil)
+  eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'windows'), 'A.txt')
+  eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'linux'), nil)
+end)
+
+---------------------------------------------------------------------------------------------
+-- The history graph
+---------------------------------------------------------------------------------------------
+
+local graph = require ('git_graph') --[[@as Git.GraphModule]]
+
+---Each row as its lane and its lines, such as `'1: 0,0-0,2 1,1-1,2'`.
+---@param rows Git.GraphRow[]
+---@return string[]
+local function graph_text (rows)
+  local out = {} ---@type string[]
+  for i, r in ipairs (rows) do
+    local parts = { tostring (r.col) .. (r.merge and 'm' or '') .. ':' }
+    for _, l in ipairs (r.lines) do
+      parts[#parts + 1] = l.x1 .. ',' .. l.y1 .. '-' .. l.x2 .. ',' .. l.y2
+    end
+    out[i] = table.concat (parts, ' ')
+  end
+  return out
+end
+
+-- `git log --date-order` output with parents, built by hand: a topic branch
+-- forks from the first commit and is merged back.
+local LOG_GRAPH = table.concat ({
+  'aaaa\031aaaa\031Ada\0311 day ago\031HEAD -> refs/heads/main\031bbbb dddd\031Merge topic\030\n',
+  'dddd\031dddd\031Ada\0312 days ago\031refs/heads/topic\031eeee\031Topic work\030\n',
+  'bbbb\031bbbb\031Ada\0313 days ago\031\031cccc\031Main work\030\n',
+  'eeee\031eeee\031Ada\0314 days ago\031\031cccc\031Topic start\030\n',
+  'cccc\031cccc\031Ada\0315 days ago\031\031\031First\030\n',
+})
+
+test ('parse_log reads the parents', function ()
+  local log = m.parse_log (LOG_GRAPH)
+  eq (#log, 5)
+  eq (log[1].parents, { 'bbbb', 'dddd' })
+  eq (log[1].subject, 'Merge topic')
+  eq (log[5].parents, {})
+  -- Output from before the parents field reads with none.
+  eq (m.parse_log (LOG_FULL)[1].parents, {})
+end)
+
+test ('graph layout puts a merged branch in its own lane', function ()
+  local rows = graph.layout (m.parse_log (LOG_GRAPH))
+  eq (graph_text (rows), {
+    '0m: 0,1-0,2 0,1-1,2',
+    '1: 0,0-0,2 1,0-1,1 1,1-1,2',
+    '0: 0,0-0,1 1,0-1,2 0,1-0,2',
+    '1: 0,0-0,2 1,0-1,1 1,1-1,2',
+    '0: 0,0-0,1 1,0-0,1',
+  })
+  eq (rows[1].width, 2)
+  eq (rows[5].width, 2)
+end)
+
+test ('graph layout gives a second branch tip its own lane', function ()
+  local rows = graph.layout ({
+    { hash = 'a', parents = { 'c' } },
+    { hash = 'b', parents = { 'c' } },
+    { hash = 'c', parents = {} },
+  })
+  eq (graph_text (rows), {
+    '0: 0,1-0,2',
+    '1: 0,0-0,2 1,1-1,2',
+    '0: 0,0-0,1 1,0-0,1',
+  })
+end)
+
+test ('graph svg draws lines, curves and a dot', function ()
+  local rows = graph.rows_svg (m.parse_log (LOG_GRAPH))
+  eq (#rows, 5)
+  has (rows[1], '<svg class="git-graph" width="24" height="46"')
+  has (rows[1], '<path class="git-lane-1" d="M6 23C6 34.5 18 34.5 18 46"/>')
+  has (rows[1], 'class="git-dot git-lane-0 git-dot-merge" cx="6" cy="23"')
+  has (rows[2], '<path class="git-lane-0" d="M6 0L6 46"/>')
+  lacks (rows[2], 'git-dot-merge')
+  local html = m.log_html (m.parse_log (LOG_GRAPH), nil, { graph = rows })
+  has (html, '<div class="git-graph-list">')
+  has (html, 'data-item="aaaa"><svg class="git-graph"')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Stashes
+---------------------------------------------------------------------------------------------
+
+test ('stash command lines', function ()
+  eq (m.stash_args ('  ', false), { 'stash', 'push' })
+  eq (
+    m.stash_args (' try it ', true),
+    { 'stash', 'push', '--include-untracked', '--message', 'try it' }
+  )
+  eq (m.stash_list_args (), { 'stash', 'list', m.STASH_FORMAT })
+  eq (
+    m.stash_action_args ('apply', 'stash@{1}'),
+    { 'stash', 'apply', 'stash@{1}' }
+  )
+  eq (m.stash_action_args ('pop', 'stash@{0}'), { 'stash', 'pop', 'stash@{0}' })
+  eq (
+    m.stash_action_args ('drop', 'stash@{2}'),
+    { 'stash', 'drop', '--quiet', 'stash@{2}' }
+  )
+  local show = m.stash_show_args ('stash@{0}')
+  eq ({ show[1], show[2], show[#show] }, { 'stash', 'show', 'stash@{0}' })
+end)
+
+test ('parse_stashes reads git stash list', function ()
+  -- Real output from git 2.43.
+  local text = 'stash@{0}\031On master: try it\0310 seconds ago\n'
+    .. 'stash@{1}\031WIP on master: 91ff88d move\0312 days ago\r\n'
+    .. 'not a stash line\n'
+  eq (m.parse_stashes (text), {
+    {
+      ref = 'stash@{0}',
+      message = 'On master: try it',
+      date = '0 seconds ago',
+    },
+    {
+      ref = 'stash@{1}',
+      message = 'WIP on master: 91ff88d move',
+      date = '2 days ago',
+    },
+  })
+  eq (m.parse_stashes (''), {})
+  local html =
+    m.stash_html ({ ref = 'stash@{0}', message = 'a <b>', date = 'now' })
+  has (html, 'a &lt;b&gt;')
+  has (html, '<span class="git-hash">stash@{0}</span>')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Merge, rebase, cherry-pick, revert, reset and branches
+---------------------------------------------------------------------------------------------
+
+test ('operation reads what stopped part way from the .git folder', function ()
+  -- Names as app.fs.list_dir gives them, from real merges and rebases in git 2.43.
+  eq (m.operation ({ 'HEAD', 'MERGE_HEAD', 'MERGE_MSG', 'refs/' }), 'merge')
+  eq (m.operation ({ 'MERGE_MSG', 'REBASE_HEAD', 'rebase-merge/' }), 'rebase')
+  eq (m.operation ({ 'rebase-apply/' }), 'rebase')
+  eq (m.operation ({ 'CHERRY_PICK_HEAD' }), 'cherry-pick')
+  eq (m.operation ({ 'REVERT_HEAD' }), 'revert')
+  eq (m.operation ({ 'HEAD', 'ORIG_HEAD', 'index' }), nil)
+end)
+
+test ('operation_text counts the conflicts left', function ()
+  local st = m.parse_status (STATUS_CONFLICT)
+  eq (m.conflict_count (st), 4)
+  eq (
+    m.operation_text ('merge', 4),
+    'Merging. Resolve the 4 conflicts and stage them, then continue.'
+  )
+  eq (
+    m.operation_text ('rebase', 1),
+    'Rebasing. Resolve the conflict and stage it, then continue.'
+  )
+  eq (m.operation_text ('revert', 0), 'Reverting. Continue to finish it.')
+end)
+
+test ('operation command lines', function ()
+  eq (m.operation_env (), { GIT_EDITOR = 'true' })
+  eq (m.continue_args ('merge', false), { 'commit', '--no-edit' })
+  eq (m.continue_args ('merge', true), { 'commit', '-F', '-' })
+  eq (m.continue_args ('rebase', false), { 'rebase', '--continue' })
+  eq (m.continue_args ('cherry-pick', true), { 'cherry-pick', '--continue' })
+  eq (m.abort_args ('revert'), { 'revert', '--abort' })
+  eq (m.merge_args ('origin/main'), { 'merge', '--no-edit', 'origin/main' })
+  eq (m.rebase_args ('main'), { 'rebase', 'main' })
+  eq (m.cherry_pick_args ('abc', 1), { 'cherry-pick', 'abc' })
+  eq (m.cherry_pick_args ('abc', 2), { 'cherry-pick', '-m', '1', 'abc' })
+  eq (m.revert_args ('abc', 1), { 'revert', '--no-edit', 'abc' })
+  eq (m.revert_args ('abc', 2), { 'revert', '--no-edit', '-m', '1', 'abc' })
+  eq (m.reset_args ('hard', 'abc'), { 'reset', '--hard', 'abc' })
+  eq (m.delete_branch_args ('x', false), { 'branch', '-d', 'x' })
+  eq (m.delete_branch_args ('x', true), { 'branch', '-D', 'x' })
+  eq (m.rename_branch_args ('a', 'b'), { 'branch', '-m', 'a', 'b' })
+end)
+
+test ('stopped_at_conflict and not_merged read what Git printed', function ()
+  eq (
+    m.stopped_at_conflict ({
+      code = 1,
+      stdout = 'Auto-merging s.txt\nCONFLICT (add/add): Merge conflict in s.txt\n',
+      stderr = '',
+    }),
+    true
+  )
+  eq (
+    m.stopped_at_conflict ({
+      code = 1,
+      stdout = '',
+      stderr = 'error: could not apply 092d1ec... s on main\n',
+    }),
+    true
+  )
+  eq (
+    m.stopped_at_conflict ({
+      code = 128,
+      stdout = '',
+      stderr = 'fatal: refusing to merge unrelated histories\n',
+    }),
+    false
+  )
+  eq (m.stopped_at_conflict (nil), false)
+  eq (
+    m.not_merged ({
+      code = 1,
+      stdout = '',
+      stderr = "error: The branch 'side' is not fully merged.\n",
+    }),
+    true
+  )
+  eq (m.not_merged ({ code = 1, stdout = '', stderr = 'error: no' }), false)
+end)
+
+test ('other_branches leaves out the current one', function ()
+  local names = {} ---@type string[]
+  for _, b in ipairs (m.other_branches (m.parse_branches (BRANCHES))) do
+    names[#names + 1] = b.name
+  end
+  ok (#names > 0)
+  for _, n in ipairs (names) do
+    ok (n ~= 'main', n)
+  end
+end)
+
+---------------------------------------------------------------------------------------------
+-- Conflicts
+---------------------------------------------------------------------------------------------
+
+test ('resolve_args takes one side whole, or deletes the file', function ()
+  local both = entry ('both.txt', 'UU', 'conflicted', false)
+  eq (m.resolve_args (both, 'ours'), {
+    { 'checkout', '--ours', '--', 'both.txt' },
+    { 'add', '--', 'both.txt' },
+  })
+  eq (
+    m.resolve_args (both, 'theirs')[1],
+    { 'checkout', '--theirs', '--', 'both.txt' }
+  )
+  local they_deleted = entry ('t.txt', 'UD', 'conflicted', false)
+  eq (m.resolve_args (they_deleted, 'theirs'), { { 'rm', '-q', '--', 't.txt' } })
+  eq (#m.resolve_args (they_deleted, 'ours'), 2)
+  local we_deleted = entry ('w.txt', 'DU', 'conflicted', false)
+  eq (m.resolve_args (we_deleted, 'ours'), { { 'rm', '-q', '--', 'w.txt' } })
+  eq (m.mark_resolved_args (both), { 'add', '-A', '--', 'both.txt' })
+end)
+
+test (
+  'has_markers finds the lines Git writes into a conflicted file',
+  function ()
+    eq (
+      m.has_markers ('a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> side\nb\n'),
+      true
+    )
+    eq (m.has_markers ('<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> side\n'), true)
+    eq (m.has_markers ('a\nb\n'), false)
+    -- A marker inside a line, as in this test, is not one.
+    eq (m.has_markers ('s = "<<<<<<< x"\n=======\n>>>>>>> y\n'), false)
+  end
+)
+
+test ('conflict_html offers each way to resolve the file', function ()
+  local html = m.conflict_html (entry ('both.txt', 'UU', 'conflicted', false))
+  has (html, 'Both sides changed this file.')
+  has (html, 'data-item="conflict:ours"')
+  has (html, 'data-item="conflict:theirs"')
+  has (html, 'data-item="conflict:resolved"')
+  has (html, 'data-item="conflict:open"')
+  local gone = m.conflict_html (entry ('w.txt', 'DU', 'conflicted', false))
+  has (gone, 'Accept Current (delete)')
+  lacks (gone, 'conflict:open')
+end)
+
+test ('changes_html lists conflicts in a group of their own', function ()
+  local st = m.parse_status ('## main\nUU both.txt\n M a.txt\n')
+  local html = m.changes_html (st)
+  has (html, 'Merge Changes</span><span class="ui-badge">1</span>')
+  has (html, 'Changes</span><span class="ui-badge">1</span>')
+  has (html, 'data-item="stage:u:both.txt" title="Mark Resolved"')
+  ok (html:find ('both.txt', 1, true) < html:find ('a.txt', 1, true))
+end)
+
+---------------------------------------------------------------------------------------------
+-- Line staging
+---------------------------------------------------------------------------------------------
+
+test ('lines_patch stages only the picked lines', function ()
+  local f = m.parse_diff (DIFF_A_STAGED)[1]
+  local head = 'diff --git a/a.txt b/a.txt\nindex c4352f8..bd17d1b 100644\n'
+    .. '--- a/a.txt\n+++ b/a.txt\n'
+  -- Staging the added line alone keeps the removed one as context.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [3] = true }, false),
+    head
+      .. '@@ -1,5 +1,6 @@\n line 1\n line 2\n+line two\n line 3\n line 4\n line 5\n'
+  )
+  -- Staging the removed line alone drops the added one.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [2] = true }, false),
+    head .. '@@ -1,5 +1,4 @@\n line 1\n-line 2\n line 3\n line 4\n line 5\n'
+  )
+  -- Unstaging keeps an added line that is not picked, and drops a removed one.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [2] = true }, true),
+    head
+      .. '@@ -1,6 +1,5 @@\n line 1\n-line 2\n line two\n line 3\n line 4\n line 5\n'
+  )
+  eq (m.lines_patch (f, f.hunks[1], {}, false), nil)
+  eq (m.lines_patch (f, f.hunks[1], { [1] = true }, false), nil)
+end)
+
+test (
+  'lines_patch keeps a no-newline marker only after a line it keeps',
+  function ()
+    local f = m.parse_diff (DIFF_NO_NEWLINE)[1]
+    -- one / -two / \ / +TWO / \ : staging the added line alone.
+    local patch = assert (m.lines_patch (f, f.hunks[1], { [4] = true }, false))
+    has (
+      patch,
+      '\n one\n two\n\\ No newline at end of file\n+TWO\n\\ No newline at end of file\n'
+    )
+    -- Staging the removed line alone drops the added line and its marker.
+    local removed =
+      assert (m.lines_patch (f, f.hunks[1], { [2] = true }, false))
+    has (removed, '\n one\n-two\n\\ No newline at end of file\n')
+    eq (count (removed, 'No newline'), 1)
+  end
+)
+
+test ('diff_html lets added and removed lines be picked', function ()
+  local files = m.parse_diff (DIFF_A_STAGED)
+  local html = m.diff_html (files, { buttons = true, lines = true })
+  has (html, 'data-item="lines:1:1">Stage Lines</button>')
+  has (
+    html,
+    '<span class="git-gutter" data-item="line:1:1:2" title="Pick this line">'
+  )
+  has (html, 'data-item="line:1:2:5"')
+  lacks (html, 'data-item="line:1:1:1"')
+  eq (count (html, 'class="git-gutter"'), 4)
+  lacks (html, 'git-picked')
+  lacks (html, 'git-hunk-picked')
+  -- Picked lines are marked, and their hunk shows its Stage Lines button.
+  local marked = m.diff_html (files, {
+    buttons = true,
+    lines = true,
+    picked = { ['1:2'] = { [5] = true } },
+  })
+  eq (count (marked, 'git-line git-l-add git-picked'), 1)
+  eq (count (marked, '<div class="git-hunk git-hunk-picked">'), 1)
+  eq (count (marked, '<div class="git-hunk">'), 1)
+  local split = m.diff_html (files, {
+    buttons = true,
+    lines = true,
+    split = true,
+    picked = { ['1:1'] = { [2] = true } },
+  })
+  eq (count (split, 'git-half git-l-del git-picked'), 1)
+  has (
+    m.diff_html (files, { buttons = true, lines = true, staged = true }),
+    'Unstage Lines'
+  )
+  lacks (m.diff_html (files, { buttons = true }), 'git-gutter')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Word-level diff
+---------------------------------------------------------------------------------------------
+
+test ('word_diff marks the words that changed', function ()
+  local old, new = m.word_diff ('local x = foo (1, 2)', 'local y = foo (1, 3)')
+  eq (old, {
+    { text = 'local ', changed = false },
+    { text = 'x', changed = true },
+    { text = ' = foo (1, ', changed = false },
+    { text = '2', changed = true },
+    { text = ')', changed = false },
+  })
+  eq (new and new[2], { text = 'y', changed = true })
+  -- Lines with no word in common are shown whole.
+  eq ({ m.word_diff ('alpha beta', 'gamma delta') }, {})
+  eq ({ m.word_diff ('', 'x') }, {})
+  -- A letter outside ASCII stays whole.
+  local _, accent = m.word_diff ('café au lait', 'cafè au lait')
+  eq (accent and accent[1], { text = 'caf', changed = false })
+  eq (accent and accent[2], { text = 'è', changed = true })
+end)
+
+test ('diff_html marks changed words in a removed and added pair', function ()
+  local html = m.diff_html (m.parse_diff (DIFF_A_STAGED))
+  has (html, '<span class="git-code">line <span class="git-w">2</span></span>')
+  has (html, '<span class="git-code">line <span class="git-w">two</span></span>')
+  has (
+    html,
+    '<span class="git-code">line <span class="git-w">eighteen</span></span>'
+  )
+  -- A run of added lines with nothing removed before it is left plain.
+  lacks (m.diff_html (m.parse_diff (DIFF_ADDED)), 'git-w')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Side-by-side diff
+---------------------------------------------------------------------------------------------
+
+test (
+  'split_rows pairs removed lines with the added lines after them',
+  function ()
+    local h = m.parse_diff (DIFF_A_STAGED)[1].hunks[1]
+    eq (m.split_rows (h), {
+      { old = 1, new = 1 },
+      { old = 2, new = 3 },
+      { old = 4, new = 4 },
+      { old = 5, new = 5 },
+      { old = 6, new = 6 },
+    })
+    -- one / -two / \ / +TWO / \ : each marker stays on its line's side.
+    local nonl = m.parse_diff (DIFF_NO_NEWLINE)[1].hunks[1]
+    eq (m.split_rows (nonl), {
+      { old = 1, new = 1 },
+      { old = 2, new = 4 },
+      { old = 3, new = 5 },
+    })
+    local deleted = m.parse_diff (DIFF_DELETED)[1].hunks[1]
+    eq (m.split_rows (deleted)[1], { old = 1 })
+  end
+)
+
+test ('diff_html draws the old and new file side by side', function ()
+  local files = m.parse_diff (DIFF_A_STAGED)
+  local html =
+    m.diff_html (files, { split = true, buttons = true, lines = true })
+  has (html, '<div class="git-diff git-diff-split">')
+  eq (count (html, '<div class="git-split">'), 11)
+  has (
+    html,
+    '<div class="git-split"><div class="git-half git-l-ctx"><span class="git-ln">1</span>'
+  )
+  has (html, 'data-item="line:1:1:2"')
+  has (html, 'data-item="line:1:1:3"')
+  has (html, '<span class="git-code">line <span class="git-w">two</span></span>')
+  has (
+    m.diff_html (m.parse_diff (DIFF_DELETED), { split = true }),
+    '<div class="git-half git-half-empty"></div>'
+  )
+  -- A conflict diff has no old side to show, so it stays as one column.
+  lacks (
+    m.diff_html (m.parse_diff (DIFF_CONFLICT), { split = true }),
+    'git-split"'
+  )
+end)
+
+---------------------------------------------------------------------------------------------
+-- Blame
+---------------------------------------------------------------------------------------------
+
+local blame = require ('git_blame') --[[@as Git.BlameModule]]
+
+-- Real `git blame --porcelain` output from git 2.43: two commits and a line not committed.
+local BLAME = table.concat ({
+  'f6651fb7cd516e8cacfbf35b546f336fd5d5100e 1 1 1\n',
+  'author Ada\n',
+  'author-mail <ada@example.com>\n',
+  'author-time 1788249600\n',
+  'author-tz +0200\n',
+  'committer Ada\n',
+  'committer-mail <ada@example.com>\n',
+  'committer-time 1788249600\n',
+  'committer-tz +0200\n',
+  'summary First lines\n',
+  'boundary\n',
+  'filename a.txt\n',
+  '\tone\n',
+  '871dbdb9dd191177cd1b01882f965074fb817ce3 2 2 2\n',
+  'author Ada\n',
+  'author-mail <ada@example.com>\n',
+  'author-time 1788361200\n',
+  'author-tz -0500\n',
+  'committer Ada\n',
+  'committer-mail <ada@example.com>\n',
+  'committer-time 1788361200\n',
+  'committer-tz -0500\n',
+  'summary Change two\n',
+  'previous f6651fb7cd516e8cacfbf35b546f336fd5d5100e a.txt\n',
+  'filename a.txt\n',
+  '\tTWO\n',
+  '871dbdb9dd191177cd1b01882f965074fb817ce3 3 3\n',
+  '\tthree\n',
+  '0000000000000000000000000000000000000000 4 4 1\n',
+  'author Not Committed Yet\n',
+  'author-mail <not.committed.yet>\n',
+  'author-time 1790922076\n',
+  'author-tz +0000\n',
+  'committer Not Committed Yet\n',
+  'committer-mail <not.committed.yet>\n',
+  'committer-time 1790922076\n',
+  'committer-tz +0000\n',
+  'summary Version of a.txt from a.txt\n',
+  'previous 871dbdb9dd191177cd1b01882f965074fb817ce3 a.txt\n',
+  'filename a.txt\n',
+  '\tfour\n',
+})
+
+test ('blame reads who last changed each line', function ()
+  eq (
+    blame.args ('src/a b.txt'),
+    { 'blame', '--porcelain', '--', 'src/a b.txt' }
+  )
+  local b = blame.parse (BLAME)
+  eq (#b.lines, 4)
+  eq (b.lines[1], {
+    hash = 'f6651fb7cd516e8cacfbf35b546f336fd5d5100e',
+    line = 1,
+    text = 'one',
+  })
+  eq (
+    { b.lines[2].text, b.lines[3].text, b.lines[3].line },
+    { 'TWO', 'three', 3 }
+  )
+  eq (b.lines[3].hash, b.lines[2].hash)
+  local c = b.commits[b.lines[2].hash]
+  eq (
+    { c.author, c.time, c.tz, c.summary },
+    { 'Ada', 1788361200, '-0500', 'Change two' }
+  )
+  eq (blame.uncommitted (b.lines[4].hash), true)
+  eq (blame.uncommitted (c.hash), false)
+  eq (b.cut, false)
+  local short = blame.parse (BLAME, 2)
+  eq ({ #short.lines, short.cut }, { 2, true })
+end)
+
+test ("blame day is the author's own day", function ()
+  local b = blame.parse (BLAME)
+  -- 2026-09-02 10:00 at -0500 is 15:00 UTC.
+  eq (blame.day (b.commits[b.lines[2].hash]), '2026-09-02')
+  eq (
+    blame.day ({ hash = 'x', author = '', time = 0, tz = '-0100', summary = '' }),
+    '1969-12-31'
+  )
+  eq (
+    blame.day ({ hash = 'x', author = '', time = 0, tz = 'odd', summary = '' }),
+    '1970-01-01'
+  )
+end)
+
+test ('blame html shows each commit where its lines start', function ()
+  local html = blame.html ('a.txt', blame.parse (BLAME))
+  has (html, '<span class="git-file-path">a.txt</span>')
+  eq (count (html, 'git-blame-first'), 3)
+  has (html, 'data-item="blame:871dbdb9dd191177cd1b01882f965074fb817ce3"')
+  has (html, '>871dbdb</span><span class="git-blame-who">Ada</span>')
+  has (html, '<span class="git-blame-day">2026-09-01</span>')
+  has (html, 'Not committed yet')
+  has (html, '<span class="git-ln">3</span><span class="git-code">three</span>')
+  has (blame.html ('e.txt', blame.parse ('')), 'The file is empty.')
+  has (
+    blame.html ('a.txt', blame.parse (BLAME, 2)),
+    'Showing the first 2 lines.'
+  )
+end)
+
+---------------------------------------------------------------------------------------------
+-- Tags and remotes
+---------------------------------------------------------------------------------------------
+
+test ('tag command lines and names', function ()
+  eq (m.tag_args ('v1.0', 'abc', '  '), { 'tag', 'v1.0', 'abc' })
+  eq (
+    m.tag_args ('v1.0', 'abc', ' First release '),
+    { 'tag', '-a', 'v1.0', '-m', 'First release', 'abc' }
+  )
+  eq (m.tag_list_args (), { 'tag', '--list', '--sort=-creatordate' })
+  eq (m.parse_tags ('v1\r\nv0\n\n'), { 'v1', 'v0' })
+  eq (m.push_tag_args ('origin', 'v1'), { 'push', 'origin', 'refs/tags/v1' })
+  eq (m.push_tag_args ('origin'), { 'push', 'origin', '--tags' })
+  eq (m.check_tag_name ('v1.0.0'), nil)
+  eq (
+    m.check_tag_name ('v1 0'),
+    'A tag name cannot hold spaces or any of ~ ^ : ? * [ \\'
+  )
+  eq (m.check_tag_name (''), 'Type a name for the tag.')
+  eq (m.check_branch_name (''), 'Type a name for the branch.')
+end)
+
+test ('parse_remotes reads git remote -v', function ()
+  -- Real output from git 2.43.
+  local text = 'fork\t/tmp/a b (fetch)\nfork\t/tmp/a b (push)\n'
+    .. 'origin\thttps://x/y.git (fetch)\r\norigin\thttps://x/y.git (push)\n'
+  eq (m.parse_remotes (text), {
+    { name = 'fork', url = '/tmp/a b' },
+    { name = 'origin', url = 'https://x/y.git' },
+  })
+  eq (m.parse_remotes (''), {})
+  eq (m.check_remote_name ('upstream'), nil)
+  eq (m.check_remote_name ('my/fork'), 'A remote name cannot hold /')
+  ok (m.check_remote_name ('my fork'))
 end)
 
 test (
