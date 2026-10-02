@@ -6,7 +6,7 @@ The graph ships with Proteus as `graphs/terminal.ndg`. Open it in the Plugin Edi
 
 ## What it does
 
-- Pick PowerShell, cmd or bash. The terminal starts again with it.
+- Pick a shell, such as bash, zsh, pwsh or cmd. The terminal starts again with it. It starts on **Default shell**, the system shell: PowerShell on Windows, or the login shell elsewhere.
 - **Restart** starts the shell again.
 
 It needs the desktop app. In a browser the terminal says it cannot start.

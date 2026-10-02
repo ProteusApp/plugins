@@ -817,6 +817,9 @@ test (
 ---------------------------------------------------------------------------------------------
 
 test ('command lines', function ()
+  -- Paths are names, never patterns, so a file called *.log stands for itself alone.
+  eq (m.base_args (), m.SAFE_ARGS)
+  has (table.concat (m.base_args (), ' '), '--literal-pathspecs')
   eq (m.status_args (), {
     'status',
     '--porcelain=v1',
@@ -871,18 +874,51 @@ test ('discard_args fits the kind of change', function ()
 end)
 
 test ('push_args sets an upstream when there is none', function ()
-  eq (m.push_args (m.parse_status ('## main...origin/main\n')), { 'push' })
+  local tracked = m.parse_status ('## main...origin/main\n')
+  eq (m.has_upstream (tracked), true)
+  eq (m.push_args (tracked), { 'push' })
+  local fresh = m.parse_status ('## main\n')
+  eq (m.has_upstream (fresh), false)
+  eq (m.push_args (fresh, 'upstream'), { 'push', '-u', 'upstream', 'main' })
+  local args, why = m.push_args (fresh)
+  eq (args, nil)
+  eq (why, 'This repository has no remote to push to.')
   eq (
-    m.push_args (m.parse_status ('## main\n')),
-    { 'push', '-u', 'origin', 'main' }
-  )
-  eq (
-    m.push_args (m.parse_status (STATUS_GONE)),
+    m.push_args (m.parse_status (STATUS_GONE), 'origin'),
     { 'push', '-u', 'origin', 'gone' }
   )
-  local args, why = m.push_args (m.parse_status (STATUS_DETACHED))
+  args, why = m.push_args (m.parse_status (STATUS_DETACHED), 'origin')
   eq (args, nil)
   eq (why, 'Switch to a branch before pushing.')
+end)
+
+test ('push_remote picks the remote a new branch goes to', function ()
+  -- The branch's own setting comes first.
+  eq (m.push_remote ('fork\n', 'origin\nfork\n'), 'fork')
+  -- Then the only remote, whatever its name.
+  eq (m.push_remote (nil, 'github\n'), 'github')
+  eq (m.push_remote ('', 'github\r\n'), 'github')
+  -- Then origin among several.
+  eq (m.push_remote (nil, 'fork\norigin\n'), 'origin')
+  local name, why = m.push_remote (nil, 'fork\nmine\n')
+  eq (name, nil)
+  ok (why and why:find ('several remotes', 1, true), why)
+  name, why = m.push_remote (nil, '')
+  eq (name, nil)
+  eq (why, 'This repository has no remote to push to.')
+end)
+
+test ('remote_env keeps Git and ssh from asking on a terminal', function ()
+  eq (
+    m.remote_env (nil),
+    { GIT_TERMINAL_PROMPT = '0', GIT_SSH_COMMAND = 'ssh -o BatchMode=yes' }
+  )
+  eq (
+    m.remote_env ('\n'),
+    { GIT_TERMINAL_PROMPT = '0', GIT_SSH_COMMAND = 'ssh -o BatchMode=yes' }
+  )
+  -- A user's own ssh command is left alone.
+  eq (m.remote_env ('ssh -i ~/.ssh/work\n'), { GIT_TERMINAL_PROMPT = '0' })
 end)
 
 ---------------------------------------------------------------------------------------------
