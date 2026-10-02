@@ -138,6 +138,18 @@ local CSS = [[
 .git-l-del .git-sign { color: var(--danger); }
 .git-l-add .git-w { background: color-mix(in srgb, var(--success) 35%, transparent); border-radius: 2px; }
 .git-l-del .git-w { background: color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 2px; }
+.git-diff-split { display: block; }
+.git-split { display: grid; grid-template-columns: 1fr 1fr; font-family: var(--font-mono); line-height: 19px; }
+.git-half { display: flex; min-width: 0; }
+.git-half + .git-half { border-left: 1px solid var(--border); }
+.git-half .git-code { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 8px; tab-size: 4; }
+.git-half.git-l-add { background: color-mix(in srgb, var(--success) 15%, transparent); }
+.git-half.git-l-del { background: color-mix(in srgb, var(--danger) 15%, transparent); }
+.git-half.git-l-add .git-sign { color: var(--success); }
+.git-half.git-l-del .git-sign { color: var(--danger); }
+.git-half-empty { background: var(--bg-alt); }
+.git-half:has(.git-pick:checked) .git-gutter { background: var(--accent); }
+.git-half:has(.git-pick:checked) .git-gutter span { color: var(--accent-fg); }
 .git-l-meta .git-code { color: var(--fg-faint); font-style: italic; }
 .git-note { padding: 12px 16px; color: var(--fg-muted); }
 .git-commit-view { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
@@ -166,6 +178,7 @@ local CSS = [[
 ---@field path? string
 ---@field hash? string
 ---@field ref? string A stash, such as `'stash@{0}'`.
+---@field stash? Git.Stash
 
 ---@param s string
 ---@return boolean
@@ -233,6 +246,8 @@ return {
     -- What the main area draws now. The hunk buttons point into `shown_files`.
     local shown_files = {} ---@type Git.FileDiff[]
     local shown_staged = false
+    -- Diffs show the old and the new file side by side.
+    local split_view = app.store.get ('split', false) == true
     -- The lines picked in the diff, by `'<file>:<hunk>'`, then by line position.
     local picked = {} ---@type table<string, table<integer, boolean>>
     local shown_key = nil ---@type string?
@@ -399,14 +414,17 @@ return {
       ui.div ({
         class = 'git-head-top',
         ui.div ({ class = 'git-repo', ui.icon ('folder-git-2', 15), repo_name }),
-        embedded and ui.div ({
-          class = 'git-head-tools',
-          head_tool ('refresh-cw', 'Refresh', 'git.refresh'),
-          head_tool ('download', 'Fetch', 'git.fetch'),
-          head_tool ('arrow-down-to-line', 'Pull', 'git.pull'),
-          head_tool ('arrow-up-from-line', 'Push', 'git.push'),
-          head_tool ('history', 'History', 'git.show_history'),
-        }) or nil,
+        embedded
+            and ui.div ({
+              class = 'git-head-tools',
+              head_tool ('refresh-cw', 'Refresh', 'git.refresh'),
+              head_tool ('download', 'Fetch', 'git.fetch'),
+              head_tool ('arrow-down-to-line', 'Pull', 'git.pull'),
+              head_tool ('arrow-up-from-line', 'Push', 'git.push'),
+              head_tool ('history', 'History', 'git.show_history'),
+              head_tool ('columns-2', 'Side-by-Side Diff', 'git.toggle_split'),
+            })
+          or nil,
       }),
       ui.div ({
         class = 'git-head-branch',
@@ -772,8 +790,12 @@ return {
         staged = e.staged,
         label = label,
         empty = 'No changes to show.',
+        split = split_view,
       }
-      local prefix = (e.staged and 's:' or 'u:') .. e.path .. '\n'
+      local prefix = (e.staged and 's:' or 'u:')
+        .. e.path
+        .. (split_view and ':split' or '')
+        .. '\n'
       if e.kind == 'untracked' and e.path:sub (-1) == '/' then
         shown_files, shown_key = {}, nil
         show_main (
@@ -850,13 +872,11 @@ return {
         local show = m.parse_show (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = show.files, false, 'c:' .. hash
         local top = show.commit and m.commit_html (show.commit) or ''
-        show_main (
-          top
-            .. m.diff_html (
-              show.files,
-              { empty = 'This commit changes no files.', cut = show.cut }
-            )
-        )
+        show_main (top .. m.diff_html (show.files, {
+          empty = 'This commit changes no files.',
+          cut = show.cut,
+          split = split_view,
+        }))
       end)
     end
 
@@ -864,7 +884,7 @@ return {
     ---@param st Git.Stash
     local function show_stash (st)
       show_root ()
-      selection = { kind = 'stash', ref = st.ref }
+      selection = { kind = 'stash', ref = st.ref, stash = st }
       shown_key = nil
       render_changes ()
       render_history ()
@@ -882,13 +902,11 @@ return {
         end
         local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = files, false, 'z:' .. st.ref
-        show_main (
-          m.stash_html (st)
-            .. m.diff_html (
-              files,
-              { empty = 'This stash holds no changes.', cut = cut }
-            )
-        )
+        show_main (m.stash_html (st) .. m.diff_html (files, {
+          empty = 'This stash holds no changes.',
+          cut = cut,
+          split = split_view,
+        }))
       end)
     end
 
@@ -2641,6 +2659,32 @@ return {
       icon = 'pencil',
       when = has_repo,
       run = rename_branch,
+    })
+    commands.register ({
+      id = 'git.toggle_split',
+      category = 'Git',
+      title = 'Toggle Side-by-Side Diff',
+      icon = 'columns-2',
+      toolbar = not embedded and 8 or nil,
+      run = function ()
+        split_view = not split_view
+        app.store.set ('split', split_view)
+        local sel = selection
+        if not sel then
+          return
+        end
+        if sel.kind == 'file' then
+          local e = m.find_entry (status, sel.group or '', sel.path or '')
+          if e then
+            shown_key = nil
+            show_entry (e)
+          end
+        elseif sel.kind == 'commit' and sel.hash then
+          select_commit (sel.hash)
+        elseif sel.kind == 'stash' and sel.stash then
+          show_stash (sel.stash)
+        end
+      end,
     })
     commands.register ({
       id = 'git.stash',

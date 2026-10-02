@@ -1618,3 +1618,54 @@ test ('diff_html marks changed words in a removed and added pair', function ()
   -- A run of added lines with nothing removed before it is left plain.
   lacks (m.diff_html (m.parse_diff (DIFF_ADDED)), 'git-w')
 end)
+
+---------------------------------------------------------------------------------------------
+-- Side-by-side diff
+---------------------------------------------------------------------------------------------
+
+test (
+  'split_rows pairs removed lines with the added lines after them',
+  function ()
+    local h = m.parse_diff (DIFF_A_STAGED)[1].hunks[1]
+    eq (m.split_rows (h), {
+      { old = 1, new = 1 },
+      { old = 2, new = 3 },
+      { old = 4, new = 4 },
+      { old = 5, new = 5 },
+      { old = 6, new = 6 },
+    })
+    -- one / -two / \ / +TWO / \ : each marker stays on its line's side.
+    local nonl = m.parse_diff (DIFF_NO_NEWLINE)[1].hunks[1]
+    eq (m.split_rows (nonl), {
+      { old = 1, new = 1 },
+      { old = 2, new = 4 },
+      { old = 3, new = 5 },
+    })
+    local deleted = m.parse_diff (DIFF_DELETED)[1].hunks[1]
+    eq (m.split_rows (deleted)[1], { old = 1 })
+  end
+)
+
+test ('diff_html draws the old and new file side by side', function ()
+  local files = m.parse_diff (DIFF_A_STAGED)
+  local html =
+    m.diff_html (files, { split = true, buttons = true, lines = true })
+  has (html, '<div class="git-diff git-diff-split">')
+  eq (count (html, '<div class="git-split">'), 11)
+  has (
+    html,
+    '<div class="git-split"><div class="git-half git-l-ctx"><span class="git-ln">1</span>'
+  )
+  has (html, 'data-item="line:1:1:2"')
+  has (html, 'data-item="line:1:1:3"')
+  has (html, '<span class="git-code">line <span class="git-w">two</span></span>')
+  has (
+    m.diff_html (m.parse_diff (DIFF_DELETED), { split = true }),
+    '<div class="git-half git-half-empty"></div>'
+  )
+  -- A conflict diff has no old side to show, so it stays as one column.
+  lacks (
+    m.diff_html (m.parse_diff (DIFF_CONFLICT), { split = true }),
+    'git-split"'
+  )
+end)

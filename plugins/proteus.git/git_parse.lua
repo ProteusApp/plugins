@@ -116,6 +116,7 @@
 ---@field label? string A tag beside each file path, such as `'Staged'`.
 ---@field empty? string The text to show when there is no file.
 ---@field cut? boolean True when `parse_diff` stopped at `max_lines`, so there is more.
+---@field split? boolean Draws the old and the new file side by side.
 
 ---What the History view lists: every commit, the ones a search finds, or one file's.
 ---@class Git.LogQuery
@@ -2190,6 +2191,79 @@ local function line_html (l, pick, words)
     .. '</span></div>'
 end
 
+---One side of a row in the side-by-side diff. `side` picks the line number to show.
+---@param l Git.Line?
+---@param side 'old'|'new'
+---@param pick? string
+---@param words? Git.Segment[]
+---@return string
+local function half_html (l, side, pick, words)
+  if not l then
+    return '<div class="git-half git-half-empty"></div>'
+  end
+  local gutter = '<span class="git-ln">'
+    .. ((side == 'old' and l.old or l.new) or '')
+    .. '</span><span class="git-sign">'
+    .. SIGN[l.kind]
+    .. '</span>'
+  if pick then
+    gutter = '<label class="git-gutter" title="Pick this line">'
+      .. '<input type="checkbox" class="git-pick" data-item="'
+      .. pick
+      .. '">'
+      .. gutter
+      .. '</label>'
+  end
+  return '<div class="git-half git-l-'
+    .. l.kind
+    .. '">'
+    .. gutter
+    .. '<span class="git-code">'
+    .. code_html (l, words)
+    .. '</span></div>'
+end
+
+---Pairs a hunk's lines into side-by-side rows: context on both sides, and each run of removed
+---lines beside the run of added lines after it. Each row holds line positions in the hunk.
+---@param h Git.Hunk
+---@return { old?: integer, new?: integer }[]
+function M.split_rows (h)
+  local rows = {} ---@type { old?: integer, new?: integer }[]
+  local dels, adds = {}, {} ---@type integer[], integer[]
+  local function flush ()
+    for k = 1, math.max (#dels, #adds) do
+      rows[#rows + 1] = { old = dels[k], new = adds[k] }
+    end
+    dels, adds = {}, {}
+  end
+  for i, l in ipairs (h.lines) do
+    if l.kind == 'del' then
+      if #adds > 0 then
+        flush ()
+      end
+      dels[#dels + 1] = i
+    elseif l.kind == 'add' then
+      adds[#adds + 1] = i
+    elseif l.kind == 'meta' then
+      -- The marker belongs to the line before it, on that line's side.
+      local prev = h.lines[i - 1]
+      if prev and prev.kind == 'del' then
+        dels[#dels + 1] = i
+      elseif prev and prev.kind == 'add' then
+        adds[#adds + 1] = i
+      else
+        flush ()
+        rows[#rows + 1] = { old = i, new = i }
+      end
+    else
+      flush ()
+      rows[#rows + 1] = { old = i, new = i }
+    end
+  end
+  flush ()
+  return rows
+end
+
 ---The diff for the main area, as one HTML string. Each hunk button carries
 ---`data-item="hunk:<file>:<hunk>"`, both counted from 1.
 ---@param files Git.FileDiff[]
@@ -2204,7 +2278,10 @@ function M.diff_html (files, opts)
       total = total + #h.lines
     end
   end
-  local out = { '<div class="git-diff">' }
+  local out = {
+    opts.split and '<div class="git-diff git-diff-split">'
+      or '<div class="git-diff">',
+  }
   if #files == 0 then
     out[#out + 1] = note (opts.empty or 'No changes.')
   end
@@ -2254,17 +2331,49 @@ function M.diff_html (files, opts)
       end
       out[#out + 1] = '</div>'
       local words = f.combined and {} or hunk_words (h)
-      for li, l in ipairs (h.lines) do
-        if shown >= max then
-          cut = true
-          break
+      ---@param li integer
+      ---@return string?
+      local function pick_of (li)
+        local kind = h.lines[li].kind
+        if pickable and (kind == 'add' or kind == 'del') then
+          return 'line:' .. fi .. ':' .. hi .. ':' .. li
         end
-        local pick = nil ---@type string?
-        if pickable and (l.kind == 'add' or l.kind == 'del') then
-          pick = 'line:' .. fi .. ':' .. hi .. ':' .. li
+        return nil
+      end
+      if opts.split and not f.combined then
+        for _, row in ipairs (M.split_rows (h)) do
+          if shown >= max then
+            cut = true
+            break
+          end
+          local a, b = row.old, row.new
+          local left = a and h.lines[a] or nil
+          local right = b and h.lines[b] or nil
+          out[#out + 1] = '<div class="git-split">'
+            .. half_html (
+              left,
+              'old',
+              a ~= b and a and pick_of (a) or nil,
+              a and words[a]
+            )
+            .. half_html (
+              right,
+              'new',
+              a ~= b and b and pick_of (b) or nil,
+              b and words[b]
+            )
+            .. '</div>'
+          shown = shown + ((a and b and a ~= b) and 2 or 1)
         end
-        out[#out + 1] = line_html (l, pick, words[li])
-        shown = shown + 1
+      else
+        for li, l in ipairs (h.lines) do
+          if shown >= max then
+            cut = true
+            break
+          end
+          out[#out + 1] = line_html (l, pick_of (li), words[li])
+          shown = shown + 1
+        end
       end
       out[#out + 1] = '</div>'
     end
