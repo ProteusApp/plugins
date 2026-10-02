@@ -2,7 +2,7 @@
   "id": "proteus.todo",
   "name": "Todo",
   "description": "A single-screen to-do list.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "proteus.lib.ui"
   ],

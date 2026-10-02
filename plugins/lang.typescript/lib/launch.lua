@@ -72,6 +72,39 @@ function M.bin (manifest, name)
   return (bin:gsub ('\\', '/'):gsub ('^%./', ''))
 end
 
+---True while the Code Editor has a folder open that the user does not trust. A folder's own
+---node_modules holds programs, so nothing from it runs until then. Without the `project`
+---service there is no folder to trust.
+---@param project? Proteus.Project
+---@param layer Proteus.ProjectLayer What `app.kernel.project ()` says.
+---@return boolean
+function M.untrusted (project, layer)
+  if not project or not project.root () then
+    return false
+  end
+  if project.trusted then
+    return not project.trusted ()
+  end
+  return layer.trusted ~= true
+end
+
+---The TypeScript to name to the server. With `own`, the project's when it has a usable one,
+---and the one beside the server as the fallback. Without it, only the one beside the server,
+---since the server looks in the project by itself when it is given none. Nil when there is
+---no other, so the project's is never used against `own`.
+---@param libraries LangTypescript.Libraries
+---@param own boolean
+---@return LangTypescript.Libraries?
+function M.choose_libraries (libraries, own)
+  if own then
+    return libraries
+  end
+  if not libraries.fallback then
+    return nil
+  end
+  return { path = libraries.fallback }
+end
+
 ---True for a program that the system can start as it is. On Windows only a `.exe` or a
 ---`.com` file can be, and npm's `.cmd` file and extensionless shell script cannot.
 ---@param program string

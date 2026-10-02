@@ -6,7 +6,7 @@ This plugin is a Nodal graph built as an app, with no code blocks. The graph shi
 
 ## What it does
 
-- Make, rename and delete boards. Each board is a JSON file in `data/kanban`.
+- Make, open, rename, duplicate and delete boards. Each board is a JSON file in `data/kanban`. **Open Board** picks one by name, and **Duplicate Board** writes a copy of the open board under a new name and opens it.
 - Add columns and cards, and drag them. A card has a title, labels, a due date, a priority, a checklist and notes.
 - Search the cards, or show only one label. Archived cards keep their own list.
 - **Ctrl+N** adds a card, **Ctrl+F** searches, and **Ctrl+Z** and **Ctrl+Y** undo and redo.
