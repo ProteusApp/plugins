@@ -111,7 +111,7 @@ return {
   -- `files` to search and change the folder on disk, and for the `project` and `editor`
   -- services.
   permissions = { 'files' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = { 'proteus.lib.ui', 'proteus.ui.views', 'proteus.code.project' },
   optional = {
     'proteus.core.commands',

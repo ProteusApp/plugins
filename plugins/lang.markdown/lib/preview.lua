@@ -82,8 +82,7 @@ M.CSS = [[
 .md-body kbd { padding: .1em .4em; font-family: var(--font-mono); font-size: .85em;
   border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; }
 .md-body img.md-img { max-width: 100%; }
-.md-body li:has(> .md-check), .md-body li:has(> p:first-child > .md-check) {
-  list-style: none; }
+.md-body li.md-task { list-style: none; }
 .md-check { display: inline-block; box-sizing: border-box; width: 14px; height: 14px;
   margin: 0 6px 0 -20px; vertical-align: -2px; border: 1px solid var(--fg-muted);
   border-radius: 3px; }

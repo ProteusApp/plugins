@@ -17,14 +17,15 @@
     "proteus.ui.palette",
     "proteus.ui.notify",
     "proteus.ui.tabs",
-    "proteus.editor.core"
+    "proteus.editor.core",
+    "proteus.terminal"
   ],
   "permissions": [
     "files"
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.3.0",
+    "proteus": ">=0.3.1",
     "features": [
       "permissions",
       "file-tree"

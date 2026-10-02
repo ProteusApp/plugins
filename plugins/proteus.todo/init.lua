@@ -47,7 +47,7 @@ local CSS = [[
 return {
   name = 'Todo',
   description = 'A single-screen to-do list.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It keeps the list in app.store, and needs nothing more.
   permissions = {},
@@ -108,6 +108,10 @@ return {
         save ()
       end
       box:on ('keydown', function (ev)
+        -- Enter that confirms an IME composition belongs to the composition.
+        if ev.composing then
+          return
+        end
         if ev.key == 'Enter' then
           finish (true)
           return true
@@ -221,7 +225,8 @@ return {
     local new = ui.input ({ placeholder = 'What needs doing?' })
     new:set ('className', 'todo-new')
     new:on ('keydown', function (ev)
-      if ev.key ~= 'Enter' then
+      -- Enter that confirms an IME composition belongs to the composition.
+      if ev.key ~= 'Enter' or ev.composing then
         return
       end
       local text = (new:value () or ''):gsub ('^%s+', ''):gsub ('%s+$', '')

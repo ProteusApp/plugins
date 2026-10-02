@@ -4,7 +4,8 @@
 -- New files, new folders, renames and copies are typed into the tree itself, and a name is
 -- relative to its folder. Dragging items onto a folder moves them there. Delete moves items
 -- to the Recycle Bin. A letter after a name shows what Git sees: M changed, U new, A added,
--- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits.
+-- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits. Open in
+-- Terminal on a folder opens a terminal there, through proteus.terminal.
 --
 -- With the tree focused:
 --   Up, Down, Home, End   move the selection, and Shift stretches it
@@ -26,8 +27,8 @@
 -- folder from disk, changes it, and adds Git, the trash and Undo.
 --
 -- Paths inside the tree are relative to the project folder, which is ''. They become full
--- paths only where they leave it: on disk, in the editor, and in the `code:disk_renamed`,
--- `code:search_folder` and `code:open_terminal` events.
+-- paths only where they leave it: on disk, in the editor, and in the `code:disk_renamed` and
+-- `code:search_folder` events.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
 local file_tree = require ('file_tree') --[[@as FileTree.Module]]
@@ -120,17 +121,18 @@ return {
     'proteus.ui.notify',
     'proteus.ui.tabs',
     'proteus.editor.core',
+    -- Open in Terminal on a folder opens a terminal there.
+    'proteus.terminal',
   },
   conflicts = { 'proteus.ws.explorer' },
   -- `files` to read and change the folder on disk, and for the `project` and `editor` services.
   permissions = { 'files' },
   -- `file-tree` is the shared tree in the app's lib/file_tree.lua.
-  requires = { proteus = '>=0.3.0', features = { 'permissions', 'file-tree' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'file-tree' } },
   activate = function (app)
     -- Full paths on disk need `files`, as the `project` service does.
     app.protect_event ('code:disk_renamed', { needs = 'files' })
     app.protect_event ('code:search_folder', { needs = 'files' })
-    app.protect_event ('code:open_terminal', { needs = 'files' })
     local ui = app.use ('ui')
     local views = app.use ('views')
     local icons = app.use ('icons')
@@ -429,8 +431,48 @@ return {
       return app.os == 'windows' and 'the Recycle Bin' or 'the Trash'
     end
 
+    ---A sentence naming the files with unsaved edits inside the items, or '' when none has
+    ---any. The editor says which documents have unsaved edits.
+    ---@param list FileTree.Entry[]
+    ---@return string
+    local function unsaved_note (list)
+      local files = {} ---@type string[]
+      local editor = app.try_use ('editor')
+      for _, info in ipairs (editor and editor.docs () or {}) do
+        local path = rel_of (info.path)
+        if path and info.dirty () then
+          for _, e in ipairs (list) do
+            if paths.inside (path, e.path) then
+              files[#files + 1] = path
+              break
+            end
+          end
+        end
+      end
+      if #files == 0 then
+        return ''
+      end
+      table.sort (files)
+      local names = files[1]
+      if #files > 3 then
+        names = table.concat (files, ', ', 1, 3)
+          .. ' and '
+          .. (#files - 3)
+          .. ' more'
+      elseif #files > 1 then
+        names = table.concat (files, ', ', 1, #files - 1)
+          .. ' and '
+          .. files[#files]
+      end
+      return ' '
+        .. names
+        .. (#files == 1 and ' has' or ' have')
+        .. ' unsaved changes, which are lost.'
+    end
+
     ---Moves items to the Recycle Bin, after asking. An item the bin refuses, such as one on a
-    ---network drive, can be deleted for good instead, after asking again.
+    ---network drive, can be deleted for good instead, after asking again. The question names
+    ---any file in them with unsaved edits.
     ---@param list FileTree.Entry[]
     local function delete (list)
       local p = picker ()
@@ -439,7 +481,12 @@ return {
       end
       local what = #list == 1 and list[1].name or (#list .. ' items')
       p.confirm ({
-        message = 'Move ' .. what .. ' to ' .. bin_name () .. '?',
+        message = 'Move '
+          .. what
+          .. ' to '
+          .. bin_name ()
+          .. '?'
+          .. unsaved_note (list),
         yes = 'Move to ' .. (app.os == 'windows' and 'Recycle Bin' or 'Trash'),
         on_yes = function ()
           tree.select_after (list)
@@ -745,18 +792,13 @@ return {
           end,
         })
       end
-      local terminal = app.kernel.plugin ('proteus.terminal')
-      if
-        terminal
-        and terminal.status == 'active'
-        and app.platform ~= 'browser'
-        and (not entry or entry.dir)
-      then
+      local terminal = app.try_use ('terminal') --[[@as Proteus.Terminal?]]
+      if terminal and (not entry or entry.dir) then
         add ({
           label = 'Open in Terminal',
           icon = 'square-terminal',
           run = function ()
-            app.emit ('code:open_terminal', abs (dir))
+            terminal.open ({ cwd = abs (dir) })
           end,
         })
       end
