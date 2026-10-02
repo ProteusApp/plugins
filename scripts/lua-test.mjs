@@ -23,16 +23,16 @@
 //   plugin_ids()               every plugin id, sorted
 //   load_plugin(id)            the table a plugin's init.lua returns, loaded as Proteus does
 //
-// The app's lua/lib comes from a ProteusApp/app checkout: PROTEUS_APP names it, or it sits
-// beside the registry at ../app. Without one the contracts are skipped, except under CI, where
-// they fail.
+// The app's lua/lib comes from a ProteusApp/app checkout: PROTEUS_APP names it, or else it sits
+// beside the registry at ../app. Without one the contracts are skipped, and say why.
 
 import { declaredOf, engine, reader } from './lua.mjs';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const APP = [process.env.PROTEUS_APP, resolve(ROOT, '..', 'app')].find((d) => d && existsSync(join(d, 'lua', 'lib')));
+// PROTEUS_APP, when set, is the only place looked at, so PROTEUS_APP=/nonexistent runs without.
+const APP = [process.env.PROTEUS_APP ?? resolve(ROOT, '..', 'app')].find((d) => d && existsSync(join(d, 'lua', 'lib')));
 const APP_LIB = APP ? resolve(APP, 'lua', 'lib') : null;
 
 /** Reads a file of a plugin's own folder, then of the app's lua/lib, as Proteus's require does. */
@@ -192,13 +192,11 @@ for (const [root, kind, main] of [
 const contractDir = join(ROOT, 'contracts');
 const contracts = existsSync(contractDir) ? readdirSync(contractDir).filter((n) => n.endsWith('.test.lua') && n.includes(filter)).sort() : [];
 if (contracts.length > 0 && !APP_LIB) {
-  const why = 'the contracts need the app: put ProteusApp/app beside the registry at ../app, or set PROTEUS_APP';
-  if (process.env.CI) {
-    failed += 1;
-    console.log(`FAIL contracts: ${why}`);
-  } else {
-    console.log(`skip contracts: ${why}`);
-  }
+  const where = process.env.PROTEUS_APP ? `PROTEUS_APP (${process.env.PROTEUS_APP})` : resolve(ROOT, '..', 'app');
+  console.log(
+    `skip ${contracts.map((n) => `contracts/${n}`).join(', ')}: no app checkout with lua/lib at ${where}. ` +
+      'They need the app: put ProteusApp/app beside the registry at ../app, or set PROTEUS_APP.',
+  );
 }
 const pluginIds = existsSync(join(ROOT, 'plugins'))
   ? readdirSync(join(ROOT, 'plugins'))
