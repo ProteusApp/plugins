@@ -1518,3 +1518,68 @@ test ('changes_html lists conflicts in a group of their own', function ()
   has (html, 'data-item="stage:u:both.txt" title="Mark Resolved"')
   ok (html:find ('both.txt', 1, true) < html:find ('a.txt', 1, true))
 end)
+
+---------------------------------------------------------------------------------------------
+-- Line staging
+---------------------------------------------------------------------------------------------
+
+test ('lines_patch stages only the picked lines', function ()
+  local f = m.parse_diff (DIFF_A_STAGED)[1]
+  local head = 'diff --git a/a.txt b/a.txt\nindex c4352f8..bd17d1b 100644\n'
+    .. '--- a/a.txt\n+++ b/a.txt\n'
+  -- Staging the added line alone keeps the removed one as context.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [3] = true }, false),
+    head
+      .. '@@ -1,5 +1,6 @@\n line 1\n line 2\n+line two\n line 3\n line 4\n line 5\n'
+  )
+  -- Staging the removed line alone drops the added one.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [2] = true }, false),
+    head .. '@@ -1,5 +1,4 @@\n line 1\n-line 2\n line 3\n line 4\n line 5\n'
+  )
+  -- Unstaging keeps an added line that is not picked, and drops a removed one.
+  eq (
+    m.lines_patch (f, f.hunks[1], { [2] = true }, true),
+    head
+      .. '@@ -1,6 +1,5 @@\n line 1\n-line 2\n line two\n line 3\n line 4\n line 5\n'
+  )
+  eq (m.lines_patch (f, f.hunks[1], {}, false), nil)
+  eq (m.lines_patch (f, f.hunks[1], { [1] = true }, false), nil)
+end)
+
+test (
+  'lines_patch keeps a no-newline marker only after a line it keeps',
+  function ()
+    local f = m.parse_diff (DIFF_NO_NEWLINE)[1]
+    -- one / -two / \ / +TWO / \ : staging the added line alone.
+    local patch = assert (m.lines_patch (f, f.hunks[1], { [4] = true }, false))
+    has (
+      patch,
+      '\n one\n two\n\\ No newline at end of file\n+TWO\n\\ No newline at end of file\n'
+    )
+    -- Staging the removed line alone drops the added line and its marker.
+    local removed =
+      assert (m.lines_patch (f, f.hunks[1], { [2] = true }, false))
+    has (removed, '\n one\n-two\n\\ No newline at end of file\n')
+    eq (count (removed, 'No newline'), 1)
+  end
+)
+
+test ('diff_html lets added and removed lines be picked', function ()
+  local files = m.parse_diff (DIFF_A_STAGED)
+  local html = m.diff_html (files, { buttons = true, lines = true })
+  has (html, 'data-item="lines:1:1">Stage Lines</button>')
+  has (
+    html,
+    '<label class="git-gutter" title="Pick this line"><input type="checkbox" class="git-pick" data-item="line:1:1:2">'
+  )
+  has (html, 'data-item="line:1:2:5"')
+  lacks (html, 'data-item="line:1:1:1"')
+  eq (count (html, 'class="git-pick"'), 4)
+  has (
+    m.diff_html (files, { buttons = true, lines = true, staged = true }),
+    'Unstage Lines'
+  )
+  lacks (m.diff_html (files, { buttons = true }), 'git-pick')
+end)

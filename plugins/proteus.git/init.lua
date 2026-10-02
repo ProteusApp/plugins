@@ -120,6 +120,14 @@ local CSS = [[
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); color: var(--fg);
   cursor: pointer; }
 .git-hunk-btn:hover { background: var(--bg-hover); }
+.git-hunk-btn.git-lines-btn { display: none; margin-left: auto; }
+.git-hunk-btn.git-lines-btn + .git-hunk-btn { margin-left: 0; }
+.git-hunk:has(.git-pick:checked) .git-lines-btn { display: inline-block; }
+.git-gutter { display: flex; flex: none; cursor: pointer; }
+.git-gutter:hover .git-ln { color: var(--fg); }
+.git-pick { position: absolute; opacity: 0; width: 0; height: 0; margin: 0; pointer-events: none; }
+.git-line:has(.git-pick:checked) .git-gutter { background: var(--accent); }
+.git-line:has(.git-pick:checked) .git-gutter span { color: var(--accent-fg); }
 .git-line { display: flex; font-family: var(--font-mono); line-height: 19px; white-space: pre; }
 .git-ln { flex: none; width: 48px; padding-right: 8px; text-align: right; color: var(--fg-faint); user-select: none; }
 .git-sign { flex: none; width: 16px; text-align: center; color: var(--fg-faint); user-select: none; }
@@ -223,6 +231,8 @@ return {
     -- What the main area draws now. The hunk buttons point into `shown_files`.
     local shown_files = {} ---@type Git.FileDiff[]
     local shown_staged = false
+    -- The lines picked in the diff, by `'<file>:<hunk>'`, then by line position.
+    local picked = {} ---@type table<string, table<integer, boolean>>
     local shown_key = nil ---@type string?
     local busy = nil ---@type string? Such as 'Pushing…' while a remote command runs.
     local refreshing = false
@@ -734,6 +744,7 @@ return {
       shown_files = files
       shown_staged = opts.staged == true
       shown_key = key
+      picked = {}
       show_main ((top or '') .. m.diff_html (files, opts), same_file)
     end
 
@@ -754,6 +765,8 @@ return {
       ---@type Git.DiffOptions
       local opts = {
         buttons = e.kind ~= 'conflicted',
+        -- A new file is staged whole: git apply cannot add part of a file Git does not know.
+        lines = e.kind ~= 'conflicted' and e.kind ~= 'untracked',
         staged = e.staged,
         label = label,
         empty = 'No changes to show.',
@@ -1266,6 +1279,28 @@ return {
       local patch = m.hunk_patch (f, h)
       if not patch then
         fail ('This hunk cannot be staged on its own.')
+        return
+      end
+      act (m.apply_args (shown_staged), { stdin = patch })
+    end
+
+    ---Stages, or unstages, the lines picked in one hunk.
+    ---@param fi integer
+    ---@param hi integer
+    local function apply_lines (fi, hi)
+      local f = shown_files[fi]
+      local h = f and f.hunks[hi]
+      if not f or not h then
+        return
+      end
+      local patch =
+        m.lines_patch (f, h, picked[fi .. ':' .. hi] or {}, shown_staged)
+      if not patch then
+        fail (
+          'Pick the lines to '
+            .. (shown_staged and 'unstage' or 'stage')
+            .. ' first.'
+        )
         return
       end
       act (m.apply_args (shown_staged), { stdin = patch })
@@ -2045,6 +2080,26 @@ return {
             resolve (e, how)
           end
         end
+        return true
+      end
+      -- A click on a line's numbers ticks its hidden checkbox. The tick must go through, so
+      -- this returns nil.
+      local pf, ph, pl = item:match ('^line:(%d+):(%d+):(%d+)$')
+      if pf then
+        if ev.checked ~= nil then
+          local key = pf .. ':' .. ph
+          local set = picked[key] or {}
+          picked[key] = set
+          set[math.floor (tonumber (pl) or 0)] = ev.checked or nil
+        end
+        return nil
+      end
+      local lf, lh = item:match ('^lines:(%d+):(%d+)$')
+      if lf then
+        apply_lines (
+          math.floor (tonumber (lf) or 0),
+          math.floor (tonumber (lh) or 0)
+        )
         return true
       end
       local fi, hi = item:match ('^hunk:(%d+):(%d+)$')

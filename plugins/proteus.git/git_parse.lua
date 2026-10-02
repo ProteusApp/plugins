@@ -105,6 +105,7 @@
 
 ---@class Git.DiffOptions
 ---@field buttons? boolean Adds a Stage Hunk or Unstage Hunk button to each hunk.
+---@field lines? boolean With `buttons`, each added or removed line can be picked, and a Stage Lines or Unstage Lines button stages the picked ones.
 ---@field staged? boolean The buttons unstage instead of stage.
 ---@field max_lines? integer How many diff lines to draw. 5,000 when nil.
 ---@field label? string A tag beside each file path, such as `'Staged'`.
@@ -1827,6 +1828,60 @@ function M.hunk_patch (file, hunk)
   return table.concat (out, '\n') .. '\n'
 end
 
+---A patch that stages, or with `reverse` unstages, only the picked lines of a hunk. The
+---lines left out stay as they are on the side the patch applies to: when staging, a removed
+---line becomes context and an added one is dropped, and when unstaging it is the other way
+---round. Returns nil when no line is picked, or for a hunk `hunk_patch` refuses.
+---@param file Git.FileDiff
+---@param hunk Git.Hunk
+---@param picked table<integer, boolean> Line positions in `hunk.lines`.
+---@param reverse boolean
+---@return string?
+function M.lines_patch (file, hunk, picked, reverse)
+  local keep_kind = reverse and 'add' or 'del'
+  local lines = {} ---@type Git.Line[]
+  local changes = 0
+  local kept_last = true
+  for i, l in ipairs (hunk.lines) do
+    if l.kind == 'meta' then
+      if kept_last then
+        lines[#lines + 1] = l
+      end
+    elseif l.kind == 'ctx' or picked[i] then
+      lines[#lines + 1] = l
+      kept_last = true
+      if l.kind ~= 'ctx' then
+        changes = changes + 1
+      end
+    elseif l.kind == keep_kind then
+      lines[#lines + 1] = {
+        kind = 'ctx',
+        text = l.text,
+        raw = ' ' .. l.raw:sub (2),
+        old = l.old,
+        new = l.new,
+      }
+      kept_last = true
+    else
+      kept_last = false
+    end
+  end
+  if changes == 0 then
+    return nil
+  end
+  ---@type Git.Hunk
+  local part = {
+    header = hunk.header,
+    old_start = hunk.old_start,
+    old_count = hunk.old_count,
+    new_start = hunk.new_start,
+    new_count = hunk.new_count,
+    lines = lines,
+    partial = hunk.partial,
+  }
+  return M.hunk_patch (file, part)
+end
+
 ---A diff for a file Git does not track yet: every line is added. `text` is nil for a file
 ---that is not text.
 ---@param path string
@@ -1953,18 +2008,32 @@ end
 ---@type table<Git.LineKind, string>
 local SIGN = { add = '+', del = '−', ctx = '', meta = '' }
 
+---One diff line. With `pick`, its line numbers are a label around a hidden checkbox that
+---carries `data-item="<pick>"`, so a click on them picks the line.
 ---@param l Git.Line
+---@param pick? string
 ---@return string
-local function line_html (l)
-  return '<div class="git-line git-l-'
-    .. l.kind
-    .. '"><span class="git-ln">'
+local function line_html (l, pick)
+  local gutter = '<span class="git-ln">'
     .. (l.old or '')
     .. '</span><span class="git-ln">'
     .. (l.new or '')
     .. '</span><span class="git-sign">'
     .. SIGN[l.kind]
-    .. '</span><span class="git-code">'
+    .. '</span>'
+  if pick then
+    gutter = '<label class="git-gutter" title="Pick this line">'
+      .. '<input type="checkbox" class="git-pick" data-item="'
+      .. pick
+      .. '">'
+      .. gutter
+      .. '</label>'
+  end
+  return '<div class="git-line git-l-'
+    .. l.kind
+    .. '">'
+    .. gutter
+    .. '<span class="git-code">'
     .. esc (l.text)
     .. '</span></div>'
 end
@@ -2005,10 +2074,24 @@ function M.diff_html (files, opts)
         cut = true
         break
       end
-      out[#out + 1] = '<div class="git-hunk-head"><span class="git-hunk-text">'
+      out[#out + 1] = '<div class="git-hunk"><div class="git-hunk-head"><span class="git-hunk-text">'
         .. esc (h.header)
         .. '</span>'
-      if opts.buttons and not f.combined and not f.binary and not h.partial then
+      local stageable = opts.buttons
+        and not f.combined
+        and not f.binary
+        and not h.partial
+      local pickable = stageable and opts.lines
+      if pickable then
+        out[#out + 1] = '<button class="git-hunk-btn git-lines-btn" data-item="lines:'
+          .. fi
+          .. ':'
+          .. hi
+          .. '">'
+          .. (opts.staged and 'Unstage Lines' or 'Stage Lines')
+          .. '</button>'
+      end
+      if stageable then
         out[#out + 1] = '<button class="git-hunk-btn" data-item="hunk:'
           .. fi
           .. ':'
@@ -2018,14 +2101,19 @@ function M.diff_html (files, opts)
           .. '</button>'
       end
       out[#out + 1] = '</div>'
-      for _, l in ipairs (h.lines) do
+      for li, l in ipairs (h.lines) do
         if shown >= max then
           cut = true
           break
         end
-        out[#out + 1] = line_html (l)
+        local pick = nil ---@type string?
+        if pickable and (l.kind == 'add' or l.kind == 'del') then
+          pick = 'line:' .. fi .. ':' .. hi .. ':' .. li
+        end
+        out[#out + 1] = line_html (l, pick)
         shown = shown + 1
       end
+      out[#out + 1] = '</div>'
     end
     out[#out + 1] = '</div>'
   end
