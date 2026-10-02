@@ -32,3 +32,12 @@ function write (path, text) end
 ---True when the tests run with --update.
 ---@type boolean
 update = false
+
+---Compiles shader code with a real compiler: glslangValidator for GLSL ES, naga for WGSL.
+---True when it compiles, false and the compiler's messages when it does not, and nil and why
+---when the compiler is not installed. With SHADER_TOOLS=required, a missing compiler fails.
+---@param lang 'glsl'|'wgsl'
+---@param stage 'fragment'|'vertex' WGSL checks the whole module.
+---@param source string
+---@return boolean? ok, string? messages
+function shader_check (lang, stage, source) end

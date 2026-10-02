@@ -2,7 +2,7 @@
   "id": "lang.toml",
   "name": "TOML",
   "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "depends": [
     "core.settings",
     "core.commands",
@@ -22,9 +22,10 @@
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.2.0",
+    "proteus": ">=0.3.1",
     "features": [
-      "permissions"
+      "permissions",
+      "tool-command"
     ]
   },
   "author": {

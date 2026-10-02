@@ -18,6 +18,8 @@ Formatting comes from Prettier, which ships with Proteus.
 
 `lang.typescript` and what it needs: Node.js, with `typescript-language-server` and TypeScript installed. The marketplace installs `lang.typescript` along with this plugin.
 
+It asks for `net`, to reach registry.npmjs.org, and `files`, to read the `package.json` it completes in.
+
 ## Settings
 
 | Setting | Default | What it does |

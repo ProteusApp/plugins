@@ -305,7 +305,9 @@ function M.attach (ctx)
       doc.result = result
       ctx.history = http.add_history (ctx.history, {
         method = built.method,
-        url = built.url,
+        -- The address as typed, with {{variables}} left in, so no token from an environment
+        -- is kept in the history.
+        url = http.build (snapshot).url,
         status = result.status or 0,
         time = app.util.now (),
         request = snapshot,

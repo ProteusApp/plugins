@@ -147,7 +147,7 @@ return {
   description = 'Send HTTP requests, save them, and read the answers.',
   version = '1.2.1',
   requires = {
-    proteus = '>=0.3.0',
+    proteus = '>=0.3.1',
     features = { 'permissions', 'grants', 'grants-read', 'http-bodies' },
   },
   -- It sends the requests the user writes, to any address. Files to send and collections to

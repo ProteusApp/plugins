@@ -14,13 +14,17 @@
 //   test(name, fn)             declares a test
 //   eq(actual, expected, msg)  deep equality, with a readable difference on failure
 //   ok(value, msg)             fails unless value is truthy
-//   read(path)                 reads a file, from the top of the registry
+//   read(path)                 reads a file of a plugin or profile, from the top of the
+//                              registry, such as read('plugins/my.plugin/init.lua')
 //   update, write(path, text)  true with --update, and then writes a file
 // `require('name')` loads name.lua from the plugin's own folder.
 
 import { declaredOf, engine, reader } from './lua.mjs';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -84,6 +88,24 @@ function __run_tests ()
 end
 `;
 
+/**
+ * Reads a file for a test. A submitted plugin's tests run here, and the log is public, so a
+ * test reads only the registry's plugins and profiles: the path, links followed, stays in
+ * plugins/ or profiles/.
+ */
+function readForTest(path) {
+  const shown = String(path);
+  let target;
+  try {
+    target = realpathSync(resolve(ROOT, shown));
+  } catch {
+    throw new Error(`read: ${shown} does not exist`);
+  }
+  const inside = ['plugins', 'profiles'].some((root) => target.startsWith(realpathSync(join(ROOT, root)) + sep));
+  if (!inside || statSync(target).isDirectory()) throw new Error(`read: a test reads only files in plugins/ and profiles/, not ${shown}`);
+  return readFileSync(target, 'utf8');
+}
+
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const list = (v) => (Array.isArray(v) ? v : []);
 
@@ -100,12 +122,66 @@ function compare(declared, meta, kind) {
       problems.push(`${key} is ${JSON.stringify(list(declared[key]))} in the Lua file but ${JSON.stringify(list(meta[key]))} in proteus.json.`);
     }
   }
+  // A profile that starts from a base names the feature, so a Proteus without bases does not
+  // install it and run only half its plugins.
+  if (kind === 'profile' && declared.extends !== undefined) {
+    if (typeof declared.extends !== 'string') {
+      problems.push("extends must name a base that ships with Proteus, such as 'shell'.");
+    } else if (!list(declared.requires?.features).includes('profile-extends')) {
+      problems.push("A profile with extends needs requires = { features = { 'profile-extends' } }.");
+    }
+  }
   const req = (r) => ({ proteus: r?.proteus ?? null, features: list(r?.features) });
   if (!same(req(declared.requires), req(meta.requires))) {
     problems.push(`requires is ${JSON.stringify(req(declared.requires))} in the Lua file but ${JSON.stringify(req(meta.requires))} in proteus.json.`);
   }
   return problems;
 }
+
+// Tests can also check shader code with real compilers, through
+//   shader_check(lang, stage, source)
+// lang is 'glsl' or 'wgsl', and stage is 'fragment' or 'vertex' (WGSL checks the whole module).
+// It returns true when the code compiles, false and the compiler's messages when it does not,
+// and nil and why when the compiler is not installed: glslangValidator for GLSL ES, naga for
+// WGSL. With SHADER_TOOLS=required in the environment, as in the check workflow, a missing
+// compiler fails the test instead.
+const SHADER_TOOLS = {
+  glsl: { tool: 'glslangValidator', ext: { fragment: 'frag', vertex: 'vert' }, args: (file) => [file] },
+  wgsl: { tool: 'naga', ext: { fragment: 'wgsl', vertex: 'wgsl' }, args: (file) => [file] },
+};
+
+/** 'ok', 'missing:<why>' or 'error:<messages>', which the Lua side turns into its results. */
+function shaderCheck(lang, stage, source) {
+  const spec = SHADER_TOOLS[String(lang)];
+  const ext = spec?.ext[String(stage)];
+  if (!spec || !ext) throw new Error(`shader_check: no compiler for ${lang} ${stage}`);
+  const dir = mkdtempSync(join(tmpdir(), 'shader-check-'));
+  try {
+    const file = join(dir, `shader.${ext}`);
+    writeFileSync(file, String(source));
+    const run = spawnSync(spec.tool, spec.args(file), { encoding: 'utf8', timeout: 30000 });
+    if (run.error?.code === 'ENOENT') {
+      const why = `${spec.tool} is not installed`;
+      if (process.env.SHADER_TOOLS === 'required') throw new Error(`shader_check: ${why}`);
+      return `missing:${why}`;
+    }
+    if (run.error) throw run.error;
+    if (run.status === 0) return 'ok';
+    return `error:${`${run.stdout}${run.stderr}`.split(file).join(`shader.${ext}`).trim()}`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const SHADER_PRELUDE = `
+function shader_check (lang, stage, source)
+  local result = __shader_check (lang, stage, source)
+  if result == 'ok' then return true end
+  local kind, rest = result:match ('^(%a+):(.*)$')
+  if kind == 'missing' then return nil, rest end
+  return false, rest
+end
+`;
 
 let failed = 0;
 let passed = 0;
@@ -138,7 +214,7 @@ for (const [root, kind, main] of [
     for (const name of readdirSync(testDir).filter((n) => n.endsWith('.test.lua')).sort()) {
       const file = join(testDir, name);
       const t = await engine();
-      t.global.set('read', (path) => readFileSync(join(ROOT, path), 'utf8'));
+      t.global.set('read', readForTest);
       t.global.set('update', update);
       t.global.set('write', (path, body) => {
         if (!update) throw new Error('write needs --update');
@@ -147,12 +223,14 @@ for (const [root, kind, main] of [
         writeFileSync(target, body);
       });
       t.global.set('__read_own', reader(dir));
+      t.global.set('__shader_check', shaderCheck);
       // Tests run with the whole standard library, and require from the plugin's own folder.
       t.doStringSync(`
         local own = __sandbox (__read_own).require
         function require (name) return own (name) end
       `);
       t.doStringSync(PRELUDE);
+      t.doStringSync(SHADER_PRELUDE);
       const shown = relative(ROOT, file);
       try {
         await t.doString(readFileSync(file, 'utf8'));
