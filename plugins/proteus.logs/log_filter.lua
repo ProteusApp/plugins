@@ -6,6 +6,10 @@
 
 local lt = require ('log_time') --[[@as Logs.TimeModule]]
 local re = require ('log_regex') --[[@as { compile: fun(pattern: string, opts?: { fold?: boolean }): LogRegex.Program?, string? }]]
+local tx = require ('log_text') --[[@as Logs.TextModule]]
+
+local escape, trim, sentence, group, clip, split_lines =
+  tx.escape, tx.trim, tx.sentence, tx.group, tx.clip, tx.split_lines
 
 -- The year a syslog or glog line is from, since it writes none.
 local YEAR = math.floor (tonumber (os.date ('%Y')) or 1970)
@@ -198,90 +202,6 @@ local CONTROL = '[^%C\t]'
 local MAX_ROW = 4000
 
 local MAX_JSON_DEPTH = 64
-
----@type table<string, string>
-local HTML = {
-  ['&'] = '&amp;',
-  ['<'] = '&lt;',
-  ['>'] = '&gt;',
-  ['"'] = '&quot;',
-  ["'"] = '&#39;',
-}
-
----------------------------------------------------------------------------------------------
--- Small helpers
----------------------------------------------------------------------------------------------
-
----@param text string
----@return string
-local function escape (text)
-  return (text:gsub ('[&<>"\']', HTML))
-end
-
----@param text string
----@return string
-local function trim (text)
-  return (text:gsub ('^%s+', ''):gsub ('%s+$', ''))
-end
-
----A message from elsewhere as a sentence: a capital first letter and a stop at the end.
----@param text string
----@return string
-local function sentence (text)
-  local out = trim (text):gsub ('^%l', string.upper)
-  if out ~= '' and not out:find ('[%.!?]$') then
-    out = out .. '.'
-  end
-  return out
-end
-
----A whole number with commas between each group of three digits.
----@param n number
----@return string
-local function group (n)
-  local digits = tostring (math.floor (math.abs (n)))
-  local grouped = digits:reverse ():gsub ('(%d%d%d)', '%1,'):reverse () ---@type string
-  if grouped:sub (1, 1) == ',' then
-    grouped = grouped:sub (2)
-  end
-  return (n < 0 and '-' or '') .. grouped
-end
-
----Cuts text to at most `max` bytes without splitting a UTF-8 character.
----@param text string
----@param max integer
----@return string
-local function clip (text, max)
-  if #text <= max then
-    return text
-  end
-  local cut = max
-  local byte = text:byte (cut + 1) or 0
-  while cut > 0 and byte >= 128 and byte < 192 do
-    cut = cut - 1
-    byte = text:byte (cut + 1) or 0
-  end
-  return text:sub (1, cut)
-end
-
----Splits text into lines. A newline at the very end does not make an empty last line.
----@param text string
----@return string[]
-local function split_lines (text)
-  ---@type string[]
-  local out = {}
-  if text == '' then
-    return out
-  end
-  local norm = text:gsub ('\r\n', '\n'):gsub ('\r', '\n')
-  for piece in (norm .. '\n'):gmatch ('([^\n]*)\n') do
-    out[#out + 1] = piece
-  end
-  if norm:sub (-1) == '\n' then
-    out[#out] = nil
-  end
-  return out
-end
 
 ---@return table<Logs.Level, integer>
 local function zero_levels ()

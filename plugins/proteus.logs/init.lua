@@ -488,7 +488,7 @@ local CSS = [[
 return {
   name = 'Logs',
   description = 'Follow a log file or a program, filter the lines, and spot errors.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the programs the user names, and follows a log file anywhere on disk with one. Paste
   -- Log reads the clipboard.
