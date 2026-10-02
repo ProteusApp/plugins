@@ -50,6 +50,7 @@
     "sheet_fn_math.lua",
     "sheet_fn_more.lua",
     "sheet_fn_stats.lua",
+    "sheet_fn_text.lua",
     "sheet_format.lua",
     "sheet_formula.lua",
     "sheet_grid.lua",
