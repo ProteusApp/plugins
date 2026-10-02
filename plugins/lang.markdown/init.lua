@@ -52,7 +52,7 @@ end
 return {
   name = 'Markdown',
   description = 'Markdown with Marksman: completion for links and headings, go to definition and problems, and a live preview beside the code.',
-  version = '1.0.1',
+  version = '1.0.2',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- Marksman is a program it runs and downloads, on files anywhere on disk. `files` also
   -- lets it use the `editor` service, which hands over the text the preview shows. `net`

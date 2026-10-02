@@ -5,23 +5,15 @@
 return {
   name = 'Code Editor',
   description = 'Open a project folder: edit, search, run a terminal, and commit to Git.',
-  version = '1.0.1',
-  requires = { proteus = '>=0.3.0' },
+  version = '1.1.1',
+  requires = { proteus = '>=0.3.1', features = { 'profile-extends' } },
+  -- The themes, keys, menus, status bar, side panels, palette, messages, Settings and
+  -- Profiles come from the app's shell, profiles/base/shell.lua.
+  extends = 'shell',
   plugins = {
-    'proteus.theme.midnight',
-    'proteus.theme.daylight',
-    'proteus.theme.retro',
-    'proteus.core.keys',
-    'proteus.ui.menus',
     'proteus.ui.menubar',
     'proteus.ui.toolbar',
-    'proteus.ui.statusbar',
-    'proteus.ui.views',
     'proteus.ui.tabs',
-    'proteus.ui.palette',
-    'proteus.ui.notify',
-    'proteus.ui.settings',
-    'proteus.core.profiles',
     -- The marketplace: plugins and profiles, built-in, local, this folder's and community.
     'proteus.marketplace',
     'proteus.core.files',
@@ -38,6 +30,14 @@ return {
     -- Prettier runs inside the app, so CSS, JSON, Markdown, HTML and JS format anywhere.
     'proteus.tools.registry',
     'proteus.lang.prettier',
+    -- The Problems panel, for what any language plugin finds.
+    'proteus.tools.diagnostics',
+    -- Lua, for the folder's own Proteus plugins and any other Lua code: the language server,
+    -- StyLua and selene. Each one that is not installed downloads the first time a Lua file
+    -- needs it, and each has a setting that switches it off.
+    'proteus.lang.luals',
+    'proteus.lang.stylua',
+    'proteus.lang.selene',
     'proteus.discord.rpc',
   },
   -- Plugins switched on in the plugin manager or installed from the store stay on.

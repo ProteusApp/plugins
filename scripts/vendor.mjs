@@ -5,13 +5,14 @@
 //   node scripts/vendor.mjs verify [plugins/<id>]  fetches each source and compares the files
 //
 // A source is `npm:<package>@<version>/<path in the package>`, such as
-// `npm:@webaudiomodules/sdk@0.0.12/dist/index.js`, or an https address of the file itself.
-// verify runs every plugin with a vendor.json when it is given none.
+// `npm:@webaudiomodules/sdk@0.0.12/dist/index.js`, from a package in VENDOR_PACKAGES in
+// registry.mjs. verify runs every plugin with a vendor.json when it is given none. The check
+// workflow runs it, so a vendored file that differs from its published source never merges.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sha256 } from './registry.mjs';
+import { VENDOR_PACKAGES, npmSource, sha256 } from './registry.mjs';
 
 const [command, ...dirs] = process.argv.slice(2);
 if (!['hash', 'verify'].includes(command)) {
@@ -25,12 +26,6 @@ const targets = dirs.length
   : readdirSync('plugins')
       .map((id) => join('plugins', id))
       .filter(withVendor);
-
-/** The npm package, version and path a source names, or null for an https source. */
-function npmSource(source) {
-  const m = /^npm:(@?[^@/]+(?:\/[^@/]+)?)@([^/]+)\/(.+)$/.exec(source);
-  return m ? { name: m[1], version: m[2], path: m[3] } : null;
-}
 
 const packs = new Map();
 /** Unpacks an npm package once, and returns its folder. */
@@ -47,10 +42,9 @@ function unpacked(name, version) {
 /** The bytes a source names. */
 async function sourceBytes(source) {
   const npm = npmSource(source);
-  if (npm) return readFileSync(join(unpacked(npm.name, npm.version), npm.path));
-  const res = await fetch(source);
-  if (!res.ok) throw new Error(`${source}: ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  if (!npm) throw new Error(`${source} is not npm:<package>@<version>/<path>`);
+  if (!VENDOR_PACKAGES.includes(npm.name)) throw new Error(`${npm.name} is not a package the registry takes vendored files from`);
+  return readFileSync(join(unpacked(npm.name, npm.version), npm.path));
 }
 
 let failed = 0;

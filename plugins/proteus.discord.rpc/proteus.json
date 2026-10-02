@@ -2,9 +2,10 @@
   "id": "proteus.discord.rpc",
   "name": "Discord Rich Presence",
   "description": "Shows what you are doing in Proteus on your Discord profile.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [],
   "optional": [
+    "proteus.core.settings",
     "proteus.core.commands",
     "proteus.ui.notify",
     "proteus.editor.core"
@@ -27,6 +28,7 @@
   "issue": null,
   "files": [
     "README.md",
+    "discord_config.lua",
     "discord_presence.lua",
     "drpc.lua",
     "handbook/discord.md",

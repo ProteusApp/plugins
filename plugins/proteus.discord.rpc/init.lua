@@ -13,19 +13,17 @@
 --
 -- List 'proteus.discord.rpc' in `optional` so it starts first. The service needs the `net`
 -- permission, since what a plugin sets shows on the user's Discord profile. What a plugin set
--- goes away when that plugin stops. The settings live in data/proteus.discord.rpc/discord.json,
--- shared by every profile, and the commands in the Discord category change them.
+-- goes away when that plugin stops. Its settings, under `discord.` in Settings, follow the
+-- profile, and the commands in the Discord category change them. It talks to Discord on
+-- Windows only.
 --
 -- It runs restricted. `process` starts the PowerShell script that talks to Discord, and
--- `files` lets it follow the editor, which shows the file being edited and opens the
--- settings file.
+-- `files` lets it follow the editor, which shows the file being edited.
 
+local config_m = require ('discord_config') --[[@as Discord.ConfigModule]]
 local drpc = require ('drpc') --[[@as Discord.RpcModule]]
 local presence = require ('discord_presence') --[[@as Discord.PresenceModule]]
 
-local CONFIG = 'data/proteus.discord.rpc/discord.json'
--- The Proteus application on Discord. Its name is what shows after "Playing".
-local CLIENT_ID = '562297553253564438'
 -- Discord takes about five updates every 20 seconds, so updates wait at least this long.
 local GAP_SECONDS = 4
 
@@ -71,34 +69,12 @@ local LANGUAGES = {
 local PRIVATE =
   { file = true, plugin = true, repo = true, branch = true, project = true }
 
----The settings in data/proteus.discord.rpc/discord.json.
----@class Discord.Config
----@field enabled boolean
----@field client_id string
----@field show_names boolean False keeps file, plugin and repository names off Discord.
----@field idle_minutes number Minutes without activity before the presence says Idle. 0 never does.
----@field images table<string, string> An art asset name or image URL by app id, such as `editor`, or `default` for every app.
-
----The settings file as saved, or an empty table.
+---The older settings file as saved, or an empty table.
 ---@param app Proteus.App
 ---@return table<string, any>
-local function read_raw (app)
-  local raw = app.fs.read_json (CONFIG, {})
+local function read_old (app)
+  local raw = app.fs.read_json (config_m.OLD_FILE, {})
   return type (raw) == 'table' and raw or {}
-end
-
----@param app Proteus.App
----@return Discord.Config
-local function read_config (app)
-  local raw = read_raw (app)
-  local id = raw.client_id
-  return {
-    enabled = raw.enabled == true,
-    client_id = type (id) == 'string' and id ~= '' and id or CLIENT_ID,
-    show_names = raw.show_names ~= false,
-    idle_minutes = tonumber (raw.idle_minutes) or 10,
-    images = type (raw.images) == 'table' and raw.images or {},
-  }
 end
 
 ---@param path string
@@ -111,10 +87,11 @@ end
 return {
   name = 'Discord Rich Presence',
   description = 'Shows what you are doing in Proteus on your Discord profile.',
-  version = '1.0.0',
+  version = '1.1.0',
   permissions = { 'files', 'process' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   optional = {
+    'proteus.core.settings',
     'proteus.core.commands',
     'proteus.ui.notify',
     'proteus.editor.core',
@@ -122,7 +99,32 @@ return {
   activate = function (app)
     local profile = app.kernel.profile ()
     local editor = app.try_use ('editor')
-    local config = read_config (app)
+    local settings = app.try_use ('settings')
+    ---@param key string
+    ---@return any
+    local function get (key)
+      if settings then
+        return settings.get (key)
+      end
+      return config_m.default (key)
+    end
+    if settings then
+      for _, s in ipairs (config_m.SETTINGS) do
+        settings.define (s.key, s.spec)
+      end
+      -- The older settings file, which every profile shared, moves into this profile's
+      -- settings once.
+      if app.fs.exists (config_m.OLD_FILE) then
+        local moved = config_m.moved (read_old (app), settings.is_set)
+        for key, value in pairs (moved) do
+          settings.set (key, value)
+        end
+        app.fs.remove (config_m.OLD_FILE)
+      end
+    end
+    -- The PowerShell script that talks to Discord runs on Windows only.
+    local supported = app.os == 'windows'
+    local config = config_m.read (get)
     local started = os.time ()
     local rpc = nil ---@type Discord.Client?
     local rpc_id = nil ---@type string?
@@ -222,7 +224,7 @@ return {
       if rpc and (not config.enabled or rpc_id ~= config.client_id) then
         disconnect ()
       end
-      if config.enabled and not rpc then
+      if config.enabled and supported and not rpc then
         rpc = drpc.connect (app, config.client_id)
         rpc_id = config.client_id
         stop_ticks = app.timer.every (1000, tick)
@@ -274,11 +276,8 @@ return {
     }) do
       app.on (event, touch)
     end
-    app.on ('fs:changed', function (path, remote)
-      if path == CONFIG then
-        config = read_config (app)
-        apply ()
-      elseif not remote then
+    app.on ('fs:changed', function (_, remote)
+      if not remote then
         touch ()
       end
     end)
@@ -325,19 +324,20 @@ return {
 
     local commands = app.try_use ('commands')
     if commands then
-      ---@param changes table<string, any>
+      ---@param key string
+      ---@param value any
       ---@param message string
-      local function save (changes, message)
-        local raw = read_raw (app)
-        for key, value in pairs (changes) do
-          raw[key] = value
+      local function change (key, value, message)
+        if settings then
+          settings.set (key, value)
         end
-        app.fs.write_json (CONFIG, raw)
-        config = read_config (app)
-        apply ()
         local notify = app.try_use ('notify')
         if notify then
-          notify.info (message)
+          if supported then
+            notify.info (message)
+          else
+            notify.warn ('Discord Rich Presence works on Windows only.')
+          end
         end
       end
 
@@ -348,8 +348,9 @@ return {
         icon = 'radio',
         run = function ()
           local on = not config.enabled
-          save (
-            { enabled = on },
+          change (
+            'discord.enabled',
+            on,
             on and 'Discord now shows what you are doing.'
               or 'Discord no longer shows what you are doing.'
           )
@@ -362,8 +363,9 @@ return {
         icon = 'eye-off',
         run = function ()
           local on = not config.show_names
-          save (
-            { show_names = on },
+          change (
+            'discord.show_names',
+            on,
             on and 'Discord now shows file, plugin and repository names.'
               or 'Discord no longer shows file, plugin or repository names.'
           )
@@ -375,20 +377,10 @@ return {
         title = 'Open Rich Presence Settings',
         icon = 'settings',
         when = function ()
-          return editor ~= nil
+          return settings ~= nil
         end,
         run = function ()
-          if not app.fs.exists (CONFIG) then
-            app.fs.write_json (CONFIG, {
-              enabled = config.enabled,
-              client_id = config.client_id,
-              show_names = config.show_names,
-              idle_minutes = config.idle_minutes,
-            })
-          end
-          if editor then
-            editor.open_file (CONFIG)
-          end
+          commands.run ('settings.open')
         end,
       })
     end
@@ -397,5 +389,14 @@ return {
     detect ()
     follow_editor ()
     apply ()
+    -- A change in Settings applies at once.
+    if settings then
+      for _, s in ipairs (config_m.SETTINGS) do
+        app.dispose (settings.watch (s.key, function ()
+          config = config_m.read (get)
+          apply ()
+        end))
+      end
+    end
   end,
 }

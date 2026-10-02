@@ -2,6 +2,9 @@
 -- into GLSL and WGSL both. A code shader builds in its own language, with everything a short
 -- shader leaves out filled in. Each build also writes a page that runs the shader in any
 -- browser, the list of its uniforms, and a README.
+--
+-- A build goes into shaders/build in the workspace, the one folder it writes. It asks for no
+-- permission, so it reaches no other file on disk.
 
 local BUILD_FOLDER = 'shaders/build'
 
@@ -11,8 +14,6 @@ return {
   description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
   version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
-  -- Export to Folder writes the build anywhere on disk the user picks.
-  permissions = { 'files' },
   folders = { 'shaders' },
   depends = { 'shader.core', 'shader.docs', 'core.commands' },
   optional = { 'ui.notify', 'ui.palette' },
@@ -199,70 +200,6 @@ return {
             docs.open (folder .. '/' .. main)
           end,
         })
-      end,
-    })
-
-    commands.register ({
-      id = 'shader.export',
-      category = 'Shader',
-      title = 'Export to Folder...',
-      menu = 'Build',
-      icon = 'folder-output',
-      when = function ()
-        return docs.active () ~= nil and app.platform == 'tauri'
-      end,
-      run = function ()
-        local files, stem = files_of_front ()
-        if not files then
-          warn (stem or 'Nothing to build.')
-          return
-        end
-        app.fs.pick_open ({
-          title = 'Export the shader into a folder',
-          directory = true,
-        }, function (paths)
-          local dir = paths and paths[1]
-          if not dir then
-            return
-          end
-          local target = dir:gsub ('\\', '/'):gsub ('/$', '') .. '/' .. stem
-          app.fs.make_dir (target, function (_, err)
-            if err then
-              warn ('Could not make ' .. target .. ': ' .. tostring (err))
-              return
-            end
-            local names = sorted_names (files)
-            local left = #names
-            local failed = nil ---@type string?
-            for _, name in ipairs (names) do
-              app.fs.write_file (
-                target .. '/' .. name,
-                files[name],
-                function (_, write_err)
-                  if write_err then
-                    failed = failed or write_err
-                  end
-                  left = left - 1
-                  if left == 0 then
-                    if failed then
-                      warn ('Some files did not write: ' .. failed)
-                    else
-                      say (
-                        'Exported ' .. #names .. ' files to ' .. target .. '.',
-                        {
-                          label = 'Show Folder',
-                          run = function ()
-                            app.system.open_path (target)
-                          end,
-                        }
-                      )
-                    end
-                  end
-                end
-              )
-            end
-          end)
-        end)
       end,
     })
 
