@@ -45,6 +45,9 @@
     "lib/registry.lua",
     "lib/release.lua",
     "lib/rustfmt.lua",
-    "lib/server.lua"
+    "lib/server.lua",
+    "tests/cargo_context.test.lua",
+    "tests/crates.test.lua",
+    "tests/registry.test.lua"
   ]
 }
