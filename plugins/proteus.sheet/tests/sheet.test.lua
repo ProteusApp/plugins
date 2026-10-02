@@ -1303,7 +1303,7 @@ test ('to_data and from_data round trip', function ()
   s:grow (120, 30)
   local data = m.to_data (s)
   eq (data, {
-    version = 2,
+    version = 3,
     active = 1,
     sheets = {
       {
@@ -1374,7 +1374,7 @@ test ('encode writes stable, readable JSON', function ()
     m.encode (s),
     table.concat ({
       '{',
-      '  "version": 2,',
+      '  "version": 3,',
       '  "active": 1,',
       '  "sheets": [',
       '    {',
@@ -1400,7 +1400,7 @@ test ('encode writes stable, readable JSON', function ()
   )
   eq (
     m.encode (m.new ()),
-    '{\n  "version": 2,\n  "active": 1,\n  "sheets": [\n    {\n      "name": "Sheet1",\n      "rows": 100,\n      "cols": 26,\n      "cells": {}\n    }\n  ]\n}\n'
+    '{\n  "version": 3,\n  "active": 1,\n  "sheets": [\n    {\n      "name": "Sheet1",\n      "rows": 100,\n      "cols": 26,\n      "cells": {}\n    }\n  ]\n}\n'
   )
   s:put (4, 1, { text = 'bell\7', bold = false })
   ok (m.encode (s):find ('"bell\\u0007"', 1, true))

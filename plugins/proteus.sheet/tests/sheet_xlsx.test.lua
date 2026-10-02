@@ -130,7 +130,7 @@ end)
 
 test ('reading finds the sheets in order and the active one', function ()
   local book, warnings = read_ok (fixture ())
-  eq (book.version, 2)
+  eq (book.version, 3)
   eq (book.active, 2)
   eq (#book.sheets, 2)
   eq (book.sheets[1].name, 'Budget')
@@ -505,7 +505,7 @@ end)
 ---@return Sheet.BookData
 local function sample_book ()
   return {
-    version = 2,
+    version = 3,
     active = 2,
     sheets = {
       {
@@ -733,7 +733,7 @@ end)
 
 test ('writing fixes sheet names Excel refuses and warns', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Plan: 2026/27 [draft]', cells = { A1 = '1' } },
       { name = 'A very long sheet name that goes past the limit' },
@@ -758,7 +758,7 @@ end)
 
 test ('writing points formulas at a sheet whose name had to change', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Q1: sales', cells = { A1 = '5' } },
       { name = 'Sums', cells = { A1 = "='Q1: sales'!A1*2", A2 = '=Sums!A1' } },
@@ -773,7 +773,7 @@ end)
 
 test ('writing gives a date formula a date format', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       {
         name = 'S',
@@ -790,7 +790,7 @@ end)
 
 test ('writing leaves out merges that overlap', function ()
   local files, warnings = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'S', merges = { 'A1:C2', 'B2:D4', 'E1:E9', '$F$1:G1' } },
     },
@@ -847,7 +847,7 @@ end)
 
 test ('writing escapes control characters in text', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = { { name = 'S', cells = { A1 = 'a\rb\1c _x0041_ d' } } },
   })
   ok (

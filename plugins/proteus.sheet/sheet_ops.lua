@@ -44,7 +44,7 @@ local xlsx = require ('sheet_xlsx') --[[@as Sheet.XlsxModule]]
 
 ---What conditional formatting adds to one drawn cell.
 ---@class Sheet.RuleLook
----@field style? Sheet.Style The fields the matching rules set, later rules winning.
+---@field style? Sheet.Style The fields the matching rules set, the rule higher in the list winning.
 ---@field fill? string A colour scale's colour.
 ---@field bar? number A data bar's width, from 0 to 1.
 ---@field bar_color? string
@@ -1258,8 +1258,10 @@ local function formula_holds (sheet, rule, prep, row, col)
 end
 
 ---What the sheet's conditional formatting rules add to one cell: a style, a colour scale's
----fill, and a data bar's width. Nil when no rule touches the cell. The work a rule needs
----across its range, such as the top 10 or the average, is done once per recalculation.
+---fill, and a data bar's width. Nil when no rule touches the cell. The rules run in order of
+---priority, first in the list first: the first to set a field wins, and a rule set to stop
+---ends the run where it holds. The work a rule needs across its range, such as the top 10 or
+---the average, is done once per recalculation.
 ---@param sheet Sheet.Sheet
 ---@param row integer
 ---@param col integer
@@ -1270,7 +1272,9 @@ function M.rule_look (sheet, row, col)
   end
   local cache = cache_of (sheet)
   local out = nil ---@type Sheet.RuleLook?
-  local style = nil ---@type Sheet.Style?
+  -- The styles of the rules that hold, first rule first. The first wins on a field, as in
+  -- Excel, so they are laid down from the last.
+  local styles = {} ---@type Sheet.Style[]
   for i, rule in ipairs (sheet.rules) do
     local prep = cache.preps[i]
     if not prep then
@@ -1338,37 +1342,50 @@ function M.rule_look (sheet, row, col)
           fill = blend (low_color, high_color, (v - lo) / (hi - lo))
         end
         out = out or {}
-        out.fill = fill
+        out.fill = out.fill or fill
+        hit = true
       elseif kind == 'bar' and type (v) == 'number' and prep.min then
         local lo = math.min (0, prep.min --[[@as number]])
         local hi = math.max (0, prep.max --[[@as number]])
         out = out or {}
-        out.bar = hi == lo and 0
-          or math.max (0, math.min (1, (v - lo) / (hi - lo)))
-        out.bar_color = rule.color or '#638ec6'
+        if not out.bar then
+          out.bar = hi == lo and 0
+            or math.max (0, math.min (1, (v - lo) / (hi - lo)))
+          out.bar_color = rule.color or '#638ec6'
+        end
+        hit = true
       end
       if hit and rule.style then
-        style = model.layer (style, model.intern (rule.style))
+        styles[#styles + 1] = model.intern (rule.style)
         out = out or {}
+      end
+      -- Stop if true: the rules after this one do not apply where it holds.
+      if hit and rule.stop then
+        break
       end
     end
   end
   if out then
+    local style = nil ---@type Sheet.Style?
+    for k = #styles, 1, -1 do
+      style = model.layer (style, styles[k])
+    end
     out.style = style and model.clean (style) or nil
   end
   return out
 end
 
----Adds a conditional formatting rule at the end, where it wins over the others, as one undo
----step.
+---Adds a conditional formatting rule at the top of the list, where it wins over the others,
+---as one undo step.
 ---@param sheet Sheet.Sheet
 ---@param rule Sheet.Rule
 function M.add_rule (sheet, rule)
   sheet:begin ({ label = 'Add rule' })
-  sheet:set_field (
-    'rules',
-    with_item (sheet.rules, #sheet.rules + 1, shallow (rule)) --[[@as Sheet.Rule[] ]]
-  )
+  local list = { shallow (rule) } ---@type Sheet.Rule[]
+  for _, other in ipairs (sheet.rules) do
+    list[#list + 1] = other
+  end
+  sheet:set_field ('rules', list)
   sheet:finish ()
 end
 

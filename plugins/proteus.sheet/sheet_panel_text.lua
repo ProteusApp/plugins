@@ -375,10 +375,10 @@ local function quoted (text)
   return '"' .. (text or '') .. '"'
 end
 
----A rule as one short line, such as `Greater than 100` or `Text contains "late"`.
+---A rule's condition as one short line.
 ---@param rule Sheet.Rule
 ---@return string
-function M.describe_rule (rule)
+local function describe (rule)
   local id = M.condition_of (rule)
   local c = CONDITION[id]
   if not c then
@@ -402,6 +402,18 @@ function M.describe_rule (rule)
     return 'Formula ' .. (rule.formula or '')
   end
   return c.label
+end
+
+---A rule as one short line, such as `Greater than 100` or `Text contains "late"`, with
+---`, then stop` for a rule that keeps the rules below it from applying.
+---@param rule Sheet.Rule
+---@return string
+function M.describe_rule (rule)
+  local line = describe (rule)
+  if rule.stop then
+    return line .. ', then stop'
+  end
+  return line
 end
 
 local VALIDATION_OPS = {

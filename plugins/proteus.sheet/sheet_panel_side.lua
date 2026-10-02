@@ -31,6 +31,7 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@field mid_color? string
 ---@field max_color string
 ---@field bar_color string
+---@field stop boolean Stop if true.
 
 ---A validation rule being edited.
 ---@class Sheet.ValidationDraft
@@ -1005,6 +1006,7 @@ function M.install (env)
         mid_color = rule.mid_color,
         max_color = rule.max_color or text.SCALE_MAX,
         bar_color = rule.color or text.BAR_COLOR,
+        stop = rule.stop == true,
       }
     end
     return {
@@ -1017,6 +1019,7 @@ function M.install (env)
       mid_color = text.SCALE_MID,
       max_color = text.SCALE_MAX,
       bar_color = text.BAR_COLOR,
+      stop = false,
     }
   end
 
@@ -1042,6 +1045,7 @@ function M.install (env)
       end
       rule.style = style --[[@as Sheet.Style]]
     end
+    rule.stop = draft.stop or nil
     return rule
   end
 
@@ -1096,7 +1100,7 @@ function M.install (env)
             class = 'sheet-panel-tools',
             icon_button (
               'arrow-up',
-              'Move up, so later rules win over it',
+              'Move up, so it wins over the rules below it',
               function ()
                 ctl.change ('Move rule', function (_, s)
                   local a, b = s.rules[index - 1], s.rules[index]
@@ -1108,7 +1112,7 @@ function M.install (env)
             ),
             icon_button (
               'arrow-down',
-              'Move down, so it wins over earlier rules',
+              'Move down, so the rules above it win over it',
               function ()
                 ctl.change ('Move rule', function (_, s)
                   local a, b = s.rules[index], s.rules[index + 1]
@@ -1155,7 +1159,7 @@ function M.install (env)
       }),
       ui.div ({
         class = 'sheet-panel-hint',
-        'Rules apply in order, and a later rule wins where two set the same thing.',
+        'A rule higher in the list wins where two set the same thing, and a rule set to stop keeps the rules below it from applying.',
       })
     )
   end
@@ -1368,12 +1372,20 @@ function M.install (env)
       return good
     end
 
+    local stop = check (
+      'Stop if true: the rules below do not apply where this one holds',
+      draft.stop,
+      function (on)
+        draft.stop = on
+      end
+    )
     body:append (
       field ('Apply to range', range),
       field ('Format cells if', cond, values, values_hint),
       style_part,
       scale_part,
       bar_part,
+      stop,
       ui.div ({
         class = 'sheet-panel-actions',
         draft.index and ui.button ({

@@ -786,7 +786,7 @@ end)
 
 test ('encode writes one cell per line, in reading order', function ()
   local text_1 = B.encode (full_book ())
-  ok (string.find (text_1, '"version": 2', 1, true))
+  ok (string.find (text_1, '"version": 3', 1, true))
   ok (
     string.find (
       text_1,

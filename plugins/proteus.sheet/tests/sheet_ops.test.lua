@@ -542,18 +542,58 @@ test ('rules add styles to the cells they match', function ()
   eq (ops.rule_look (s, 5, 1), { style = { italic = true } })
   eq (ops.rule_look (s, 1, 2), { style = { fill = '#ffcccc' } })
   eq (ops.rule_look (s, 2, 2), { style = { fill = '#ccffcc' } })
-  eq (ops.rules_at (s, 2, 1), { 1, 2, 3, 4 })
-  -- A later rule wins on the same field.
+  -- A new rule goes on top of the list.
+  eq (ops.rules_at (s, 2, 1), { 3, 4, 5, 6 })
+  eq (s.rules[1].type, 'unique')
+  -- The rule higher in the list wins on the same field, as in Excel.
   ops.add_rule (s, {
     range = 'A1',
     type = 'not_blank',
     style = { color = '#000000' },
   })
   eq (ops.rule_look (s, 1, 1), { style = { color = '#000000' } })
-  ops.set_rule (s, 7, nil)
+  ops.set_rule (s, 1, nil)
   eq (#s.rules, 6)
+  eq (ops.rule_look (s, 1, 1), { style = { color = '#c62828' } })
   s:undo ()
   eq (#s.rules, 7)
+end)
+
+test ('stop if true keeps the rules below from applying', function ()
+  local s = sheet_of ({ A1 = '5', A2 = '-5' })
+  s:set_field ('rules', {
+    {
+      range = 'A1:A2',
+      type = 'compare',
+      op = '>',
+      value = '0',
+      style = { bold = true },
+      stop = true,
+    },
+    { range = 'A1:A2', type = 'not_blank', style = { italic = true } },
+    { range = 'A1:A2', type = 'bar' },
+  })
+  eq (ops.rule_look (s, 1, 1), { style = { bold = true } })
+  eq (
+    ops.rule_look (s, 2, 1),
+    { style = { italic = true }, bar = 0, bar_color = '#638ec6' }
+  )
+end)
+
+test ('a file from before version 3 turns its rules round', function ()
+  local file = table.concat ({
+    '{ "version": 2, "sheets": [ { "name": "Old", "cells": { "A1": "5" }, "rules": [',
+    '{ "range": "A1", "type": "not_blank", "style": { "color": "#111111" } },',
+    '{ "range": "A1", "type": "not_blank", "style": { "color": "#222222" } }',
+    '] } ] }',
+  })
+  local book = assert (B.decode (file))
+  local s = book.sheets[1]
+  -- In version 2 the later rule won, so it comes first now, and still wins.
+  eq (s.rules[1].style, { color = '#222222' })
+  eq (ops.rule_look (s, 1, 1), { style = { color = '#222222' } })
+  local again = assert (B.decode (B.encode (book)))
+  eq (again.sheets[1].rules[1].style, { color = '#222222' })
 end)
 
 test ('top, bottom and average rules look at the whole range', function ()

@@ -1748,7 +1748,7 @@ function M.read (files)
   local view = child (child (wb, 'bookViews'), 'workbookView')
   local active_tab = view and int (view.attrs.activeTab) or 0
   ---@type Sheet.BookData
-  local book = { version = 2, active = 1, sheets = {} }
+  local book = { version = 3, active = 1, sheets = {} }
   for i, node in ipairs (children (child (wb, 'sheets'), 'sheet')) do
     local name = node.attrs.name or ('Sheet' .. i)
     local id = prefixed (node, 'id')

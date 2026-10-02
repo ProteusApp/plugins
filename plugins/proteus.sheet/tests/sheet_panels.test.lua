@@ -55,6 +55,10 @@ test ('rules read as one short line', function ()
     'Text contains "late"'
   )
   eq (t.describe_rule ({ range = 'A1', type = 'blank' }), 'Is empty')
+  eq (
+    t.describe_rule ({ range = 'A1', type = 'blank', stop = true }),
+    'Is empty, then stop'
+  )
   eq (t.describe_rule ({ range = 'A1', type = 'top', count = 3 }), 'Top 3')
   eq (
     t.describe_rule ({

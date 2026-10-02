@@ -33,8 +33,9 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field border_left? string
 ---@field border_color? string One colour for every side. The default is a dark grey.
 
----A conditional formatting rule. Rules apply in list order, and a later rule wins on the same
----field. `value` and `value2` are text as typed.
+---A conditional formatting rule. The list runs in order of priority, as in Excel: where two
+---rules set the same field, the one higher in the list wins, and a rule with `stop` keeps the
+---rules below it from applying where it holds. `value` and `value2` are text as typed.
 ---@class Sheet.Rule
 ---@field range string Such as `D5:D10`.
 ---@field type string `compare`, `text`, `blank`, `not_blank`, `error`, `duplicate`, `unique`, `top`, `bottom`, `above_average`, `below_average`, `formula`, `scale` or `bar`.
@@ -49,6 +50,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field mid_color? string
 ---@field max_color? string
 ---@field color? string The colour of a data bar.
+---@field stop? boolean Stop if true: where the rule holds, the rules below it do not apply.
 
 ---A validation rule: a list of allowed text, or a test on numbers.
 ---@class Sheet.Validation
@@ -99,7 +101,8 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field validation? Sheet.Validation[]
 ---@field charts? Sheet.ChartSpec[]
 
----A workbook file, version 2.
+---A workbook file, version 3. Version 3 lists conditional formatting rules first rule
+---first, as Excel does, where version 2 listed them the other way round.
 ---@class Sheet.BookData
 ---@field version integer
 ---@field active? integer The sheet shown first, counting from 1.
@@ -1617,7 +1620,7 @@ end
 -- The file
 ---------------------------------------------------------------------------------------------
 
----The book as plain data, the shape of a version 2 `.sheet.json` file.
+---The book as plain data, the shape of a version 3 `.sheet.json` file.
 ---@param book Sheet.Book
 ---@return Sheet.BookData
 function M.to_data (book)
@@ -1625,7 +1628,30 @@ function M.to_data (book)
   for i, sheet in ipairs (book.sheets) do
     sheets[i] = sheet:to_data ()
   end
-  return { version = 2, active = book.active, sheets = sheets }
+  return { version = 3, active = book.active, sheets = sheets }
+end
+
+---A sheet's file data with its rules first rule first. Files before version 3 list them the
+---other way round, last rule winning, so their rules turn round.
+---@param item table
+---@param data any
+---@return table
+local function rules_first (item, data)
+  local version = type (data) == 'table' and tonumber (data.version) or nil
+  if (version and version >= 3) or type (item.rules) ~= 'table' then
+    return item
+  end
+  local copy = {} ---@type table<string, any>
+  for k, v in pairs (item) do
+    copy[k] = v
+  end
+  local turned = {} ---@type any[]
+  local rules = item.rules --[[@as any[] ]]
+  for i = #rules, 1, -1 do
+    turned[#turned + 1] = rules[i]
+  end
+  copy.rules = turned
+  return copy
 end
 
 ---Makes a book from decoded file data. Version 1 files load as one sheet named `Sheet1`.
@@ -1664,7 +1690,7 @@ function M.from_data (data, opts)
     local sheet =
       model.blank (book, name, opts and opts.rows, opts and opts.cols)
     book.sheets[#book.sheets + 1] = sheet
-    sheet:load (item)
+    sheet:load (rules_first (item, data))
   end
   if #book.sheets == 0 then
     book.sheets[1] =
@@ -1732,6 +1758,7 @@ local RULE_KEYS = {
   'mid_color',
   'max_color',
   'color',
+  'stop',
 }
 local VALIDATION_KEYS = {
   'range',
@@ -1998,7 +2025,7 @@ function M.encode (book)
   end
   return table.concat ({
     '{',
-    '  "version": 2,',
+    '  "version": 3,',
     '  "active": ' .. json_number (data.active or 1) .. ',',
     '  "sheets": [',
     table.concat (sheets, ',\n'),
@@ -2328,7 +2355,7 @@ function M.example (opts)
   end
   ---@type Sheet.BookData
   local data = {
-    version = 2,
+    version = 3,
     active = 1,
     sheets = {
       {
