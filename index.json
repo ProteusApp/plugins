@@ -660,7 +660,7 @@
       "id": "lang.javascript",
       "name": "JavaScript",
       "description": "JavaScript on the TypeScript language server: completion, hover help, go to definition and problems, with npm packages completed in package.json.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [
         "lang.typescript",
@@ -669,7 +669,8 @@
       ],
       "optional": [],
       "permissions": [
-        "net"
+        "net",
+        "files"
       ],
       "folders": [],
       "requires": {
@@ -686,8 +687,8 @@
         "tests/npm.test.lua",
         "tests/package_context.test.lua"
       ],
-      "commit": "eb6fba9fb625efadd2a4a5b4af54dbe641650c0d",
-      "updated": "2026-10-01T17:28:48-06:00"
+      "commit": "6da5a4777c6e25d0cb7bea7c8c17abf79e624505",
+      "updated": "2026-10-02T05:20:43Z"
     },
     {
       "id": "lang.json",
@@ -1151,7 +1152,7 @@
       "id": "proteus.code.project",
       "name": "Project",
       "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.core.commands",
@@ -1178,8 +1179,8 @@
         "handbook/project.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "5460334cf28499459f9128e4e075dd2d8a7403f9",
+      "updated": "2026-10-02T05:24:14Z"
     },
     {
       "id": "proteus.code.explorer",
@@ -1224,7 +1225,7 @@
       "id": "proteus.code.plugins",
       "name": "Project Plugins",
       "description": "Builds Proteus plugins in the open folder's .proteus folder, for everyone who opens it.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1255,8 +1256,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "ecc9bbbc6c99ba05aa9658a5f4d251bd840c5e3f",
+      "updated": "2026-10-02T05:13:13Z"
     },
     {
       "id": "lang.python",
@@ -1506,7 +1507,7 @@
       "id": "shader.build",
       "name": "Shader build",
       "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
-      "version": "1.0.2",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "shader.core",
@@ -1517,9 +1518,7 @@
         "ui.notify",
         "ui.palette"
       ],
-      "permissions": [
-        "files"
-      ],
+      "permissions": [],
       "folders": [
         "shaders"
       ],
@@ -1533,8 +1532,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "c1230aed51f4794e5441626e5bcdbd9805b15e32",
-      "updated": "2026-10-01T19:01:33-06:00"
+      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
+      "updated": "2026-10-02T05:08:32Z"
     },
     {
       "id": "shader.canvas",
@@ -1646,8 +1645,8 @@
         "tests/source.test.lua",
         "types/shader.lua"
       ],
-      "commit": "2146da06f13601103314e53354d69266803b401f",
-      "updated": "2026-10-01T19:04:06-06:00"
+      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
+      "updated": "2026-10-02T05:08:32Z"
     },
     {
       "id": "shader.docs",
@@ -2086,7 +2085,7 @@
       "id": "lang.toml",
       "name": "TOML",
       "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "nanoqoi",
       "depends": [
         "core.settings",
@@ -2121,8 +2120,8 @@
         "lib/server.lua",
         "tests/schemas.test.lua"
       ],
-      "commit": "d0527a423e267b5f11765af3066a49932e852897",
-      "updated": "2026-10-01T22:26:33-06:00"
+      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
+      "updated": "2026-10-02T05:08:32Z"
     },
     {
       "id": "lang.typescript",
