@@ -1,8 +1,8 @@
 {
   "id": "proteus.code.search",
   "name": "Search",
-  "description": "Finds text in every file of the folder open in the Code Editor.",
-  "version": "1.0.0",
+  "description": "Finds and replaces text in every file of the folder open in the Code Editor.",
+  "version": "1.1.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",
@@ -12,7 +12,9 @@
     "proteus.core.commands",
     "proteus.core.keys",
     "proteus.editor.core",
-    "proteus.ui.menus"
+    "proteus.ui.menus",
+    "proteus.ui.notify",
+    "proteus.ui.palette"
   ],
   "permissions": [
     "files"
@@ -31,6 +33,8 @@
   "issue": null,
   "files": [
     "README.md",
-    "init.lua"
+    "init.lua",
+    "search_core.lua",
+    "tests/search_core.test.lua"
   ]
 }
