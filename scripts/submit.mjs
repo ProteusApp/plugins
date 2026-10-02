@@ -101,7 +101,12 @@ export async function submit({ api, event, repo, checkout }) {
   const files = { ...sub.files, 'proteus.json': JSON.stringify(manifest, null, 2) + '\n' };
   const entries = [];
   for (const [name, content] of Object.entries(files)) {
-    const blob = await api('POST', '/git/blobs', { content, encoding: 'utf-8' });
+    // A picture arrives as bytes, which GitHub takes as base64.
+    const blob = await api(
+      'POST',
+      '/git/blobs',
+      typeof content === 'string' ? { content, encoding: 'utf-8' } : { content: Buffer.from(content).toString('base64'), encoding: 'base64' },
+    );
     entries.push({ path: `${folder}/${name}`, mode: '100644', type: 'blob', sha: blob.sha });
   }
   for (const e of before) {

@@ -6,6 +6,7 @@
 -- sheet that is renamed or deleted. The helpers at the end serve the formula bar while a
 -- formula is typed: completion, the argument being typed, reference colours and F4.
 
+local calendar = require ('sheet_calendar') --[[@as Sheet.CalendarModule]]
 local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 
 ---A spreadsheet error, such as `#DIV/0!`. Each code has one shared table, so two errors with
@@ -39,15 +40,16 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field b? Sheet.Ref The second end of a range.
 ---@field sheet? string The sheet a reference names, without quotes.
 ---@field sheet_text? string The sheet part of a reference as written, with its quotes and "!".
+---@field spill? boolean True for a reference to the block a formula spills, such as `A1#`.
 
----@alias Sheet.NodeKind 'number'|'string'|'bool'|'error'|'ref'|'range'|'name'|'call'|'unary'|'binary'|'percent'|'empty'|'array'
+---@alias Sheet.NodeKind 'number'|'string'|'bool'|'error'|'ref'|'range'|'spill'|'name'|'call'|'invoke'|'unary'|'binary'|'percent'|'empty'|'array'|'intersect'|'union'
 
 ---A node of the formula tree.
 ---@class Sheet.Node
 ---@field kind Sheet.NodeKind
 ---@field value? number|string|boolean
 ---@field op? string
----@field left? Sheet.Node The operand of a unary or percent node, or the left side.
+---@field left? Sheet.Node The operand of a unary or percent node, the left side, or the function an invoke node calls.
 ---@field right? Sheet.Node
 ---@field name? string A function or a name, in upper case.
 ---@field args? Sheet.Node[]
@@ -86,7 +88,25 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 
 ---@alias Sheet.Grid Sheet.RangeValue|Sheet.Array
 
----@alias Sheet.Result Sheet.Value|Sheet.RangeValue|Sheet.Array
+---Several blocks of cells as one reference, from the union operator, as in `(A1:A3,C1:C3)`.
+---Functions that read every value, such as SUM, read each block.
+---@class Sheet.Union
+---@field is_union true
+---@field areas Sheet.RangeValue[]
+
+---A function a formula makes with LAMBDA. It keeps the names around it when it was made.
+---@class Sheet.Lambda
+---@field is_lambda true
+---@field params string[] The names of its arguments, in upper case.
+---@field body Sheet.Node
+---@field scope? Sheet.Scope
+
+---Names that LET and LAMBDA give values, inside the part of a formula they cover.
+---@class Sheet.Scope
+---@field names table<string, Sheet.Result|Sheet.Lambda>
+---@field parent? Sheet.Scope
+
+---@alias Sheet.Result Sheet.Value|Sheet.RangeValue|Sheet.Array|Sheet.Lambda
 
 ---What the evaluator needs from a workbook.
 ---@class Sheet.Context
@@ -98,6 +118,15 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field random? fun(): number
 ---@field row? integer The row of the cell being worked out, for ROW() with no argument.
 ---@field col? integer The column of the cell being worked out, for COLUMN() with no argument.
+---@field spill? fun(row: integer, col: integer, sheet?: string): integer?, integer? The height and width of the block a formula's cell spills, or nil when it spills none.
+---@field scope? Sheet.Scope The names LET and LAMBDA give, while their part of a formula is worked out.
+---@field hidden? fun(row: integer, sheet?: string): 'filter'|'user'|nil Why a row is hidden: by the filter or by the user.
+---@field subtotal? fun(row: integer, col: integer, sheet?: string): boolean True when a cell holds a SUBTOTAL or an AGGREGATE, which those leave out.
+---@field formula_text? fun(row: integer, col: integer, sheet?: string): string? The formula a cell holds, with its "=", or nil.
+---@field sheet_index? fun(sheet?: string): integer? Where a sheet sits in the book, the formula's own when nil.
+---@field sheet_count? fun(): integer
+---@field name? fun(name: string): Sheet.Node? The parsed formula a defined name stands for, by its name in upper case.
+---@field name_depth? integer How deep names that name other names go, while one is worked out.
 
 ---A function the formulas can call. `run` gets the argument trees and works them out as it
 ---needs to. `map` gets the argument values instead, and runs once for each value when an
@@ -134,6 +163,12 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field to integer
 ---@field area Sheet.Area
 
+---@class Sheet.MoveOptions
+---@field from string The sheet the block moves from.
+---@field to string The sheet the block moves to.
+---@field own string The sheet the formula lives on.
+---@field lands? string The sheet the formula lives on after the move, when it moves too.
+
 ---@class Sheet.AdjustOptions
 ---@field sheet? string The sheet where the rows or columns changed.
 ---@field own? string The sheet the formula lives on.
@@ -157,6 +192,11 @@ local M = {}
 
 local MANY = 255
 local MAX_DEPTH = 64
+-- The last row and column a sheet has, 1048576 and XFD, as in Excel.
+local LAST_ROW = 1048576
+local LAST_COL = 16384
+M.LAST_ROW = LAST_ROW
+M.LAST_COL = LAST_COL
 -- Serial day numbers count from 1899-12-30, as spreadsheets do, so 1970-01-01 is 25569.
 local EPOCH = 25569
 -- The last day spreadsheets allow, 9999-12-31.
@@ -177,6 +217,8 @@ M.ERROR_CODES = {
   '#CYCLE!',
   '#ERROR!',
   '#NULL!',
+  '#SPILL!',
+  '#CALC!',
 }
 
 ---@type table<string, Sheet.Error>
@@ -509,7 +551,7 @@ function M.format_value (v, digits)
 end
 
 ---A date and time as a serial number of days, the way spreadsheets store dates. The calendar
----is sheet_format's, so every part of the app counts days the same way.
+---is sheet_calendar's, so every part of the app counts days the same way.
 ---@param y integer
 ---@param m integer
 ---@param d integer
@@ -518,7 +560,7 @@ end
 ---@param s? integer
 ---@return number
 function M.serial (y, m, d, h, mi, s)
-  return format.serial (y, m, d, h, mi, s)
+  return calendar.serial (y, m, d, h, mi, s)
 end
 
 ---The parts of a serial date: year, month, day, hour, minute and second.
@@ -530,7 +572,7 @@ end
 ---@return integer mi
 ---@return integer s
 function M.date_parts (serial)
-  local y, m, d, h, mi, s = format.date_parts (serial)
+  local y, m, d, h, mi, s = calendar.date_parts (serial)
   return y, m, d, h, mi, s
 end
 
@@ -540,28 +582,12 @@ end
 ---@return integer m
 ---@return integer d
 local function ymd (serial)
-  local y, m, d = format.date_parts (math.floor (serial))
+  local y, m, d = calendar.date_parts (math.floor (serial))
   return y, m, d
 end
 
----@param y integer
----@return boolean
-local function is_leap (y)
-  return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0)
-end
-
----@param y integer
----@param m integer
----@return integer
-local function days_in_month (y, m)
-  if m == 2 then
-    return is_leap (y) and 29 or 28
-  end
-  if m == 4 or m == 6 or m == 9 or m == 11 then
-    return 30
-  end
-  return 31
-end
+local is_leap = calendar.is_leap
+local days_in_month = calendar.days_in_month
 
 ---A serial date from a year, month and day that may run over, as DATE works: month 13 is
 ---January of the next year, and day 0 is the last day of the month before.
@@ -570,7 +596,7 @@ end
 ---@param d integer
 ---@return integer
 local function make_date (y, m, d)
-  return math.floor (format.serial (y, m, d))
+  return math.floor (calendar.serial (y, m, d))
 end
 
 ---The day of the week of a serial date, 0 for Sunday to 6 for Saturday.
@@ -600,157 +626,13 @@ function M.format_date (serial, with_time)
   return text
 end
 
-local MONTH_OF = {} ---@type table<string, integer>
-for i, name in ipairs ({
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-}) do
-  MONTH_OF[name] = i
-  MONTH_OF[string.sub (name, 1, 3)] = i
-end
-MONTH_OF.sept = 9
-
----Reads a time of day such as `14:30`, `2:30:15 pm` or `9 am`, as a fraction of a day.
----@param s string Lower case, with no spaces around it.
----@return number?
-local function parse_time (s)
-  local body, half = string.match (s, '^(.-)%s*([ap])%.?m?%.?$')
-  if not body or not string.match (body, '%d$') then
-    body, half = s, nil
-  end
-  local h, rest = string.match (body, '^(%d+)(.*)$')
-  if not h then
-    return nil
-  end
-  local mi, sec = 0, 0
-  if rest ~= '' then
-    local m2, r2 = string.match (rest, '^:(%d%d?)(.*)$')
-    if not m2 then
-      return nil
-    end
-    mi = tonumber (m2) or 0
-    if r2 ~= '' then
-      local s2 = string.match (r2, '^:(%d%d?%.?%d*)$')
-      if not s2 then
-        return nil
-      end
-      sec = tonumber (s2) or 0
-    end
-  elseif not half then
-    return nil
-  end
-  local hours = tonumber (h) or 0
-  if half then
-    if hours < 1 or hours > 12 then
-      return nil
-    end
-    hours = hours % 12 + (half == 'p' and 12 or 0)
-  end
-  if mi >= 60 or sec >= 60 then
-    return nil
-  end
-  return (hours * 3600 + mi * 60 + sec) / 86400
-end
-
----Reads a date such as `2026-09-29`, `9/29/2026`, `29 Sep 2026` or `Sep 29, 2026`, month before
----day as in the US. A date with no year takes `this_year`, and is refused when that is nil.
----@param s string Lower case, with no spaces around it.
----@param this_year? integer
----@return integer?
-local function parse_date (s, this_year)
-  local y, m, d ---@type string|integer|nil, string|integer|nil, string|integer|nil
-  local a, b, c = string.match (s, '^(%d%d%d%d)[-/%.](%d%d?)[-/%.](%d%d?)$')
-  if a then
-    y, m, d = a, b, c
-  else
-    a, b, c = string.match (s, '^(%d%d?)[-/](%d%d?)[-/](%d+)$')
-    if a then
-      m, d, y = a, b, c
-    else
-      a, b = string.match (s, '^(%d%d?)[-/](%d%d?)$')
-      if a then
-        m, d, y = a, b, ''
-      else
-        local dd, mon, yy =
-          string.match (s, '^(%d%d?)[-%s]+(%a+)%.?[-%s,]*(%d*)$')
-        if dd then
-          d, m, y = dd, MONTH_OF[mon], yy
-        else
-          mon, dd, yy = string.match (s, '^(%a+)%.?[-%s]+(%d%d?)[,%s]*(%d*)$')
-          if not mon then
-            return nil
-          end
-          m, d, y = MONTH_OF[mon], dd, yy
-        end
-      end
-    end
-  end
-  local month, day = tonumber (m), tonumber (d)
-  if not month or not day then
-    return nil
-  end
-  local year ---@type integer?
-  if y == '' then
-    year = this_year
-  else
-    local text = tostring (y)
-    year = math.tointeger (tonumber (text))
-    -- Two-digit years below 30 are in this century, as spreadsheets read them.
-    if year and #text <= 2 then
-      year = year + (year < 30 and 2000 or 1900)
-    end
-  end
-  if not year or month < 1 or month > 12 then
-    return nil
-  end
-  local mm = math.floor (month)
-  if day < 1 or day > days_in_month (year, mm) then
-    return nil
-  end
-  return make_date (year, mm, math.floor (day))
-end
-
----Reads a date, a time, or a date and a time from text, as a serial number.
+---Reads a date, a time, or a date and a time from text, as a serial number. Typing into a cell
+---reads text the same way.
 ---@param text string
----@param this_year? integer The year for a date typed with none.
+---@param clock? fun(): number Gives the year of a date written without one.
 ---@return number?
-local function parse_datetime (text, this_year)
-  local s = lower (string.match (text, '^%s*(.-)%s*$'))
-  if s == '' then
-    return nil
-  end
-  local day = parse_date (s, this_year)
-  if day then
-    return day
-  end
-  local time = parse_time (s)
-  if time then
-    return time
-  end
-  local head, tail = string.match (s, '^(%d+%-%d+%-%d+)t(%d.*)$')
-  if not head then
-    head, tail = string.match (s, '^(.-),?%s+(%d+:[%d:%.]*%s*[apm%.]*)$')
-  end
-  if not head then
-    head, tail = string.match (s, '^(.-),?%s+(%d+%s*[ap]%.?m%.?)$')
-  end
-  if head then
-    local d2, t2 = parse_date (head, this_year), parse_time (tail)
-    if d2 and t2 then
-      return d2 + t2
-    end
-  end
-  return nil
+local function parse_datetime (text, clock)
+  return (calendar.read (text, clock))
 end
 
 ---Rounds a number to `digits` decimals. `mode` is 'near' (half away from zero), 'up' (away
@@ -875,12 +757,16 @@ local function read_word (src, i)
     end
   end
   if a and shape == 'cell' and not joins_word (string.sub (src, j, j)) then
+    -- A1# is the block the formula in A1 spills.
+    local spill = string.sub (src, j, j) == '#'
+    local stop = spill and j or j - 1
     return {
       kind = 'ref',
-      text = string.sub (src, i, j - 1),
+      text = string.sub (src, i, stop),
       from = i,
-      to = j - 1,
+      to = stop,
       a = a,
+      spill = spill or nil,
     }
   end
   local num = string.match (src, '^%d*%.?%d*', i) or ''
@@ -1120,6 +1006,41 @@ end
 ---@type fun(p: Sheet.Parser): Sheet.Node
 local expression
 
+-- The functions formulas can call, by name. The parser checks how many arguments a call
+-- gives, and the evaluator runs them.
+---@type table<string, Sheet.Function>
+local FUNCS = {}
+
+---How many arguments a function takes, in words.
+---@param spec Sheet.Function
+---@return string
+local function arity (spec)
+  if spec.min == spec.max then
+    return spec.min == 1 and '1 argument' or spec.min .. ' arguments'
+  end
+  if spec.max >= MANY then
+    return 'at least '
+      .. spec.min
+      .. (spec.min == 1 and ' argument' or ' arguments')
+  end
+  return spec.min .. ' to ' .. spec.max .. ' arguments'
+end
+
+---A call with as many arguments as its function takes. A wrong count fails as it is typed,
+---rather than giving #VALUE! when the formula is worked out. A name no function has stays,
+---for LET and LAMBDA names, and gives #NAME? later.
+---@param node Sheet.Node
+---@return Sheet.Node
+local function checked (node)
+  local name = node.name or ''
+  local spec = FUNCS[name]
+  local n = #(node.args or {})
+  if spec and (n < spec.min or n > spec.max) then
+    return fail (name .. ' takes ' .. arity (spec) .. ', not ' .. n .. '.')
+  end
+  return node
+end
+
 ---@param p Sheet.Parser
 ---@param name string
 ---@return Sheet.Node
@@ -1127,7 +1048,7 @@ local function call_args (p, name)
   local args = {} ---@type Sheet.Node[]
   if looking_at (p, 'close') then
     p.i = p.i + 1
-    return { kind = 'call', name = name, args = args }
+    return checked ({ kind = 'call', name = name, args = args })
   end
   while true do
     if looking_at (p, 'comma') or looking_at (p, 'close') then
@@ -1144,7 +1065,7 @@ local function call_args (p, name)
       return fail ('A ")" is missing after the arguments of ' .. name .. '.')
     end
   end
-  return { kind = 'call', name = name, args = args }
+  return checked ({ kind = 'call', name = name, args = args })
 end
 
 ---Reads one value of an array constant: a number with an optional sign, text, TRUE, FALSE or
@@ -1241,7 +1162,7 @@ local function primary (p)
     }
   end
   if kind == 'ref' then
-    return { kind = 'ref', a = t.a }
+    return { kind = t.spill and 'spill' or 'ref', a = t.a }
   end
   if kind == 'range' then
     return { kind = 'range', a = t.a, b = t.b }
@@ -1259,6 +1180,15 @@ local function primary (p)
   end
   if kind == 'open' then
     local inner = expression (p)
+    -- A comma inside brackets joins references into one, as in (A1:A3,C1:C3).
+    if looking_at (p, 'comma') then
+      local parts = { inner } ---@type Sheet.Node[]
+      while looking_at (p, 'comma') do
+        p.i = p.i + 1
+        parts[#parts + 1] = expression (p)
+      end
+      inner = { kind = 'union', args = parts }
+    end
     if not looking_at (p, 'close') then
       return fail ('A ")" is missing.')
     end
@@ -1271,10 +1201,43 @@ local function primary (p)
   return fail ('Unexpected "' .. t.text .. '".')
 end
 
+-- The tokens that can start the right side of the intersection operator, a space.
+local REFERENCE_KINDS = { ref = true, range = true, name = true }
+
+---True when the next token starts a reference with only spaces before it, which makes the
+---space the intersection operator, as in `A1:C3 B2:D4`.
+---@param p Sheet.Parser
+---@return boolean
+local function space_follows (p)
+  local before, t = p.tokens[p.i - 1], p.tokens[p.i]
+  return t ~= nil
+    and before ~= nil
+    and REFERENCE_KINDS[t.kind] == true
+    and t.from > before.to + 1
+    and (
+      before.kind == 'ref'
+      or before.kind == 'range'
+      or before.kind == 'name'
+      or before.kind == 'close'
+    )
+end
+
 ---@param p Sheet.Parser
 ---@return Sheet.Node
 local function postfix (p)
   local node = primary (p)
+  while space_follows (p) do
+    node = { kind = 'intersect', left = node, right = primary (p) }
+  end
+  -- A function call right after a call, as in LAMBDA(x, x*2)(5), calls what it gave.
+  while node.kind == 'call' or node.kind == 'invoke' do
+    if not looking_at (p, 'open') then
+      break
+    end
+    p.i = p.i + 1
+    local args = call_args (p, node.name or 'the function').args
+    node = { kind = 'invoke', left = node, args = args }
+  end
   while looking_at (p, 'op', '%') do
     p.i = p.i + 1
     node = { kind = 'percent', left = node }
@@ -1393,6 +1356,12 @@ local function text_number (s)
   if count > 0 then
     return M.parse_number (bare)
   end
+  -- An accounting negative such as (5) or ($1,200.50), with no sign of its own inside.
+  local inner = string.match (s, '^%s*%(%s*%$?%s*([^%s%+%-()][^()]-)%s*%)%s*$')
+  if inner then
+    local m = M.parse_number (inner)
+    return m and -m
+  end
   return parse_datetime (s)
 end
 
@@ -1466,6 +1435,36 @@ end
 
 local RANK = { number = 1, string = 2, boolean = 3 }
 
+---Compares two numbers at 15 significant digits, as spreadsheets do, so 0.1+0.2 equals 0.3.
+---Numbers far apart skip the rounding.
+---@param x number
+---@param y number
+---@return integer
+local function num_compare (x, y)
+  if x == y then
+    return 0
+  end
+  local d = x - y
+  if math.abs (d) <= 2e-14 * math.max (math.abs (x), math.abs (y)) then
+    local cx, cy = clean (x), clean (y)
+    if cx == cy then
+      return 0
+    end
+    return cx < cy and -1 or 1
+  end
+  return d < 0 and -1 or 1
+end
+
+M.compare_numbers = num_compare
+
+---True when two numbers agree to 15 significant digits.
+---@param x number
+---@param y number
+---@return boolean
+local function same_number (x, y)
+  return num_compare (x, y) == 0
+end
+
 ---Compares two values the spreadsheet way: numbers before text before TRUE and FALSE, text
 ---without regard to case, and an empty cell as 0, "" or FALSE to suit the other side.
 ---@param a Sheet.Value
@@ -1487,7 +1486,9 @@ local function compare (a, b)
     return ra < rb and -1 or 1
   end
   local x, y = a, b ---@type any, any
-  if ra == 2 then
+  if ra == 1 then
+    return num_compare (x, y)
+  elseif ra == 2 then
     x, y = lower (x), lower (y)
   elseif ra == 3 then
     x, y = x and 1 or 0, y and 1 or 0
@@ -1674,11 +1675,21 @@ local function sheet_size (sheet, ctx)
   return rows, cols
 end
 
+---Raises #REF! for a reference past the last row or column of a sheet.
+---@param row integer?
+---@param col integer?
+local function on_sheet (row, col)
+  if (row and row > LAST_ROW) or (col and col > LAST_COL) then
+    raise ('#REF!')
+  end
+end
+
 ---The value of a cell, raising its error when it holds one.
 ---@param a Sheet.Ref
 ---@param ctx Sheet.Context
 ---@return Sheet.Value
 local function cell_value (a, ctx)
+  on_sheet (a.row, a.col)
   local sheet = a.sheet
   if sheet then
     sheet_size (sheet, ctx)
@@ -1695,6 +1706,8 @@ end
 ---@param ctx Sheet.Context
 ---@return Sheet.RangeValue
 local function resolve (a, b, ctx)
+  on_sheet (a.row, a.col)
+  on_sheet (b.row, b.col)
   local sheet = a.sheet
   local rows, cols = ctx.rows, ctx.cols
   if sheet then
@@ -1712,11 +1725,41 @@ local function resolve (a, b, ctx)
   }
 end
 
+---The block a formula's cell spills, for a reference such as `A1#`. A cell that spills
+---nothing is #REF!.
+---@param a Sheet.Ref
+---@param ctx Sheet.Context
+---@return Sheet.RangeValue
+local function spill_range (a, ctx)
+  on_sheet (a.row, a.col)
+  if a.sheet then
+    sheet_size (a.sheet, ctx)
+  end
+  local row = a.row --[[@as integer]]
+  local col = a.col --[[@as integer]]
+  local h, w = nil, nil ---@type integer?, integer?
+  if ctx.spill then
+    h, w = ctx.spill (row, col, a.sheet)
+  end
+  if not h or not w then
+    return raise ('#REF!')
+  end
+  return {
+    is_range = true,
+    r1 = row,
+    c1 = col,
+    r2 = row + h - 1,
+    c2 = col + w - 1,
+    sheet = a.sheet,
+  }
+end
+
 ---A reference to one cell as a block.
 ---@param a Sheet.Ref
 ---@param ctx Sheet.Context
 ---@return Sheet.RangeValue
 local function cell_range (a, ctx)
+  on_sheet (a.row, a.col)
   if a.sheet then
     sheet_size (a.sheet, ctx)
   end
@@ -1739,6 +1782,16 @@ end
 ---@param ctx Sheet.Context
 ---@return Sheet.Result
 local function single (v, ctx)
+  if
+    (v --[[@as table]]).is_lambda
+  then
+    return raise ('#CALC!')
+  end
+  if
+    (v --[[@as table]]).is_union
+  then
+    return raise ('#VALUE!')
+  end
   local h, w = dims (v)
   if h ~= 1 or w ~= 1 then
     return v
@@ -1769,9 +1822,6 @@ end
 ---------------------------------------------------------------------------------------------
 -- Evaluator
 ---------------------------------------------------------------------------------------------
-
----@type table<string, Sheet.Function>
-local FUNCS = {}
 
 ---@type fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
 local eval
@@ -1929,12 +1979,198 @@ local function call_map (spec, args, n, ctx)
   return map (vals --[[@as Sheet.Values]], n, ctx)
 end
 
+-- What a name holds when LET gives it an empty value, since a table cannot hold nil.
+local EMPTY = {}
+
+---True for a function that LAMBDA made.
+---@param v any
+---@return boolean
+local function is_lambda (v)
+  return type (v) == 'table' and v.is_lambda == true
+end
+
+---The value LET or LAMBDA gave a name, and whether one did.
+---@param ctx Sheet.Context
+---@param name string
+---@return Sheet.Result|Sheet.Lambda
+---@return boolean
+local function lookup (ctx, name)
+  local scope = ctx.scope
+  while scope do
+    local v = scope.names[name]
+    if v ~= nil then
+      if v == EMPTY then
+        return nil, true
+      end
+      return v, true
+    end
+    scope = scope.parent
+  end
+  return nil, false
+end
+
+---Works out a node with other names in scope, and puts the old ones back after, even when
+---it raises an error.
+---@param ctx Sheet.Context
+---@param scope Sheet.Scope?
+---@param fn fun(): Sheet.Result
+---@return Sheet.Result
+local function within (ctx, scope, fn)
+  local saved = ctx.scope
+  ctx.scope = scope
+  local ok, result = pcall (fn)
+  ctx.scope = saved
+  if not ok then
+    error (result, 0)
+  end
+  return result
+end
+
+---Calls a LAMBDA with values for its arguments. `n` is how many values there are, since an
+---empty one leaves a hole.
+---@param fn Sheet.Lambda
+---@param values table<integer, Sheet.Result>
+---@param n integer
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function apply (fn, values, n, ctx)
+  if n ~= #fn.params then
+    return raise ('#VALUE!')
+  end
+  local names = {} ---@type table<string, Sheet.Result|Sheet.Lambda>
+  for i, name in ipairs (fn.params) do
+    local v = values[i]
+    if v == nil then
+      names[name] = EMPTY
+    else
+      names[name] = v
+    end
+  end
+  return within (ctx, { names = names, parent = fn.scope }, function ()
+    return eval (fn.body, ctx)
+  end)
+end
+
+---Calls what a formula gave as a function, with the arguments in the formula. Anything but a
+---LAMBDA is #VALUE!.
+---@param fn any
+---@param args Sheet.Node[]
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function invoke (fn, args, ctx)
+  if not is_lambda (fn) then
+    return raise ('#VALUE!')
+  end
+  local values = {} ---@type table<integer, Sheet.Result>
+  for i, arg in ipairs (args) do
+    if arg.kind ~= 'empty' then
+      local kind = arg.kind
+      if kind == 'ref' then
+        values[i] = cell_range (arg.a --[[@as Sheet.Ref]], ctx)
+      elseif kind == 'range' then
+        values[i] =
+          resolve (arg.a --[[@as Sheet.Ref]], arg.b --[[@as Sheet.Ref]], ctx)
+      else
+        values[i] = eval (arg, ctx)
+      end
+    end
+  end
+  return apply (fn --[[@as Sheet.Lambda]], values, #args, ctx)
+end
+
+-- How deep names may name other names. A name that names itself goes round for ever, so it
+-- stops here with #CYCLE!.
+local NAME_DEPTH = 32
+
+---The value of a name the workbook defines, such as `Rates` for `=Sheet1!$B$2:$B$5`, and
+---whether there is one. The name's formula sees none of the names LET gives.
+---@param ctx Sheet.Context
+---@param name string In upper case.
+---@return Sheet.Result
+---@return boolean
+local function defined (ctx, name)
+  local find = ctx.name
+  local ast = find and find (name)
+  if not ast then
+    return nil, false
+  end
+  local depth = ctx.name_depth or 0
+  if depth >= NAME_DEPTH then
+    return raise ('#CYCLE!'), true
+  end
+  ctx.name_depth = depth + 1
+  local ok, result = pcall (within, ctx, nil, function ()
+    return eval (ast, ctx)
+  end)
+  ctx.name_depth = depth
+  if not ok then
+    error (result, 0)
+  end
+  return result, true
+end
+
+---A side of a reference operator as a block of cells: a cell reference stays a block rather
+---than giving its value.
+---@param node Sheet.Node
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function as_reference (node, ctx)
+  if node.kind == 'ref' then
+    return cell_range (node.a --[[@as Sheet.Ref]], ctx)
+  end
+  return eval (node, ctx)
+end
+
+---The cells two references share, for the intersection operator, or #NULL! when they share
+---none.
+---@param node Sheet.Node
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function intersection (node, ctx)
+  local a = as_reference (node.left --[[@as Sheet.Node]], ctx)
+  local b = as_reference (node.right --[[@as Sheet.Node]], ctx)
+  if
+    type (a) ~= 'table'
+    or type (b) ~= 'table'
+    or not (a --[[@as table]]).is_range
+    or not (b --[[@as table]]).is_range
+  then
+    return raise ('#VALUE!')
+  end
+  local ra, rb =
+    a, --[[@as Sheet.RangeValue]]
+    b --[[@as Sheet.RangeValue]]
+  if string.lower (ra.sheet or '') ~= string.lower (rb.sheet or '') then
+    return raise ('#NULL!')
+  end
+  local r1, c1 = math.max (ra.r1, rb.r1), math.max (ra.c1, rb.c1)
+  local r2, c2 = math.min (ra.r2, rb.r2), math.min (ra.c2, rb.c2)
+  if r1 > r2 or c1 > c2 then
+    return raise ('#NULL!')
+  end
+  ---@type Sheet.RangeValue
+  local out =
+    { is_range = true, r1 = r1, c1 = c1, r2 = r2, c2 = c2, sheet = ra.sheet }
+  return out
+end
+
 ---@param node Sheet.Node
 ---@param ctx Sheet.Context
 ---@return Sheet.Result
 local function call (node, ctx)
+  if ctx.scope then
+    local fn, found = lookup (ctx, node.name or '')
+    if found then
+      return invoke (fn, node.args or {}, ctx)
+    end
+  end
   local spec = FUNCS[node.name or '']
   if not spec then
+    -- A defined name can hold a LAMBDA, which works as a function of the workbook's own.
+    local fn, found = defined (ctx, node.name or '')
+    if found then
+      return invoke (fn, node.args or {}, ctx)
+    end
     return raise ('#NAME?')
   end
   local args = node.args or {}
@@ -1973,6 +2209,9 @@ eval = function (node, ctx)
   if kind == 'range' then
     return resolve (node.a --[[@as Sheet.Ref]], node.b --[[@as Sheet.Ref]], ctx)
   end
+  if kind == 'spill' then
+    return spill_range (node.a --[[@as Sheet.Ref]], ctx)
+  end
   if kind == 'binary' then
     return binary (node, ctx)
   end
@@ -1989,7 +2228,46 @@ eval = function (node, ctx)
     return raise (node.value --[[@as string]])
   end
   if kind == 'name' then
+    local v, found = lookup (ctx, node.name or '')
+    if found then
+      return v
+    end
+    v, found = defined (ctx, node.name or '')
+    if found then
+      return v
+    end
     return raise ('#NAME?')
+  end
+  if kind == 'invoke' then
+    local fn = eval (node.left --[[@as Sheet.Node]], ctx)
+    return invoke (fn, node.args or {}, ctx)
+  end
+  if kind == 'intersect' then
+    return intersection (node, ctx)
+  end
+  if kind == 'union' then
+    local areas = {} ---@type Sheet.RangeValue[]
+    for _, part in ipairs (node.args or {}) do
+      local v = as_reference (part, ctx)
+      if
+        type (v) == 'table' and (v --[[@as table]]).is_union
+      then
+        for _, area in
+          ipairs ((v --[[@as Sheet.Union]]).areas)
+        do
+          areas[#areas + 1] = area
+        end
+      elseif
+        type (v) == 'table' and (v --[[@as table]]).is_range
+      then
+        areas[#areas + 1] = v --[[@as Sheet.RangeValue]]
+      else
+        return raise ('#VALUE!')
+      end
+    end
+    ---@type Sheet.Union
+    local union = { is_union = true, areas = areas }
+    return union --[[@as any]]
   end
   local v = eval (node.left --[[@as Sheet.Node]], ctx)
   if type (v) == 'table' then
@@ -2015,14 +2293,87 @@ eval = function (node, ctx)
   return r
 end
 
----Works out the value of a parsed formula. An empty result shows as 0, as in spreadsheets. A
----result that is a block of cells gives its top left value, since nothing spills into other
----cells.
+---The values of a block as an array, with an empty cell as 0, the way a block spills.
+---@param g Sheet.Grid
+---@param ctx Sheet.Context
+---@return Sheet.Array
+local function spilled (g, ctx)
+  local h, w = dims (g)
+  local out = {} ---@type Sheet.Values
+  for i = 1, h do
+    for j = 1, w do
+      local v = grid_at (g, i, j, ctx)
+      if v == nil then
+        v = 0.0
+      end
+      out[(i - 1) * w + j] = v
+    end
+  end
+  return new_array (h, w, out)
+end
+
+---Works out a formula and gives every value it makes, row by row, with an empty cell as nil,
+---and how many there are. A list of items read from cells uses it. An error comes back as
+---the one value.
 ---@param ast Sheet.Node
 ---@param ctx Sheet.Context
----@return Sheet.Value
-function M.evaluate (ast, ctx)
+---@return Sheet.Values
+---@return integer count
+function M.values (ast, ctx)
   local ok, result = pcall (eval, ast, ctx)
+  if not ok then
+    return { is_error (result) and result or ERRORS['#VALUE!'] }, 1
+  end
+  if not is_grid (result) then
+    return {
+      result --[[@as Sheet.Value]],
+    }, 1
+  end
+  local h, w = dims (result)
+  local out = {} ---@type Sheet.Values
+  local done, problem = pcall (function ()
+    for i = 1, h do
+      for j = 1, w do
+        out[(i - 1) * w + j] = grid_at (result --[[@as Sheet.Grid]], i, j, ctx)
+      end
+    end
+  end)
+  if not done then
+    return { is_error (problem) and problem or ERRORS['#VALUE!'] }, 1
+  end
+  return out, h * w
+end
+
+---Works out the value of a parsed formula. An empty result shows as 0, as in spreadsheets. A
+---result that is a block of cells gives its top left value. With `spill`, a block of more than
+---one cell comes back too, as an array, for the cells around the formula to show.
+---@param ast Sheet.Node
+---@param ctx Sheet.Context
+---@param spill? boolean
+---@return Sheet.Value
+---@return Sheet.Array?
+function M.evaluate (ast, ctx, spill)
+  local ok, result = pcall (eval, ast, ctx)
+  if ok and is_lambda (result) then
+    return ERRORS['#CALC!']
+  end
+  if
+    ok
+    and type (result) == 'table'
+    and (result --[[@as table]]).is_union
+  then
+    return ERRORS['#VALUE!']
+  end
+  if ok and spill and is_grid (result) then
+    local h, w = dims (result)
+    if h > 1 or w > 1 then
+      local done, block = pcall (spilled, result --[[@as Sheet.Grid]], ctx)
+      if done then
+        return block.v[1], block
+      end
+      ok, result = false, block
+    end
+  end
   if ok and is_grid (result) then
     ok, result = pcall (grid_at, result --[[@as Sheet.Grid]], 1, 1, ctx)
   end
@@ -2098,7 +2449,13 @@ local function reference (node, ctx)
   if kind == 'range' then
     return resolve (node.a --[[@as Sheet.Ref]], node.b --[[@as Sheet.Ref]], ctx)
   end
-  if kind == 'call' then
+  if
+    kind == 'call'
+    or kind == 'name'
+    or kind == 'invoke'
+    or kind == 'spill'
+    or kind == 'intersect'
+  then
     local v = eval (node, ctx)
     if
       type (v) == 'table' and (v --[[@as table]]).is_range
@@ -2156,6 +2513,7 @@ local function each (node, ctx, fn)
   end
   if kind == 'ref' then
     local a = node.a --[[@as Sheet.Ref]]
+    on_sheet (a.row, a.col)
     if a.sheet then
       sheet_size (a.sheet, ctx)
     end
@@ -2171,7 +2529,18 @@ local function each (node, ctx, fn)
     return
   end
   local t = v --[[@as table]]
-  if t.is_range then
+  if t.is_union then
+    local value = ctx.value
+    for _, area in
+      ipairs ((t --[[@as Sheet.Union]]).areas)
+    do
+      for r = area.r1, area.r2 do
+        for c = area.c1, area.c2 do
+          fn (value (r, c, area.sheet), true)
+        end
+      end
+    end
+  elseif t.is_range then
     local sheet = t.sheet --[[@as string?]]
     local value = ctx.value
     for r = t.r1, t.r2 do
@@ -2250,6 +2619,17 @@ end
 ---@param op string
 ---@return boolean
 local function ordered (a, b, op)
+  if type (a) == 'number' and type (b) == 'number' then
+    local c = num_compare (a, b)
+    if op == '<' then
+      return c < 0
+    elseif op == '>' then
+      return c > 0
+    elseif op == '<=' then
+      return c <= 0
+    end
+    return c >= 0
+  end
   if op == '<' then
     return a < b
   elseif op == '>' then
@@ -2260,6 +2640,21 @@ local function ordered (a, b, op)
   return a >= b
 end
 
+---True when a cell holds the number `num`, as a number or as text that reads as one.
+---@param v Sheet.Value
+---@param num number
+---@return boolean
+local function holds_number (v, num)
+  if type (v) == 'number' then
+    return same_number (v, num)
+  end
+  if type (v) == 'string' then
+    local n = M.parse_number (v)
+    return n ~= nil and same_number (n, num)
+  end
+  return false
+end
+
 ---Builds the test for SUMIF, COUNTIF and their kin: `5`, `">5"`, `"<>x"`, `"=abc"`, `""` for an
 ---empty cell, and `*` and `?` as wildcards in text, with `~` before one to mean the character.
 ---@param crit Sheet.Value
@@ -2267,7 +2662,7 @@ end
 local function matcher (crit)
   if type (crit) == 'number' then
     return function (v)
-      return v == crit or (type (v) == 'string' and M.parse_number (v) == crit)
+      return holds_number (v, crit)
     end
   end
   if type (crit) == 'boolean' then
@@ -2291,7 +2686,7 @@ local function matcher (crit)
       end
     elseif num then
       want = function (v)
-        return v == num or (type (v) == 'string' and M.parse_number (v) == num)
+        return holds_number (v, num)
       end
     elseif up == 'TRUE' or up == 'FALSE' then
       local flag = up == 'TRUE'
@@ -2342,6 +2737,11 @@ local function equals (want, wild)
     end
     return function (v)
       return type (v) == 'string' and lower (v) == low
+    end
+  end
+  if type (want) == 'number' then
+    return function (v)
+      return type (v) == 'number' and same_number (v, want)
     end
   end
   return function (v)
@@ -2469,6 +2869,15 @@ local function opt_bool (v, n, i, d)
   return to_bool (v[i])
 end
 
+---A clock for reading dates written without a year, from the workbook's clock.
+---@param ctx Sheet.Context
+---@return fun(): number
+local function today_clock (ctx)
+  return function ()
+    return now (ctx)
+  end
+end
+
 ---A date argument as a serial number. Text such as `2026-09-29` counts, and a date before
 ---1899-12-30 is #NUM!.
 ---@param v Sheet.Value
@@ -2477,7 +2886,8 @@ end
 local function date_arg (v, ctx)
   local n ---@type number?
   if type (v) == 'string' then
-    n = M.parse_number (v) or parse_datetime (v, ctx and ymd (now (ctx)) or nil)
+    n = M.parse_number (v)
+      or parse_datetime (v, ctx and today_clock (ctx) or nil)
     if not n then
       return raise ('#VALUE!')
     end
@@ -3538,13 +3948,15 @@ local MODE = {
     local list = numbers (args, ctx)
     local counts = {} ---@type table<number, integer>
     local best, most = nil, 1 ---@type number?, integer
+    -- Values that agree to 15 digits count as one, so 0.1+0.2 and 0.3 are the same value.
     for _, x in ipairs (list) do
-      counts[x] = (counts[x] or 0) + 1
+      local key = clean (x)
+      counts[key] = (counts[key] or 0) + 1
     end
     -- The first value in the data wins a tie, as in spreadsheets.
     for _, x in ipairs (list) do
-      if counts[x] > most then
-        best, most = x, counts[x]
+      if counts[clean (x)] > most then
+        best, most = x, counts[clean (x)]
       end
     end
     if not best then
@@ -3822,9 +4234,10 @@ local function ranking (average)
       local ascending = given (args[3]) and number_of (args[3], ctx) ~= 0
       local before, same = 0, 0
       for _, y in ipairs (list) do
-        if y == x then
+        local c = num_compare (y, x)
+        if c == 0 then
           same = same + 1
-        elseif (ascending and y < x) or (not ascending and y > x) then
+        elseif (ascending and c < 0) or (not ascending and c > 0) then
           before = before + 1
         end
       end
@@ -5561,6 +5974,7 @@ define (
       if h < 1 or w < 1 or r1 < 1 or c1 < 1 then
         return raise ('#REF!')
       end
+      on_sheet (r1 + h - 1, c1 + w - 1)
       return {
         is_range = true,
         r1 = r1,
@@ -6015,7 +6429,7 @@ define (
       if type (s) ~= 'string' then
         return raise ('#VALUE!')
       end
-      local n = parse_datetime (s, (ymd (now (ctx))))
+      local n = parse_datetime (s, today_clock (ctx))
       if not n or n < 1 then
         return raise ('#VALUE!')
       end
@@ -6037,7 +6451,7 @@ define (
       if type (s) ~= 'string' then
         return raise ('#VALUE!')
       end
-      local n = parse_datetime (s, (ymd (now (ctx))))
+      local n = parse_datetime (s, today_clock (ctx))
       if not n then
         return raise ('#VALUE!')
       end
@@ -6297,6 +6711,9 @@ local ERROR_NUMBER = {
   ['#N/A'] = 7,
   ['#ERROR!'] = 8,
   ['#CYCLE!'] = 9,
+  -- Excel gives #SPILL! the 9 this app gives #CYCLE!, so it takes the next free number.
+  ['#SPILL!'] = 10,
+  ['#CALC!'] = 14,
 }
 
 define (
@@ -6539,29 +6956,110 @@ define (
   }
 )
 
----Finds where `f` is zero near `guess` by Newton's method. Returns nil when it does not settle.
+---True for a number that is neither infinite nor NaN.
+---@param y number
+---@return boolean
+local function is_finite (y)
+  return y == y and y ~= math.huge and y ~= -math.huge
+end
+
+---Finds a zero of `f` above -1 by bisection, in the first bracket from a scan of rates that
+---holds a change of sign, looking out from `guess`. Returns nil when there is none.
+---@param f fun(x: number): number
+---@param guess number
+---@return number?
+local function bisect (f, guess)
+  local points = {} ---@type number[]
+  local x = -0.999
+  while x < 1000 do
+    points[#points + 1] = x
+    x = x < 1 and x + 0.01 or x * 1.1
+  end
+  -- Try the brackets nearest the guess first.
+  local pairs_by_distance = {} ---@type integer[]
+  for i = 1, #points - 1 do
+    pairs_by_distance[i] = i
+  end
+  table.sort (pairs_by_distance, function (i, j)
+    return math.abs (points[i] - guess) < math.abs (points[j] - guess)
+  end)
+  for _, i in ipairs (pairs_by_distance) do
+    local lo, hi = points[i], points[i + 1]
+    local flo, fhi = f (lo), f (hi)
+    if is_finite (flo) and is_finite (fhi) and (flo < 0) ~= (fhi < 0) then
+      for _ = 1, 200 do
+        local mid = (lo + hi) / 2
+        local fm = f (mid)
+        if fm == 0 or hi - lo < 1e-15 * math.max (1, math.abs (mid)) then
+          return mid
+        end
+        if (fm < 0) == (flo < 0) then
+          lo, flo = mid, fm
+        else
+          hi = mid
+        end
+      end
+      return (lo + hi) / 2
+    end
+  end
+  return nil
+end
+
+---Finds where `f` is zero near `guess`, above -1, as RATE and IRR need. Newton's method runs
+---first, with its step halved whenever it would land at or below -1 or make things worse.
+---When it does not settle, a scan for a change of sign and bisection take over. Returns nil
+---when there is no zero.
 ---@param f fun(x: number): number
 ---@param guess number
 ---@return number?
 local function solve (f, guess)
+  if guess <= -1 then
+    return nil
+  end
   local x = guess
+  local y = f (x)
   for _ = 1, 100 do
-    local y = f (x)
-    local step = 1e-7 * math.max (1, math.abs (x))
-    local slope = (f (x + step) - y) / step ---@type number
-    if slope == 0 or slope ~= slope then
-      return nil
+    if not is_finite (y) then
+      break
     end
-    local next_x = x - y / slope ---@type number
-    if next_x ~= next_x or next_x <= -1 then
-      return nil
+    if y == 0 then
+      return x
     end
-    if math.abs (next_x - x) < 1e-12 * math.max (1, math.abs (x)) then
+    local h = 1e-7 * math.max (1, math.abs (x))
+    local slope = (f (x + h) - y) / h ---@type number
+    if slope == 0 or not is_finite (slope) then
+      break
+    end
+    local step = y / slope
+    local next_x, next_y = x - step, 0.0
+    local tries = 0
+    while true do
+      if next_x > -1 then
+        next_y = f (next_x)
+        if is_finite (next_y) and math.abs (next_y) <= math.abs (y) * 2 then
+          break
+        end
+      end
+      tries = tries + 1
+      if tries > 60 then
+        break
+      end
+      step = step / 2
+      next_x = x - step
+    end
+    if tries > 60 then
+      break
+    end
+    -- A step cut short by the halving is no sign of having settled.
+    if
+      tries == 0
+      and math.abs (next_x - x) < 1e-12 * math.max (1, math.abs (x))
+    then
       return next_x
     end
-    x = next_x
+    x, y = next_x, next_y
   end
-  return nil
+  return bisect (f, guess)
 end
 
 define (
@@ -6624,6 +7122,164 @@ define (
     end,
   }
 )
+
+---------------------------------------------------------------------------------------------
+-- More functions
+---------------------------------------------------------------------------------------------
+
+---What the modules with more functions get from the formula language: its helpers, and
+---`define` to add a function and its catalog entry. Each module returns a function that takes
+---the kit, so the functions join the catalog before it is sorted.
+---@class Sheet.FormulaKit
+---@field define fun(name: string, category: Sheet.Category, syntax: string, summary: string, spec: Sheet.Function)
+---@field ERRORS table<string, Sheet.Error>
+---@field MANY integer
+---@field EMPTY table What a name holds when LET gives it an empty value.
+---@field raise fun(code: string): any
+---@field raise_value fun(err: any): any
+---@field is_error fun(v: any): boolean
+---@field is_lambda fun(v: any): boolean
+---@field is_grid fun(v: Sheet.Result): boolean
+---@field dims fun(v: Sheet.Result): integer, integer
+---@field grid_at fun(g: Sheet.Grid, i: integer, j: integer, ctx: Sheet.Context): Sheet.Value
+---@field new_array fun(h: integer, w: integer, v: Sheet.Values): Sheet.Array
+---@field eval fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
+---@field grid_or_value fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
+---@field need_grid fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Grid
+---@field need_reference fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.RangeValue
+---@field each fun(node: Sheet.Node, ctx: Sheet.Context, fn: fun(v: Sheet.Value, in_ref: boolean))
+---@field numbers fun(args: Sheet.Node[], ctx: Sheet.Context, first?: integer, last?: integer): number[]
+---@field paired fun(ynode: Sheet.Node, xnode: Sheet.Node, ctx: Sheet.Context): number[], number[]
+---@field apply fun(fn: Sheet.Lambda, values: table<integer, Sheet.Result>, n: integer, ctx: Sheet.Context): Sheet.Result
+---@field within fun(ctx: Sheet.Context, scope: Sheet.Scope?, fn: fun(): Sheet.Result): Sheet.Result
+---@field given fun(node: Sheet.Node?): boolean
+---@field value_of fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Value
+---@field number_of fun(node: Sheet.Node, ctx: Sheet.Context): number
+---@field int_of fun(node: Sheet.Node, ctx: Sheet.Context): integer
+---@field bool_of fun(node: Sheet.Node, ctx: Sheet.Context): boolean
+---@field text_of fun(node: Sheet.Node, ctx: Sheet.Context): string
+---@field to_number fun(v: Sheet.Value): number
+---@field to_bool fun(v: Sheet.Value): boolean
+---@field to_text fun(v: Sheet.Value): string
+---@field opt fun(v: Sheet.Values, n: integer, i: integer, d: number): number
+---@field opt_int fun(v: Sheet.Values, n: integer, i: integer, d: integer): integer
+---@field opt_bool fun(v: Sheet.Values, n: integer, i: integer, d: boolean): boolean
+---@field trunc fun(n: number): integer
+---@field finite fun(n: number): number
+---@field compare fun(a: Sheet.Value, b: Sheet.Value): integer
+---@field lower fun(s: string): string
+---@field upper fun(s: string): string
+---@field total_of fun(list: number[]): number
+---@field variance fun(list: number[], sample: boolean): number
+---@field fit fun(ys: number[], xs: number[]): number, number
+---@field solve fun(f: (fun(x: number): number), guess: number): number?
+---@field date_arg fun(v: Sheet.Value, ctx?: Sheet.Context): number
+---@field ymd fun(serial: number): integer, integer, integer
+---@field make_date fun(y: integer, m: integer, d: integer): integer
+---@field weekday0 fun(serial: number): integer
+---@field holidays fun(node: Sheet.Node?, ctx: Sheet.Context): table<integer, boolean>
+---@field days_in_month fun(y: integer, m: integer): integer
+---@field round_to fun(x: number, digits: integer, mode: 'near'|'up'|'down'): number
+---@field parse_number fun(text: string): number?
+---@field col_name fun(n: integer): string
+---@field address fun(row: integer, col: integer): string
+---@field quote_sheet fun(name: string): string
+---@field percentile fun(list: number[], k: number): number
+---@field clean fun(n: number): number
+---@field reference fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.RangeValue?
+---@field pmt fun(rate: number, nper: number, pv: number, fv: number, kind: integer): number
+---@field fv fun(rate: number, nper: number, payment: number, pv: number, kind: integer): number
+---@field ipmt fun(rate: number, per: number, nper: number, pv: number, future: number, kind: integer): number
+---@field is_weekend fun(day: integer): boolean
+---@field chars fun(s: string): string[]
+---@field length fun(s: string): integer
+---@field wildcard fun(text: string, anchored: boolean): string
+---@field format_value fun(v: Sheet.Value, digits?: integer): string
+---@field parse_address fun(text: string): integer?, integer?
+---@field col_number fun(letters: string): integer?
+---@field LAST_ROW integer
+---@field LAST_COL integer
+
+---@type Sheet.FormulaKit
+local kit = {
+  define = define,
+  ERRORS = ERRORS,
+  MANY = MANY,
+  EMPTY = EMPTY,
+  raise = raise,
+  raise_value = raise_value,
+  is_error = is_error,
+  is_lambda = is_lambda,
+  is_grid = is_grid,
+  dims = dims,
+  grid_at = grid_at,
+  new_array = new_array,
+  eval = eval,
+  grid_or_value = grid_or_value,
+  need_grid = need_grid,
+  need_reference = need_reference,
+  each = each,
+  numbers = numbers,
+  paired = paired,
+  apply = apply,
+  within = within,
+  given = given,
+  value_of = value_of,
+  number_of = number_of,
+  int_of = int_of,
+  bool_of = bool_of,
+  text_of = text_of,
+  to_number = to_number,
+  to_bool = to_bool,
+  to_text = to_text,
+  opt = opt,
+  opt_int = opt_int,
+  opt_bool = opt_bool,
+  trunc = trunc,
+  finite = finite,
+  compare = compare,
+  lower = lower,
+  upper = upper,
+  total_of = total_of,
+  variance = variance,
+  fit = fit,
+  solve = solve,
+  date_arg = date_arg,
+  ymd = ymd,
+  make_date = make_date,
+  weekday0 = weekday0,
+  holidays = holidays,
+  days_in_month = days_in_month,
+  round_to = round_to,
+  parse_number = M.parse_number,
+  col_name = M.col_name,
+  address = M.address,
+  quote_sheet = M.quote_sheet,
+  percentile = percentile,
+  clean = clean,
+  reference = reference,
+  pmt = pmt,
+  fv = fv,
+  ipmt = ipmt,
+  is_weekend = is_weekend,
+  chars = chars,
+  length = length,
+  wildcard = wildcard,
+  format_value = M.format_value,
+  parse_address = M.parse_address,
+  col_number = M.col_number,
+  LAST_ROW = LAST_ROW,
+  LAST_COL = LAST_COL,
+}
+for _, name in ipairs ({
+  'sheet_fn_arrays',
+  'sheet_fn_stats',
+  'sheet_fn_finance',
+  'sheet_fn_more',
+}) do
+  local add = require (name) --[[@as fun(kit: Sheet.FormulaKit)]]
+  add (kit)
+end
 
 table.sort (CATALOG, function (a, b)
   return a.name < b.name
@@ -6690,7 +7346,8 @@ end
 function M.refs (ast)
   local out = {} ---@type Sheet.Area[]
   walk (ast, function (node)
-    if node.kind == 'ref' then
+    -- A1# reads the formula in A1, which is worked out again whenever its block changes.
+    if node.kind == 'ref' or node.kind == 'spill' then
       out[#out + 1] = area_of (node.a --[[@as Sheet.Ref]])
     elseif node.kind == 'range' then
       out[#out + 1] = area_of (node.a --[[@as Sheet.Ref]], node.b)
@@ -6716,6 +7373,75 @@ function M.volatile (ast)
   local found = false
   walk (ast, function (node)
     if node.kind == 'call' and VOLATILE[node.name or ''] then
+      found = true
+    end
+  end)
+  return found
+end
+
+---The names a formula uses that are not functions, in upper case, each once: the names a
+---workbook may define, and the names LET and LAMBDA give.
+---@param ast Sheet.Node
+---@return string[]
+function M.names (ast)
+  local out, seen = {}, {} ---@type string[], table<string, boolean>
+  walk (ast, function (node)
+    local name = node.name
+    if
+      name
+      and (node.kind == 'name' or (node.kind == 'call' and not FUNCS[name]))
+      and not seen[name]
+    then
+      seen[name] = true
+      out[#out + 1] = name
+    end
+  end)
+  return out
+end
+
+---Why text cannot be a defined name, or nil when it can. A name starts with a letter, an
+---underscore or a backslash, then has letters, digits, underscores and points. It cannot
+---look like a cell, such as `A1` or `R1C1`, be TRUE or FALSE, or be a function's name.
+---@param name string
+---@return string?
+function M.name_problem (name)
+  if name == '' then
+    return 'Type a name.'
+  end
+  if #name > 255 then
+    return 'A name can have at most 255 characters.'
+  end
+  if not string.match (name, '^[%a_\\][%w_%.\\]*$') then
+    return 'A name starts with a letter or _, and holds only letters, digits, _ and points.'
+  end
+  local up = string.upper (name)
+  if
+    string.match (up, '^%a%a?%a?%d+$')
+    or string.match (up, '^R%d*C%d*$')
+    or up == 'R'
+    or up == 'C'
+  then
+    return 'A name cannot look like a cell, such as A1 or R1C1.'
+  end
+  if up == 'TRUE' or up == 'FALSE' then
+    return 'A name cannot be TRUE or FALSE.'
+  end
+  if FUNCS[up] then
+    return up .. ' is a function.'
+  end
+  return nil
+end
+
+---True when a formula reads which rows are hidden: it calls SUBTOTAL or AGGREGATE.
+---@param ast Sheet.Node
+---@return boolean
+function M.reads_hidden (ast)
+  local found = false
+  walk (ast, function (node)
+    if
+      node.kind == 'call'
+      and (node.name == 'SUBTOTAL' or node.name == 'AGGREGATE')
+    then
       found = true
     end
   end)
@@ -6825,540 +7551,642 @@ local function token_text (t, a, b)
   if b then
     out = out .. ':' .. ref_text (b)
   end
-  return out
-end
-
----@param ref Sheet.Ref
----@param axis 'row'|'col'
----@return integer?
-local function coord (ref, axis)
-  if axis == 'row' then
-    return ref.row
-  end
-  return ref.col
-end
-
----@param ref Sheet.Ref
----@param axis 'row'|'col'
----@param v integer
-local function set_coord (ref, axis, v)
-  if axis == 'row' then
-    ref.row = v
-  else
-    ref.col = v
-  end
-end
-
----Rebuilds formula text, letting `fn` replace the text of each reference or range. When `fn`
----returns nil the original text stays. Text that is not a formula, or does not tokenize,
----comes back unchanged.
----@param text string
----@param fn fun(t: Sheet.Token): string?
----@return string
-local function rewrite (text, fn)
-  if not M.is_formula (text) then
-    return text
-  end
-  local tokens = M.tokenize (text, 2)
-  if not tokens then
-    return text
-  end
-  local parts = {} ---@type string[]
-  local pos = 1
-  for _, t in ipairs (tokens) do
-    if t.kind == 'ref' or t.kind == 'range' then
-      local new = fn (t)
-      if new and new ~= t.text then
-        parts[#parts + 1] = string.sub (text, pos, t.from - 1)
-        parts[#parts + 1] = new
-        pos = t.to + 1
-      end
-    end
-  end
-  if pos == 1 then
-    return text
-  end
-  parts[#parts + 1] = string.sub (text, pos)
-  return table.concat (parts)
-end
-
----@param ref Sheet.Ref
----@param drow integer
----@param dcol integer
----@return Sheet.Ref?
-local function moved (ref, drow, dcol)
-  local out = copy_ref (ref)
-  if out.row and not out.row_abs then
-    out.row = out.row + drow
-  end
-  if out.col and not out.col_abs then
-    out.col = out.col + dcol
-  end
-  if (out.row and out.row < 1) or (out.col and out.col < 1) then
-    return nil
+  if t.spill then
+    out = out .. '#'
   end
   return out
 end
 
----Moves the relative references in a formula by a number of rows and columns, as a copy and
----paste does. References with `$` stay. A reference pushed off the sheet turns into #REF!.
----References to other sheets move too.
----@param text string
----@param drow integer
----@param dcol integer
----@return string
-function M.shift (text, drow, dcol)
-  if drow == 0 and dcol == 0 then
-    return text
+-- The helpers of the rewrites stay inside a block, since a chunk can hold only 200 locals.
+do
+  ---@param ref Sheet.Ref
+  ---@param axis 'row'|'col'
+  ---@return integer?
+  local function coord (ref, axis)
+    if axis == 'row' then
+      return ref.row
+    end
+    return ref.col
   end
-  return rewrite (text, function (t)
-    local a = moved (t.a --[[@as Sheet.Ref]], drow, dcol)
-    if t.kind == 'ref' then
-      return a and token_text (t, a) or '#REF!'
-    end
-    local b = moved (t.b --[[@as Sheet.Ref]], drow, dcol)
-    if not a or not b then
-      return '#REF!'
-    end
-    return token_text (t, a, b)
-  end)
-end
 
----Folds a sheet name for comparing, since sheet names ignore case.
----@param name string
----@return string
-local function sheet_key (name)
-  return lower (name)
-end
-
----True when a reference sits on the sheet where rows or columns changed.
----@param sheet string?
----@param opts Sheet.AdjustOptions?
----@return boolean
-local function affected (sheet, opts)
-  if not opts then
-    return sheet == nil
-  end
-  local mine = sheet or opts.own
-  local where = opts.sheet or opts.own
-  if opts.sheet == nil and sheet == nil then
-    return true
-  end
-  return mine ~= nil and where ~= nil and sheet_key (mine) == sheet_key (where)
-end
-
----Fixes the references in a formula after rows or columns change. `count` rows or columns
----were inserted before `at` when it is positive. When it is negative, `-count` of them were
----deleted starting at `at`. Every reference moves, `$` or not. A reference to a deleted cell
----turns into #REF!, and a range that loses some of its rows or columns shrinks.
----
----`opts.sheet` names the sheet that changed, and `opts.own` the sheet the formula lives on.
----A reference changes when the sheet it names, or `own` when it names none, is the one that
----changed. With no `opts`, only references that name no sheet change.
----@param text string
----@param axis 'row'|'col'
----@param at integer
----@param count integer
----@param opts? Sheet.AdjustOptions
----@return string
-function M.adjust (text, axis, at, count, opts)
-  if count == 0 then
-    return text
-  end
-  local n = -count
-  local last = at + n - 1
-  return rewrite (text, function (t)
-    if not affected (t.sheet, opts) then
-      return nil
-    end
-    local a = copy_ref (t.a --[[@as Sheet.Ref]])
-    if t.kind == 'ref' then
-      local v = coord (a, axis) or 0
-      if count > 0 then
-        if v >= at then
-          set_coord (a, axis, v + count)
-        end
-      elseif v >= at and v <= last then
-        return '#REF!'
-      elseif v > last then
-        set_coord (a, axis, v - n)
-      end
-      return token_text (t, a)
-    end
-    local b = copy_ref (t.b --[[@as Sheet.Ref]])
-    local x, y = coord (a, axis), coord (b, axis)
-    if x == nil or y == nil then
-      -- A whole column does not change when rows do, and a whole row does not when columns do.
-      return nil
-    end
-    local lo, hi = math.min (x, y), math.max (x, y)
-    if count > 0 then
-      if lo >= at then
-        lo = lo + count
-      end
-      if hi >= at then
-        hi = hi + count
-      end
+  ---@param ref Sheet.Ref
+  ---@param axis 'row'|'col'
+  ---@param v integer
+  local function set_coord (ref, axis, v)
+    if axis == 'row' then
+      ref.row = v
     else
-      if lo >= at and hi <= last then
-        return '#REF!'
-      end
-      if lo > last then
-        lo = lo - n
-      elseif lo >= at then
-        lo = at
-      end
-      if hi > last then
-        hi = hi - n
-      elseif hi >= at then
-        hi = at - 1
-      end
+      ref.col = v
     end
-    set_coord (a, axis, lo)
-    set_coord (b, axis, hi)
-    return token_text (t, a, b)
-  end)
-end
-
----Points the references to sheet `old` at sheet `new`, after a rename. Sheet names ignore case,
----and `new` gets quotes when it needs them.
----@param text string
----@param old string
----@param new string
----@return string
-function M.rename_sheet (text, old, new)
-  local key = sheet_key (old)
-  local prefix = M.quote_sheet (new) .. '!'
-  return rewrite (text, function (t)
-    if t.sheet and sheet_key (t.sheet) == key then
-      return prefix .. string.sub (t.text, #(t.sheet_text or '') + 1)
-    end
-    return nil
-  end)
-end
-
----Turns the references to sheet `name` into #REF!, after the sheet is deleted.
----@param text string
----@param name string
----@return string
-function M.drop_sheet (text, name)
-  local key = sheet_key (name)
-  return rewrite (text, function (t)
-    if t.sheet and sheet_key (t.sheet) == key then
-      return '#REF!'
-    end
-    return nil
-  end)
-end
-
----Tidies a formula as it is entered: references and function names go to upper case, a
----missing closing quote is added, and so are missing closing parentheses. Sheet names keep
----their case.
----@param text string
----@return string
-function M.normalize (text)
-  if not M.is_formula (text) then
-    return text
   end
-  local src = text
-  local tokens = M.tokenize (src, 2)
-  if not tokens then
-    src = text .. '"'
-    tokens = M.tokenize (src, 2)
+
+  ---Rebuilds formula text, letting `fn` replace the text of each reference or range. When `fn`
+  ---returns nil the original text stays. Text that is not a formula, or does not tokenize,
+  ---comes back unchanged.
+  ---@param text string
+  ---@param fn fun(t: Sheet.Token): string?
+  ---@return string
+  local function rewrite (text, fn)
+    if not M.is_formula (text) then
+      return text
+    end
+    local tokens = M.tokenize (text, 2)
     if not tokens then
       return text
     end
-  end
-  local depth = 0
-  local parts = {} ---@type string[]
-  local pos = 1
-  for _, t in ipairs (tokens) do
-    if t.kind == 'open' then
-      depth = depth + 1
-    elseif t.kind == 'close' then
-      depth = depth - 1
-    end
-    local kind = t.kind
-    if
-      kind == 'ref'
-      or kind == 'range'
-      or kind == 'error'
-      or kind == 'name'
-    then
-      local head = t.sheet_text or ''
-      local up = head .. string.upper (string.sub (t.text, #head + 1))
-      if up ~= t.text then
-        parts[#parts + 1] = string.sub (src, pos, t.from - 1)
-        parts[#parts + 1] = up
-        pos = t.to + 1
+    local parts = {} ---@type string[]
+    local pos = 1
+    for _, t in ipairs (tokens) do
+      if t.kind == 'ref' or t.kind == 'range' then
+        local new = fn (t)
+        if new and new ~= t.text then
+          parts[#parts + 1] = string.sub (text, pos, t.from - 1)
+          parts[#parts + 1] = new
+          pos = t.to + 1
+        end
       end
     end
+    if pos == 1 then
+      return text
+    end
+    parts[#parts + 1] = string.sub (text, pos)
+    return table.concat (parts)
   end
-  parts[#parts + 1] = string.sub (src, pos)
-  local out = table.concat (parts)
-  if depth > 0 then
-    out = out .. string.rep (')', depth)
+
+  ---@param ref Sheet.Ref
+  ---@param drow integer
+  ---@param dcol integer
+  ---@return Sheet.Ref?
+  local function moved (ref, drow, dcol)
+    local out = copy_ref (ref)
+    if out.row and not out.row_abs then
+      out.row = out.row + drow
+    end
+    if out.col and not out.col_abs then
+      out.col = out.col + dcol
+    end
+    if
+      (out.row and (out.row < 1 or out.row > LAST_ROW))
+      or (out.col and (out.col < 1 or out.col > LAST_COL))
+    then
+      return nil
+    end
+    return out
   end
-  return out
+
+  ---Moves the relative references in a formula by a number of rows and columns, as a copy and
+  ---paste does. References with `$` stay. A reference pushed off the sheet turns into #REF!.
+  ---References to other sheets move too.
+  ---@param text string
+  ---@param drow integer
+  ---@param dcol integer
+  ---@return string
+  function M.shift (text, drow, dcol)
+    if drow == 0 and dcol == 0 then
+      return text
+    end
+    return rewrite (text, function (t)
+      local a = moved (t.a --[[@as Sheet.Ref]], drow, dcol)
+      if t.kind == 'ref' then
+        return a and token_text (t, a) or '#REF!'
+      end
+      local b = moved (t.b --[[@as Sheet.Ref]], drow, dcol)
+      if not a or not b then
+        return '#REF!'
+      end
+      return token_text (t, a, b)
+    end)
+  end
+
+  ---Folds a sheet name for comparing, since sheet names ignore case.
+  ---@param name string
+  ---@return string
+  local function sheet_key (name)
+    return lower (name)
+  end
+
+  ---True when a reference sits on the sheet where rows or columns changed.
+  ---@param sheet string?
+  ---@param opts Sheet.AdjustOptions?
+  ---@return boolean
+  local function affected (sheet, opts)
+    if not opts then
+      return sheet == nil
+    end
+    local mine = sheet or opts.own
+    local where = opts.sheet or opts.own
+    if opts.sheet == nil and sheet == nil then
+      return true
+    end
+    return mine ~= nil
+      and where ~= nil
+      and sheet_key (mine) == sheet_key (where)
+  end
+
+  ---True when a reference names one cell, or both ends of a range, inside a block.
+  ---@param t Sheet.Token
+  ---@param rect Sheet.Rect
+  ---@return boolean all
+  ---@return boolean some True when at least one cell of the reference is in the block.
+  local function inside (t, rect)
+    local a = t.a --[[@as Sheet.Ref]]
+    local b = t.kind == 'range' and t.b or a --[[@as Sheet.Ref]]
+    local r1 = math.min (a.row or 1, b.row or 1)
+    local r2 = math.max (a.row or math.huge, b.row or math.huge)
+    local c1 = math.min (a.col or 1, b.col or 1)
+    local c2 = math.max (a.col or math.huge, b.col or math.huge)
+    local all = r1 >= rect.r1
+      and r2 <= rect.r2
+      and c1 >= rect.c1
+      and c2 <= rect.c2
+    local some = r1 <= rect.r2
+      and r2 >= rect.r1
+      and c1 <= rect.c2
+      and c2 >= rect.c1
+    return all, some
+  end
+
+  ---Fixes the references in a formula after a block of cells moves, as a cut and paste or a
+  ---drag does. A reference that lies wholly inside the block moves with it, `$` or not, and
+  ---follows it to another sheet. A reference to cells the block lands on, and that the block
+  ---did not hold, turns into #REF!, since the cells it named are gone. Every other reference
+  ---stays where it points.
+  ---
+  ---`opts.from` and `opts.to` name the sheets the block moves from and to, `opts.own` the sheet
+  ---the formula lives on, and `opts.lands` the sheet it lives on after the move, when the
+  ---formula moves with the block. A reference gets a sheet name when it needs one to keep
+  ---pointing at the same sheet.
+  ---@param text string
+  ---@param src Sheet.Rect The block before the move.
+  ---@param drow integer
+  ---@param dcol integer
+  ---@param opts Sheet.MoveOptions
+  ---@return string
+  function M.move (text, src, drow, dcol, opts)
+    local from, to = sheet_key (opts.from), sheet_key (opts.to)
+    local lands = opts.lands or opts.own
+    local dst = {
+      r1 = src.r1 + drow,
+      c1 = src.c1 + dcol,
+      r2 = src.r2 + drow,
+      c2 = src.c2 + dcol,
+    }
+    return rewrite (text, function (t)
+      local named = t.sheet or opts.own
+      local key = sheet_key (named)
+      local a = t.a --[[@as Sheet.Ref]]
+      local b = t.b
+      local where = named
+      if key == from and inside (t, src) then
+        a = copy_ref (a)
+        a.row, a.col = (a.row or 0) + drow, (a.col or 0) + dcol
+        if b then
+          b = copy_ref (b)
+          b.row, b.col = (b.row or 0) + drow, (b.col or 0) + dcol
+        end
+        where = opts.to
+      elseif key == to and inside (t, dst) then
+        local _, held = inside (t, src)
+        if key ~= from or not held then
+          return '#REF!'
+        end
+      end
+      local head ---@type string
+      if t.sheet and sheet_key (t.sheet) == sheet_key (where) then
+        head = t.sheet_text or ''
+      elseif sheet_key (where) == sheet_key (lands) then
+        head = ''
+      else
+        head = M.quote_sheet (where) .. '!'
+      end
+      local out = head .. ref_text (a)
+      if t.kind == 'range' and b then
+        out = out .. ':' .. ref_text (b)
+      end
+      if t.spill then
+        out = out .. '#'
+      end
+      return out
+    end)
+  end
+
+  ---Fixes the references in a formula after rows or columns change. `count` rows or columns
+  ---were inserted before `at` when it is positive. When it is negative, `-count` of them were
+  ---deleted starting at `at`. Every reference moves, `$` or not. A reference to a deleted cell
+  ---turns into #REF!, and a range that loses some of its rows or columns shrinks.
+  ---
+  ---`opts.sheet` names the sheet that changed, and `opts.own` the sheet the formula lives on.
+  ---A reference changes when the sheet it names, or `own` when it names none, is the one that
+  ---changed. With no `opts`, only references that name no sheet change.
+  ---@param text string
+  ---@param axis 'row'|'col'
+  ---@param at integer
+  ---@param count integer
+  ---@param opts? Sheet.AdjustOptions
+  ---@return string
+  function M.adjust (text, axis, at, count, opts)
+    if count == 0 then
+      return text
+    end
+    local n = -count
+    local last = at + n - 1
+    return rewrite (text, function (t)
+      if not affected (t.sheet, opts) then
+        return nil
+      end
+      local a = copy_ref (t.a --[[@as Sheet.Ref]])
+      if t.kind == 'ref' then
+        local v = coord (a, axis) or 0
+        if count > 0 then
+          if v >= at then
+            set_coord (a, axis, v + count)
+          end
+        elseif v >= at and v <= last then
+          return '#REF!'
+        elseif v > last then
+          set_coord (a, axis, v - n)
+        end
+        return token_text (t, a)
+      end
+      local b = copy_ref (t.b --[[@as Sheet.Ref]])
+      local x, y = coord (a, axis), coord (b, axis)
+      if x == nil or y == nil then
+        -- A whole column does not change when rows do, and a whole row does not when columns do.
+        return nil
+      end
+      local lo, hi = math.min (x, y), math.max (x, y)
+      if count > 0 then
+        if lo >= at then
+          lo = lo + count
+        end
+        if hi >= at then
+          hi = hi + count
+        end
+      else
+        if lo >= at and hi <= last then
+          return '#REF!'
+        end
+        if lo > last then
+          lo = lo - n
+        elseif lo >= at then
+          lo = at
+        end
+        if hi > last then
+          hi = hi - n
+        elseif hi >= at then
+          hi = at - 1
+        end
+      end
+      set_coord (a, axis, lo)
+      set_coord (b, axis, hi)
+      return token_text (t, a, b)
+    end)
+  end
+
+  ---Points the references to sheet `old` at sheet `new`, after a rename. Sheet names ignore case,
+  ---and `new` gets quotes when it needs them.
+  ---@param text string
+  ---@param old string
+  ---@param new string
+  ---@return string
+  function M.rename_sheet (text, old, new)
+    local key = sheet_key (old)
+    local prefix = M.quote_sheet (new) .. '!'
+    return rewrite (text, function (t)
+      if t.sheet and sheet_key (t.sheet) == key then
+        return prefix .. string.sub (t.text, #(t.sheet_text or '') + 1)
+      end
+      return nil
+    end)
+  end
+
+  ---Turns the references to sheet `name` into #REF!, after the sheet is deleted.
+  ---@param text string
+  ---@param name string
+  ---@return string
+  function M.drop_sheet (text, name)
+    local key = sheet_key (name)
+    return rewrite (text, function (t)
+      if t.sheet and sheet_key (t.sheet) == key then
+        return '#REF!'
+      end
+      return nil
+    end)
+  end
+
+  ---Tidies a formula as it is entered: references and function names go to upper case, a
+  ---missing closing quote is added, and so are missing closing parentheses. Sheet names keep
+  ---their case.
+  ---@param text string
+  ---@return string
+  function M.normalize (text)
+    if not M.is_formula (text) then
+      return text
+    end
+    local src = text
+    local tokens = M.tokenize (src, 2)
+    if not tokens then
+      src = text .. '"'
+      tokens = M.tokenize (src, 2)
+      if not tokens then
+        return text
+      end
+    end
+    local depth = 0
+    local parts = {} ---@type string[]
+    local pos = 1
+    for _, t in ipairs (tokens) do
+      if t.kind == 'open' then
+        depth = depth + 1
+      elseif t.kind == 'close' then
+        depth = depth - 1
+      end
+      local kind = t.kind
+      if
+        kind == 'ref'
+        or kind == 'range'
+        or kind == 'error'
+        or kind == 'name'
+      then
+        local head = t.sheet_text or ''
+        local up = head .. string.upper (string.sub (t.text, #head + 1))
+        if up ~= t.text then
+          parts[#parts + 1] = string.sub (src, pos, t.from - 1)
+          parts[#parts + 1] = up
+          pos = t.to + 1
+        end
+      end
+    end
+    parts[#parts + 1] = string.sub (src, pos)
+    local out = table.concat (parts)
+    if depth > 0 then
+      out = out .. string.rep (')', depth)
+    end
+    return out
+  end
 end
 
 ---------------------------------------------------------------------------------------------
 -- Typing formulas
 ---------------------------------------------------------------------------------------------
 
----The function name right before byte `i`, the "(" of a call, or nil when a plain bracket
----opens there.
----@param text string
----@param i integer
----@return string?
-local function name_before (text, i)
-  local head = string.sub (text, 1, i - 1)
-  local s, name = string.match (head, '()([%a_][%w_%.]*)%s*$')
-  if not name then
-    return nil
+-- The helpers of this part stay inside a block, since a chunk can hold only 200 locals.
+do
+  ---The function name right before byte `i`, the "(" of a call, or nil when a plain bracket
+  ---opens there.
+  ---@param text string
+  ---@param i integer
+  ---@return string?
+  local function name_before (text, i)
+    local head = string.sub (text, 1, i - 1)
+    local s, name = string.match (head, '()([%a_][%w_%.]*)%s*$')
+    if not name then
+      return nil
+    end
+    local prev = string.sub (head, s - 1, s - 1)
+    if prev ~= '' and string.find (prev, '[%w_%.%$!:\'"#]') then
+      return nil
+    end
+    return string.upper (name)
   end
-  local prev = string.sub (head, s - 1, s - 1)
-  if prev ~= '' and string.find (prev, '[%w_%.%$!:\'"#]') then
-    return nil
-  end
-  return string.upper (name)
-end
 
----Walks formula text up to the byte before `stop`. Returns the quote `stop` sits inside, `"`
----for text or `'` for a sheet name, and the brackets open around it, innermost last.
----@param text string
----@param stop integer
----@return string?
----@return Sheet.Frame[]
-local function scan (text, stop)
-  local frames = {} ---@type Sheet.Frame[]
-  local quote = nil ---@type string?
-  local i = 2
-  while i < stop do
-    local ch = string.sub (text, i, i)
-    if quote then
-      if ch == quote then
-        if i + 1 < stop and string.sub (text, i + 1, i + 1) == quote then
-          i = i + 1
-        else
-          quote = nil
+  ---Walks formula text up to the byte before `stop`. Returns the quote `stop` sits inside, `"`
+  ---for text or `'` for a sheet name, and the brackets open around it, innermost last.
+  ---@param text string
+  ---@param stop integer
+  ---@return string?
+  ---@return Sheet.Frame[]
+  local function scan (text, stop)
+    local frames = {} ---@type Sheet.Frame[]
+    local quote = nil ---@type string?
+    local i = 2
+    while i < stop do
+      local ch = string.sub (text, i, i)
+      if quote then
+        if ch == quote then
+          if i + 1 < stop and string.sub (text, i + 1, i + 1) == quote then
+            i = i + 1
+          else
+            quote = nil
+          end
+        end
+      elseif ch == '"' or ch == "'" then
+        quote = ch
+      elseif ch == '(' then
+        frames[#frames + 1] =
+          { name = name_before (text, i), arg = 1, brace = false }
+      elseif ch == '{' then
+        frames[#frames + 1] = { arg = 1, brace = true }
+      elseif ch == ')' or ch == '}' then
+        local brace = ch == '}'
+        for k = #frames, 1, -1 do
+          local found = frames[k].brace == brace
+          frames[k] = nil
+          if found then
+            break
+          end
+        end
+      elseif ch == ',' then
+        local top = frames[#frames]
+        if top then
+          top.arg = top.arg + 1
         end
       end
-    elseif ch == '"' or ch == "'" then
-      quote = ch
-    elseif ch == '(' then
-      frames[#frames + 1] =
-        { name = name_before (text, i), arg = 1, brace = false }
-    elseif ch == '{' then
-      frames[#frames + 1] = { arg = 1, brace = true }
-    elseif ch == ')' or ch == '}' then
-      local brace = ch == '}'
-      for k = #frames, 1, -1 do
-        local found = frames[k].brace == brace
-        frames[k] = nil
-        if found then
-          break
-        end
-      end
-    elseif ch == ',' then
-      local top = frames[#frames]
-      if top then
-        top.arg = top.arg + 1
+      i = i + 1
+    end
+    return quote, frames
+  end
+
+  ---True when some function name starts with `prefix`, ignoring case.
+  ---@param prefix string
+  ---@return boolean
+  local function names_start (prefix)
+    local up = string.upper (prefix)
+    for _, name in ipairs (M.functions) do
+      if string.sub (name, 1, #up) == up then
+        return true
       end
     end
-    i = i + 1
+    return false
   end
-  return quote, frames
-end
 
----True when some function name starts with `prefix`, ignoring case.
----@param prefix string
----@return boolean
-local function names_start (prefix)
-  local up = string.upper (prefix)
-  for _, name in ipairs (M.functions) do
-    if string.sub (name, 1, #up) == up then
-      return true
+  ---The function name being typed when the caret sits before byte `pos`: `from` and `to` span
+  ---the whole name, and `prefix` is the part before the caret. Returns nil inside text in
+  ---quotes, inside a sheet name, after a "!" or ":", and when no function starts that way.
+  ---@param text string
+  ---@param pos integer
+  ---@return Sheet.Completion?
+  function M.complete (text, pos)
+    if string.sub (text, 1, 1) ~= '=' or pos < 2 or pos > #text + 1 then
+      return nil
     end
-  end
-  return false
-end
-
----The function name being typed when the caret sits before byte `pos`: `from` and `to` span
----the whole name, and `prefix` is the part before the caret. Returns nil inside text in
----quotes, inside a sheet name, after a "!" or ":", and when no function starts that way.
----@param text string
----@param pos integer
----@return Sheet.Completion?
-function M.complete (text, pos)
-  if string.sub (text, 1, 1) ~= '=' or pos < 2 or pos > #text + 1 then
-    return nil
-  end
-  if scan (text, pos) then
-    return nil
-  end
-  local head = string.sub (text, 1, pos - 1)
-  local from, prefix = string.match (head, '()([%a_][%w_%.]*)$')
-  if not from then
-    return nil
-  end
-  local prev = string.sub (text, from - 1, from - 1)
-  if string.find (prev, '[%w_%.%$!:\'"#]') then
-    return nil
-  end
-  local rest = string.match (text, '^[%w_%.]*', pos)
-  local to = pos - 1 + #rest
-  if string.sub (text, to + 1, to + 1) == '!' or not names_start (prefix) then
-    return nil
-  end
-  return { from = from, to = to, prefix = prefix }
-end
-
----The innermost function whose arguments hold the caret before byte `pos`, and which of its
----arguments the caret is in. Plain brackets and array constants are passed over. Returns nil
----outside every function.
----@param text string
----@param pos integer
----@return Sheet.CallInfo?
-function M.call_at (text, pos)
-  if string.sub (text, 1, 1) ~= '=' then
-    return nil
-  end
-  local _, frames = scan (text, math.min (pos, #text + 1))
-  for k = #frames, 1, -1 do
-    local frame = frames[k]
-    if not frame.brace and frame.name then
-      ---@type Sheet.CallInfo
-      local info = { name = frame.name, arg = frame.arg }
-      return info
+    if scan (text, pos) then
+      return nil
     end
+    local head = string.sub (text, 1, pos - 1)
+    local from, prefix = string.match (head, '()([%a_][%w_%.]*)$')
+    if not from then
+      return nil
+    end
+    local prev = string.sub (text, from - 1, from - 1)
+    if string.find (prev, '[%w_%.%$!:\'"#]') then
+      return nil
+    end
+    local rest = string.match (text, '^[%w_%.]*', pos)
+    local to = pos - 1 + #rest
+    if string.sub (text, to + 1, to + 1) == '!' or not names_start (prefix) then
+      return nil
+    end
+    return { from = from, to = to, prefix = prefix }
   end
-  return nil
-end
 
----Every reference in formula text, in order, with the bytes it spans, for colouring. Text
----still being typed works too.
----@param text string
----@return Sheet.RefSpan[]
-function M.ref_spans (text)
-  local out = {} ---@type Sheet.RefSpan[]
-  if string.sub (text, 1, 1) ~= '=' then
+  ---The innermost function whose arguments hold the caret before byte `pos`, and which of its
+  ---arguments the caret is in. Plain brackets and array constants are passed over. Returns nil
+  ---outside every function.
+  ---@param text string
+  ---@param pos integer
+  ---@return Sheet.CallInfo?
+  function M.call_at (text, pos)
+    if string.sub (text, 1, 1) ~= '=' then
+      return nil
+    end
+    local _, frames = scan (text, math.min (pos, #text + 1))
+    for k = #frames, 1, -1 do
+      local frame = frames[k]
+      if not frame.brace and frame.name then
+        ---@type Sheet.CallInfo
+        local info = { name = frame.name, arg = frame.arg }
+        return info
+      end
+    end
+    return nil
+  end
+
+  ---Every reference in formula text, in order, with the bytes it spans, for colouring. Text
+  ---still being typed works too.
+  ---@param text string
+  ---@return Sheet.RefSpan[]
+  function M.ref_spans (text)
+    local out = {} ---@type Sheet.RefSpan[]
+    if string.sub (text, 1, 1) ~= '=' then
+      return out
+    end
+    for _, t in ipairs (lex (text, 2, true) or {}) do
+      if t.kind == 'ref' or t.kind == 'range' then
+        out[#out + 1] = {
+          from = t.from,
+          to = t.to,
+          area = area_of (t.a --[[@as Sheet.Ref]], t.b),
+        }
+      end
+    end
     return out
   end
-  for _, t in ipairs (lex (text, 2, true) or {}) do
-    if t.kind == 'ref' or t.kind == 'range' then
-      out[#out + 1] = {
-        from = t.from,
-        to = t.to,
-        area = area_of (t.a --[[@as Sheet.Ref]], t.b),
-      }
+
+  -- The anchors F4 moves to from each one, column first: A1, $A$1, A$1, $A1, then A1 again.
+  local NEXT_ANCHOR = {
+    ['--'] = '$$',
+    ['$$'] = '-$',
+    ['-$'] = '$-',
+    ['$-'] = '--',
+  }
+
+  ---Sets the anchors a reference has room for. A whole column has no row, and a whole row no
+  ---column.
+  ---@param ref Sheet.Ref
+  ---@param col_abs boolean
+  ---@param row_abs boolean
+  local function set_anchor (ref, col_abs, row_abs)
+    if ref.col then
+      ref.col_abs = col_abs
+    end
+    if ref.row then
+      ref.row_abs = row_abs
     end
   end
-  return out
-end
 
--- The anchors F4 moves to from each one, column first: A1, $A$1, A$1, $A1, then A1 again.
-local NEXT_ANCHOR = {
-  ['--'] = '$$',
-  ['$$'] = '-$',
-  ['-$'] = '$-',
-  ['$-'] = '--',
-}
-
----Sets the anchors a reference has room for. A whole column has no row, and a whole row no
----column.
----@param ref Sheet.Ref
----@param col_abs boolean
----@param row_abs boolean
-local function set_anchor (ref, col_abs, row_abs)
-  if ref.col then
-    ref.col_abs = col_abs
-  end
-  if ref.row then
-    ref.row_abs = row_abs
-  end
-end
-
----F4: cycles the `$` anchors of the reference at or right before the caret, `pos`, through
----A1, $A$1, A$1 and $A1. Both ends of a range change together. Returns the new text and the
----caret after the reference, or the text and `pos` unchanged when no reference is there.
----@param text string
----@param pos integer
----@return string
----@return integer
-function M.toggle_anchor (text, pos)
-  if string.sub (text, 1, 1) ~= '=' then
-    return text, pos
-  end
-  local hit = nil ---@type Sheet.Token?
-  for _, t in ipairs (lex (text, 2, true) or {}) do
-    if t.kind == 'ref' or t.kind == 'range' then
-      if t.from <= pos and pos <= t.to then
-        hit = t
-        break
-      end
-      if t.to + 1 == pos then
-        hit = t
+  ---F4: cycles the `$` anchors of the reference at or right before the caret, `pos`, through
+  ---A1, $A$1, A$1 and $A1. Both ends of a range change together. Returns the new text and the
+  ---caret after the reference, or the text and `pos` unchanged when no reference is there.
+  ---@param text string
+  ---@param pos integer
+  ---@return string
+  ---@return integer
+  function M.toggle_anchor (text, pos)
+    if string.sub (text, 1, 1) ~= '=' then
+      return text, pos
+    end
+    local hit = nil ---@type Sheet.Token?
+    for _, t in ipairs (lex (text, 2, true) or {}) do
+      if t.kind == 'ref' or t.kind == 'range' then
+        if t.from <= pos and pos <= t.to then
+          hit = t
+          break
+        end
+        if t.to + 1 == pos then
+          hit = t
+        end
       end
     end
+    if not hit then
+      return text, pos
+    end
+    local a = copy_ref (hit.a --[[@as Sheet.Ref]])
+    local b = hit.b and copy_ref (hit.b) or nil
+    local col_abs, row_abs = a.col_abs, a.row_abs
+    if a.col and a.row then
+      local key = (col_abs and '$' or '-') .. (row_abs and '$' or '-')
+      local next_key = NEXT_ANCHOR[key]
+      col_abs = string.sub (next_key, 1, 1) == '$'
+      row_abs = string.sub (next_key, 2, 2) == '$'
+    elseif a.col then
+      col_abs = not col_abs
+    else
+      row_abs = not row_abs
+    end
+    set_anchor (a, col_abs, row_abs)
+    if b then
+      set_anchor (b, col_abs, row_abs)
+    end
+    local new = token_text (hit, a, b)
+    local out = string.sub (text, 1, hit.from - 1)
+      .. new
+      .. string.sub (text, hit.to + 1)
+    return out, hit.from + #new
   end
-  if not hit then
-    return text, pos
-  end
-  local a = copy_ref (hit.a --[[@as Sheet.Ref]])
-  local b = hit.b and copy_ref (hit.b) or nil
-  local col_abs, row_abs = a.col_abs, a.row_abs
-  if a.col and a.row then
-    local key = (col_abs and '$' or '-') .. (row_abs and '$' or '-')
-    local next_key = NEXT_ANCHOR[key]
-    col_abs = string.sub (next_key, 1, 1) == '$'
-    row_abs = string.sub (next_key, 2, 2) == '$'
-  elseif a.col then
-    col_abs = not col_abs
-  else
-    row_abs = not row_abs
-  end
-  set_anchor (a, col_abs, row_abs)
-  if b then
-    set_anchor (b, col_abs, row_abs)
-  end
-  local new = token_text (hit, a, b)
-  local out = string.sub (text, 1, hit.from - 1)
-    .. new
-    .. string.sub (text, hit.to + 1)
-  return out, hit.from + #new
-end
 
----True when the caret in formula text sits where a reference can go, such as right after
----"=", "(", ",", an operator or a sheet name's "!", and not inside quotes. Clicking a cell or
----pressing an arrow key then puts the cell's address there. `pos` is the byte the caret sits
----before.
----@param text string
----@param pos integer
----@return boolean
-function M.can_point (text, pos)
-  if string.sub (text, 1, 1) ~= '=' then
-    return false
-  end
-  if scan (text, pos) then
-    return false
-  end
-  local head = string.sub (text, 1, pos - 1)
-  local before = string.match (head, '(%S)%s*$')
-  if not before or not string.find ('=(,+-*/^&<>:!', before, 1, true) then
-    return false
-  end
-  if before == '!' then
-    -- An error such as #REF! ends in "!" too, and no reference goes after it.
-    local tail = string.upper (string.match (head, '(%S+)%s*$') or '')
-    for _, code in ipairs (M.ERROR_CODES) do
-      if string.sub (tail, -#code) == code then
-        return false
+  ---True when the caret in formula text sits where a reference can go, such as right after
+  ---"=", "(", ",", an operator or a sheet name's "!", and not inside quotes. Clicking a cell or
+  ---pressing an arrow key then puts the cell's address there. `pos` is the byte the caret sits
+  ---before.
+  ---@param text string
+  ---@param pos integer
+  ---@return boolean
+  function M.can_point (text, pos)
+    if string.sub (text, 1, 1) ~= '=' then
+      return false
+    end
+    if scan (text, pos) then
+      return false
+    end
+    local head = string.sub (text, 1, pos - 1)
+    local before = string.match (head, '(%S)%s*$')
+    if not before or not string.find ('=(,+-*/^&<>:!', before, 1, true) then
+      return false
+    end
+    if before == '!' then
+      -- An error such as #REF! ends in "!" too, and no reference goes after it.
+      local tail = string.upper (string.match (head, '(%S+)%s*$') or '')
+      for _, code in ipairs (M.ERROR_CODES) do
+        if string.sub (tail, -#code) == code then
+          return false
+        end
       end
     end
+    local after = string.match (string.sub (text, pos), '^%s*(%S)')
+    return after == nil or string.find (')+-*/^&<>=,', after, 1, true) ~= nil
   end
-  local after = string.match (string.sub (text, pos), '^%s*(%S)')
-  return after == nil or string.find (')+-*/^&<>=,', after, 1, true) ~= nil
+
 end
 
 return M

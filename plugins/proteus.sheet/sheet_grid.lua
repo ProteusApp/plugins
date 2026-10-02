@@ -225,6 +225,7 @@ local CSS = [[
   background-color: var(--bg); vertical-align: bottom; white-space: nowrap; line-height: 1.25; }
 .sheet-grid-t td > div { max-height: var(--h, 19px); overflow: hidden; white-space: pre; }
 .sheet-grid-t td.sheet-grid-o { overflow: visible; }
+.sheet-grid-t .sheet-grid-ic { float: left; margin-right: 4px; }
 .sheet-grid-t td.sheet-grid-fc { position: sticky; z-index: 3; }
 .sheet-grid-t tr.sheet-grid-fr > td { position: sticky; z-index: 4; }
 .sheet-grid-t tr.sheet-grid-fr > td.sheet-grid-fc { z-index: 8; }

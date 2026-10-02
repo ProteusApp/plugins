@@ -2,10 +2,11 @@
   "id": "kanban",
   "name": "Kanban",
   "description": "Cards in columns. Drag them along as work moves.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "kind": "profile",
   "plugins": [
     "proteus.ui.toolbar",
+    "proteus.marketplace",
     "proteus.kanban",
     "proteus.discord.rpc"
   ],

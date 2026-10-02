@@ -33,11 +33,12 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field border_left? string
 ---@field border_color? string One colour for every side. The default is a dark grey.
 
----A conditional formatting rule. Rules apply in list order, and a later rule wins on the same
----field. `value` and `value2` are text as typed.
+---A conditional formatting rule. The list runs in order of priority, as in Excel: where two
+---rules set the same field, the one higher in the list wins, and a rule with `stop` keeps the
+---rules below it from applying where it holds. `value` and `value2` are text as typed.
 ---@class Sheet.Rule
 ---@field range string Such as `D5:D10`.
----@field type string `compare`, `text`, `blank`, `not_blank`, `error`, `duplicate`, `unique`, `top`, `bottom`, `above_average`, `below_average`, `formula`, `scale` or `bar`.
+---@field type string `compare`, `text`, `blank`, `not_blank`, `error`, `duplicate`, `unique`, `top`, `bottom`, `above_average`, `below_average`, `formula`, `scale`, `bar` or `icons`.
 ---@field op? string
 ---@field value? string
 ---@field value2? string
@@ -49,12 +50,17 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field mid_color? string
 ---@field max_color? string
 ---@field color? string The colour of a data bar.
+---@field stop? boolean Stop if true: where the rule holds, the rules below it do not apply.
+---@field icons? string The icon set of an `icons` rule: `arrows`, `lights` or `flags`.
+---@field reverse? boolean True to give the lowest values the first icon of the set.
 
----A validation rule: a list of allowed text, or a test on numbers.
+---A validation rule: a list of allowed text, a test on numbers, dates or the length of text,
+---or a formula that must hold.
 ---@class Sheet.Validation
 ---@field range string
----@field type 'list'|'number'
+---@field type 'list'|'number'|'date'|'length'|'formula'
 ---@field values? string[]
+---@field formula? string For a list, a reference to the cells that hold the items, such as `=$A$1:$A$9`. For a formula rule, the formula, written for the top left cell of the range, that must give TRUE.
 ---@field op? string
 ---@field value? string
 ---@field value2? string
@@ -99,11 +105,19 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field validation? Sheet.Validation[]
 ---@field charts? Sheet.ChartSpec[]
 
----A workbook file, version 2.
+---A name the workbook gives a reference or a value, such as `Rates` for
+---`=Sheet1!$B$2:$B$5`. Formulas anywhere in the book use it as they would the reference.
+---@class Sheet.DefinedName
+---@field name string As written, such as `Rates`.
+---@field formula string What it stands for, with its "=".
+
+---A workbook file, version 3. Version 3 lists conditional formatting rules first rule
+---first, as Excel does, where version 2 listed them the other way round.
 ---@class Sheet.BookData
 ---@field version integer
 ---@field active? integer The sheet shown first, counting from 1.
 ---@field sheets Sheet.SheetData[]
+---@field names? Sheet.DefinedName[] The names the workbook defines, sorted by name.
 
 ---@class Sheet.BookOptions
 ---@field clock? fun(): number The date and time now, as a serial number.
@@ -132,12 +146,14 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field points table<integer, table<Sheet.Cell, boolean>> Small blocks, cell by cell.
 ---@field big table<Sheet.WatchArea, boolean> Blocks of more than 64 cells.
 ---@field by_col table<integer, table<Sheet.Cell, boolean>> The formulas of each column.
+---@field spills table<integer, Sheet.Cell> The formula whose block shows in each cell around it.
+---@field blocked table<Sheet.Cell, Sheet.Rect> Formulas whose block cannot spill, and the cells it needs.
 
 ---One change inside an undo step. `cell` changes a cell's text and style. `prop` changes one
 ---entry of a sheet's map, or a whole field when `key` is nil. `state` swaps everything a sheet
 ---holds, around an insert or a delete. `sheets` changes the list of sheets.
 ---@class Sheet.Change
----@field kind 'cell'|'prop'|'state'|'sheets'
+---@field kind 'cell'|'prop'|'state'|'sheets'|'names'
 ---@field sheet? Sheet.Sheet
 ---@field row? integer
 ---@field col? integer
@@ -187,10 +203,15 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field full boolean True when every formula needs working out again.
 ---@field stale boolean True when the volatile formulas need working out again.
 ---@field edited Sheet.Position[] Cells whose text changed since the last recalculation.
+---@field spill_moved Sheet.Position[] Cells a block spilled into, or left, since the formulas that read them were worked out.
 ---@field volatile table<Sheet.Cell, boolean>
+---@field row_readers table<Sheet.Cell, boolean> Formulas that read which rows are hidden, such as SUBTOTAL.
+---@field rows_stale boolean True when hidden rows changed since those formulas were worked out.
 ---@field by_name table<string, Sheet.Sheet> Sheets by lower-case name.
 ---@field name_cache table<string, Sheet.Sheet|false> Sheets by name as a formula writes it.
 ---@field live table<Sheet.Sheet, boolean> The sheets in the book now.
+---@field defined_names Sheet.DefinedName[] The names the workbook defines, sorted by name.
+---@field name_index table<string, Sheet.DefinedName> The defined names by name in upper case.
 ---@field nesting integer How deep the formulas worked out on demand go.
 ---@field evaluated integer
 ---@field stamp integer Counts every change and recalculation, so caches know when to refresh.
@@ -213,6 +234,10 @@ local DEPTH = 32
 local HUGE = math.huge
 local KEY = model.KEY
 local CYCLE = formula.error ('#CYCLE!')
+local SPILL = formula.error ('#SPILL!')
+local TOO_DEEP = formula.error ('#CALC!')
+-- How many times in a row a recalculation goes round again for blocks that spilled further.
+local SPILL_ROUNDS = 8
 local BROKEN = formula.error ('#ERROR!')
 local MAX_NAME = 100
 
@@ -279,10 +304,15 @@ local function blank_book (opts)
   self.full = true
   self.stale = false
   self.edited = {}
+  self.spill_moved = {}
   self.volatile = {}
+  self.row_readers = {}
+  self.rows_stale = false
   self.by_name = {}
   self.name_cache = {}
   self.live = {}
+  self.defined_names = {}
+  self.name_index = {}
   self.nesting = 0
   self.evaluated = 0
   self.stamp = 0
@@ -322,6 +352,150 @@ function Book:names_changed ()
   end
   self.full = true
   self.stamp = self.stamp + 1
+end
+
+---------------------------------------------------------------------------------------------
+-- Defined names
+---------------------------------------------------------------------------------------------
+
+---@type table<string, Sheet.Node|false>
+local name_asts = setmetatable ({}, { __mode = 'v' })
+
+---The defined name with this name, ignoring case, or nil.
+---@param name string
+---@return Sheet.DefinedName?
+function Book:defined (name)
+  return self.name_index[string.upper (name)]
+end
+
+---The parsed formula a defined name stands for, or nil when there is no such name or its
+---formula does not read.
+---@param name string
+---@return Sheet.Node?
+function Book:name_ast (name)
+  local n = self.name_index[string.upper (name)]
+  if not n then
+    return nil
+  end
+  local ast = name_asts[n.formula]
+  if ast == nil then
+    ast = formula.parse (n.formula) or false
+    name_asts[n.formula] = ast
+  end
+  return ast or nil
+end
+
+---Puts a new list of defined names in place, without recording it. Every formula is worked
+---out again, since any of them may use a name.
+---@param list Sheet.DefinedName[]
+function Book:put_names (list)
+  local sorted = copy_list (list) --[[@as Sheet.DefinedName[] ]]
+  table.sort (sorted, function (a, b)
+    return string.upper (a.name) < string.upper (b.name)
+  end)
+  self.defined_names = sorted
+  self.name_index = {}
+  for _, n in ipairs (sorted) do
+    self.name_index[string.upper (n.name)] = n
+  end
+  self.full = true
+  self.stamp = self.stamp + 1
+end
+
+---Records a new list of defined names as part of the open step, and puts it in place.
+---@param list Sheet.DefinedName[]
+function Book:change_names (list)
+  self:log ({ kind = 'names', before = self.defined_names, after = list })
+  self:put_names (list)
+end
+
+---Why a name cannot be defined, or nil when it can. `except` is the name being changed,
+---which may keep its own name.
+---@param name string
+---@param except? string
+---@return string?
+function Book:defined_problem (name, except)
+  local problem = formula.name_problem (name)
+  if problem then
+    return problem
+  end
+  local other = self:defined (name)
+  if
+    other
+    and not (except and string.upper (except) == string.upper (other.name))
+  then
+    return 'The name ' .. other.name .. ' is taken.'
+  end
+  return nil
+end
+
+---Defines a name, or changes the one called `old`, as one undo step. The formula is what the
+---name stands for, such as `=Sheet1!$B$2:$B$5`. Returns false and the reason when the name or
+---the formula cannot be used.
+---@param name string
+---@param text string
+---@param old? string
+---@return boolean
+---@return string? problem
+function Book:set_name (name, text, old)
+  local problem = self:defined_problem (name, old)
+  if problem then
+    return false, problem
+  end
+  local body = formula.is_formula (text) and text or '=' .. text
+  local ast, why = formula.parse (body)
+  if not ast then
+    return false, why
+  end
+  local list = {} ---@type Sheet.DefinedName[]
+  for _, n in ipairs (self.defined_names) do
+    if not (old and string.upper (n.name) == string.upper (old)) then
+      list[#list + 1] = n
+    end
+  end
+  list[#list + 1] = { name = name, formula = formula.normalize (body) }
+  self:begin ({ label = old and 'Change name' or 'Define name' })
+  self:change_names (list)
+  self:finish ()
+  return true, nil
+end
+
+---Deletes a defined name, as one undo step. Formulas that use it give #NAME?.
+---@param name string
+---@return boolean
+function Book:delete_name (name)
+  local list = {} ---@type Sheet.DefinedName[]
+  for _, n in ipairs (self.defined_names) do
+    if string.upper (n.name) ~= string.upper (name) then
+      list[#list + 1] = n
+    end
+  end
+  if #list == #self.defined_names then
+    return false
+  end
+  self:begin ({ label = 'Delete name' })
+  self:change_names (list)
+  self:finish ()
+  return true
+end
+
+---Rewrites the formulas of the defined names through `fn`, as part of the open step.
+---@param fn fun(text: string): string
+function Book:rewrite_names (fn)
+  local list = {} ---@type Sheet.DefinedName[]
+  local changed = false
+  for i, n in ipairs (self.defined_names) do
+    local text = fn (n.formula)
+    if text ~= n.formula then
+      changed = true
+      list[i] = { name = n.name, formula = text }
+    else
+      list[i] = n
+    end
+  end
+  if changed then
+    self:change_names (list)
+  end
 end
 
 ---The sheet with this name, ignoring case, or nil.
@@ -511,9 +685,20 @@ function Book:rewrite_sheet (sheet, fn)
       sheet:record (cell.row, cell.col, { text = text, style = cell.style })
     end
   end
-  local rules = {} ---@type Sheet.Rule[]
+  for _, field in ipairs ({ 'rules', 'validation' }) do
+    self:rewrite_items (sheet, field, fn)
+  end
+end
+
+---Rewrites the formulas of a sheet's rules or validation, as `rewrite_formulas` does.
+---@param sheet Sheet.Sheet
+---@param field string `rules` or `validation`.
+---@param fn fun(text: string, own: Sheet.Sheet): string
+function Book:rewrite_items (sheet, field, fn)
+  local items = (sheet --[[@as table<string, table[]>]])[field]
+  local rules = {} ---@type table[]
   local changed = false
-  for i, rule in ipairs (sheet.rules) do
+  for i, rule in ipairs (items) do
     rules[i] = rule
     if type (rule.formula) == 'string' then
       local text = fn (rule.formula, sheet)
@@ -525,13 +710,13 @@ function Book:rewrite_sheet (sheet, fn)
           copy[k] = v
         end
         copy.formula = text
-        rules[i] = copy --[[@as Sheet.Rule]]
+        rules[i] = copy
         changed = true
       end
     end
   end
   if changed then
-    sheet:set_field ('rules', rules)
+    sheet:set_field (field, rules)
   end
 end
 
@@ -556,6 +741,9 @@ function Book:rename_sheet (index, name)
   local old = sheet.name
   self:begin ({ sheet = sheet, label = 'Rename sheet' })
   self:rewrite_formulas (function (text)
+    return formula.rename_sheet (text, old, name)
+  end)
+  self:rewrite_names (function (text)
     return formula.rename_sheet (text, old, name)
   end)
   sheet:set_prop ('name', nil, name)
@@ -586,6 +774,9 @@ function Book:delete_sheet (index)
   self:begin ({ sheet = sheet, label = 'Delete sheet' })
   self:change_sheets (list, math.max (1, active))
   self:rewrite_formulas (function (text)
+    return formula.drop_sheet (text, sheet.name)
+  end)
+  self:rewrite_names (function (text)
     return formula.drop_sheet (text, sheet.name)
   end)
   self:finish ()
@@ -721,7 +912,37 @@ function Book:watch (sheet, cell)
   if not ast then
     return
   end
-  for _, area in ipairs (refs (ast)) do
+  local areas_read = refs (ast)
+  local volatile = is_volatile (ast)
+  if #self.defined_names > 0 then
+    -- A formula that uses a defined name reads what the name's formula reads.
+    local more = {} ---@type Sheet.Area[]
+    local seen = {} ---@type table<string, boolean>
+    local queue = formula.names (ast)
+    local i = 1
+    while i <= #queue do
+      local name = queue[i]
+      i = i + 1
+      local named = not seen[name] and self:name_ast (name)
+      seen[name] = true
+      if named then
+        for _, area in ipairs (refs (named)) do
+          more[#more + 1] = area
+        end
+        volatile = volatile or is_volatile (named)
+        for _, inner in ipairs (formula.names (named)) do
+          queue[#queue + 1] = inner
+        end
+      end
+    end
+    if #more > 0 then
+      for _, area in ipairs (areas_read) do
+        more[#more + 1] = area
+      end
+      areas_read = more
+    end
+  end
+  for _, area in ipairs (areas_read) do
     local target = sheet ---@type Sheet.Sheet?
     if area.sheet then
       target = self:find (area.sheet)
@@ -755,9 +976,12 @@ function Book:watch (sheet, cell)
       end
     end
   end
-  if is_volatile (ast) then
+  if volatile then
     cell.volatile = true
     self.volatile[cell] = true
+  end
+  if formula.reads_hidden (ast) then
+    self.row_readers[cell] = true
   end
 end
 
@@ -770,6 +994,7 @@ function Book:unwatch (sheet, cell)
     mine[cell] = nil
   end
   self.volatile[cell] = nil
+  self.row_readers[cell] = nil
   for _, a in ipairs (cell.areas or {}) do
     local w = a.sheet.watch
     if small (a) then
@@ -826,6 +1051,7 @@ function Book:cell_changed (sheet, row, col, old, new)
   end
   if old and old.formula then
     self:unwatch (sheet, old)
+    self:place (sheet, old, nil)
   end
   if new and new.formula then
     self:watch (sheet, new)
@@ -865,9 +1091,17 @@ function Book:context (sheet)
         end
         target = found
       end
-      local cell = target.cells[row * KEY + col]
-      if not cell then
-        return nil
+      local key = row * KEY + col
+      local cell = target.cells[key]
+      if not cell or cell.text == '' then
+        local anchor = target.watch.spills[key]
+        if not anchor then
+          return nil
+        end
+        if anchor.pending then
+          book:on_demand (anchor)
+        end
+        return (target:spilled (row, col))
       end
       if cell.pending then
         return book:on_demand (cell)
@@ -880,6 +1114,78 @@ function Book:context (sheet)
         return nil, nil
       end
       return found.rows, found.cols
+    end,
+    name = function (name)
+      return book:name_ast (name)
+    end,
+    hidden = function (row, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      if not target then
+        return nil
+      end
+      if target:filtered (row) then
+        return 'filter'
+      end
+      return target.hidden_rows[row] and 'user' or nil
+    end,
+    subtotal = function (row, col, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      local cell = target and target.cells[row * KEY + col]
+      if not cell or not cell.formula then
+        return false
+      end
+      local up = string.upper (cell.text)
+      return string.find (up, 'SUBTOTAL(', 1, true) ~= nil
+        or string.find (up, 'AGGREGATE(', 1, true) ~= nil
+    end,
+    formula_text = function (row, col, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      local cell = target and target.cells[row * KEY + col]
+      if cell and cell.formula then
+        return cell.text
+      end
+      return nil
+    end,
+    sheet_index = function (name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      return target and book:index_of (target)
+    end,
+    sheet_count = function ()
+      return #book.sheets
+    end,
+    spill = function (row, col, name)
+      local target = sheet
+      if name then
+        local found = book:find (name)
+        if not found then
+          return nil, nil
+        end
+        target = found
+      end
+      local cell = target.cells[row * KEY + col]
+      if not cell or not cell.formula then
+        return nil, nil
+      end
+      if cell.pending then
+        book:on_demand (cell)
+      end
+      local area = cell.spill_area
+      if not area then
+        return nil, nil
+      end
+      return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
     end,
   }
   sheet.ctx = ctx
@@ -897,7 +1203,9 @@ function Book:compute (cell)
   cell.busy = true
   local ast = cell.ast
   if ast then
-    cell.value = formula.evaluate (ast, ctx)
+    local value, block = formula.evaluate (ast, ctx, true)
+    cell.value = value
+    self:place (sheet, cell, block)
   else
     cell.value = BROKEN
   end
@@ -907,13 +1215,122 @@ function Book:compute (cell)
   self.evaluated = self.evaluated + 1
 end
 
+---True when a block cannot spill into the cells it needs: one of them holds text, or another
+---formula's block, or sits in merged cells.
+---@param sheet Sheet.Sheet
+---@param cell Sheet.Cell
+---@param area Sheet.Rect
+---@return boolean
+local function spill_blocked (sheet, cell, area)
+  if area.r2 > formula.LAST_ROW or area.c2 > formula.LAST_COL then
+    return true
+  end
+  local spills = sheet.watch.spills
+  for r = area.r1, area.r2 do
+    for c = area.c1, area.c2 do
+      if r ~= cell.row or c ~= cell.col then
+        local key = r * KEY + c
+        local other = sheet.cells[key]
+        if other and other.text ~= '' then
+          return true
+        end
+        local owner = spills[key]
+        if owner and owner ~= cell then
+          return true
+        end
+      end
+    end
+  end
+  for _, m in ipairs (sheet.merges) do
+    if model.overlaps (m, area) then
+      return true
+    end
+  end
+  return false
+end
+
+---Puts the block a formula gave into the cells around it, or takes it away when `block` is
+---nil. A block with no room shows #SPILL! in the formula's cell. The cells the block newly
+---covers go on `spill_moved`, so the formulas that read them are worked out again.
+---@param sheet Sheet.Sheet
+---@param cell Sheet.Cell
+---@param block Sheet.Array?
+function Book:place (sheet, cell, block)
+  local w = sheet.watch
+  local old = cell.spill_area
+  if old then
+    for r = old.r1, old.r2 do
+      for c = old.c1, old.c2 do
+        local key = r * KEY + c
+        if w.spills[key] == cell then
+          w.spills[key] = nil
+        end
+      end
+    end
+  end
+  w.blocked[cell] = nil
+  cell.spill, cell.spill_area = nil, nil
+  local area = nil ---@type Sheet.Rect?
+  if block then
+    area = {
+      r1 = cell.row,
+      c1 = cell.col,
+      r2 = cell.row + block.h - 1,
+      c2 = cell.col + block.w - 1,
+    }
+    if spill_blocked (sheet, cell, area) then
+      cell.value = SPILL
+      w.blocked[cell] = area
+      area = nil
+    else
+      for r = area.r1, area.r2 do
+        for c = area.c1, area.c2 do
+          if r ~= cell.row or c ~= cell.col then
+            w.spills[r * KEY + c] = cell
+          end
+        end
+      end
+      cell.spill, cell.spill_area = block, area
+      sheet:grow (area.r2, area.c2)
+    end
+  end
+  -- The formulas that read the cells the block left are already due when the formula is.
+  -- Those that read the cells it newly covers are not.
+  local moved = self.spill_moved
+  if area then
+    for r = area.r1, area.r2 do
+      for c = area.c1, area.c2 do
+        local before = old
+          and r >= old.r1
+          and r <= old.r2
+          and c >= old.c1
+          and c <= old.c2
+        if not before then
+          moved[#moved + 1] = { sheet = sheet, row = r, col = c }
+        end
+      end
+    end
+  end
+  if old and not area then
+    for r = old.r1, old.r2 do
+      for c = old.c1, old.c2 do
+        moved[#moved + 1] = { sheet = sheet, row = r, col = c }
+      end
+    end
+  end
+end
+
 ---Works out a cell that a formula reads before its turn came. A cell already being worked
----out is a loop, and so is a chain too deep to follow.
+---out is a loop, #CYCLE!. A chain too deep to follow, such as INDIRECT reading INDIRECT
+---more than 32 times over, is #CALC!, since it need not be a loop.
 ---@param cell Sheet.Cell
 ---@return Sheet.Value
 function Book:on_demand (cell)
-  if cell.busy or self.nesting >= DEPTH then
+  if cell.busy then
     return CYCLE
+  end
+  if self.nesting >= DEPTH then
+    return TOO_DEEP
   end
   self.nesting = self.nesting + 1
   self:compute (cell)
@@ -999,7 +1416,10 @@ function Book:recalc ()
   self.full = false
   self.stale = false
   self.edited = {}
+  self.spill_moved = {}
   self.volatile = {}
+  self.row_readers = {}
+  self.rows_stale = false
   for _, sheet in ipairs (self.sheets) do
     sheet.watch = model.new_watch ()
   end
@@ -1008,6 +1428,7 @@ function Book:recalc ()
   for _, sheet in ipairs (self.sheets) do
     for _, cell in pairs (sheet.cells) do
       if cell.formula then
+        cell.spill, cell.spill_area = nil, nil
         self:watch (sheet, cell)
         list[#list + 1] = cell
         dirty[cell] = true
@@ -1015,6 +1436,24 @@ function Book:recalc ()
     end
   end
   self:run (list, dirty, true)
+  self:settle ()
+end
+
+---Works out again the formulas that read cells a block spilled into or left, until the blocks
+---stop moving. A block that keeps moving stops after a few rounds.
+function Book:settle ()
+  local rounds = 0
+  while #self.spill_moved > 0 and rounds < SPILL_ROUNDS do
+    rounds = rounds + 1
+    local last = self.last
+    self:update ()
+    self.last = {
+      full = last.full,
+      evaluated = last.evaluated + self.last.evaluated,
+      dirty = last.dirty + self.last.dirty,
+    }
+  end
+  self.spill_moved = {}
 end
 
 ---Works out the formulas that read the cells edited since the last time, directly or
@@ -1028,28 +1467,67 @@ function Book:update ()
     if not dirty[cell] then
       dirty[cell] = true
       list[#list + 1] = cell
-      queue[#queue + 1] = {
-        sheet = cell.home --[[@as Sheet.Sheet]],
-        row = cell.row,
-        col = cell.col,
-      }
+      local home = cell.home --[[@as Sheet.Sheet]]
+      queue[#queue + 1] = { sheet = home, row = cell.row, col = cell.col }
+      -- What reads the block a formula spilled is due along with it.
+      local area = cell.spill_area
+      if area then
+        for r = area.r1, area.r2 do
+          for c = area.c1, area.c2 do
+            if r ~= cell.row or c ~= cell.col then
+              queue[#queue + 1] = { sheet = home, row = r, col = c }
+            end
+          end
+        end
+      end
     end
   end
   local edited = self.edited
+  local moved = self.spill_moved
   self.edited = {}
+  self.spill_moved = {}
   self.stale = false
   for _, pos in ipairs (edited) do
     if self.live[pos.sheet] then
-      local cell = pos.sheet.cells[pos.row * KEY + pos.col]
+      local key = pos.row * KEY + pos.col
+      local cell = pos.sheet.cells[key]
       if cell and cell.formula then
         mark (cell)
       else
         queue[#queue + 1] = pos
       end
+      -- Typing into a block's cells stops it spilling, and clearing a cell may give a block
+      -- that had no room the room it needs.
+      local w = pos.sheet.watch
+      local anchor = w.spills[key]
+      if anchor and anchor ~= cell then
+        mark (anchor)
+      end
+      for other, area in pairs (w.blocked) do
+        if
+          pos.row >= area.r1
+          and pos.row <= area.r2
+          and pos.col >= area.c1
+          and pos.col <= area.c2
+        then
+          mark (other)
+        end
+      end
+    end
+  end
+  for _, pos in ipairs (moved) do
+    if self.live[pos.sheet] then
+      queue[#queue + 1] = pos
     end
   end
   for cell in pairs (self.volatile) do
     mark (cell)
+  end
+  if self.rows_stale then
+    self.rows_stale = false
+    for cell in pairs (self.row_readers) do
+      mark (cell)
+    end
   end
   local i = 1
   while i <= #queue do
@@ -1065,14 +1543,26 @@ end
 function Book:ensure ()
   if self.full then
     self:recalc ()
-  elseif #self.edited > 0 or self.stale then
+  elseif
+    #self.edited > 0
+    or #self.spill_moved > 0
+    or self.stale
+    or self.rows_stale
+  then
     self:update ()
+    self:settle ()
   end
 end
 
 ---Asks for the volatile formulas, such as NOW and RAND, to be worked out again.
 function Book:refresh ()
   self.stale = true
+end
+
+---Tells the book that rows were hidden or shown, by the user or by a filter, so SUBTOTAL and
+---AGGREGATE are worked out again.
+function Book:rows_changed ()
+  self.rows_stale = true
 end
 
 ---The value of a cell on the sheet at `index`, as the Excel writer asks for it.
@@ -1236,6 +1726,8 @@ function Book:apply (change, back)
       active = change.active_before
     end
     self:put_sheets (value, active or 1)
+  elseif kind == 'names' then
+    self:put_names (value)
   end
 end
 
@@ -1339,7 +1831,7 @@ end
 -- The file
 ---------------------------------------------------------------------------------------------
 
----The book as plain data, the shape of a version 2 `.sheet.json` file.
+---The book as plain data, the shape of a version 3 `.sheet.json` file.
 ---@param book Sheet.Book
 ---@return Sheet.BookData
 function M.to_data (book)
@@ -1347,7 +1839,38 @@ function M.to_data (book)
   for i, sheet in ipairs (book.sheets) do
     sheets[i] = sheet:to_data ()
   end
-  return { version = 2, active = book.active, sheets = sheets }
+  local data = { version = 3, active = book.active, sheets = sheets } ---@type Sheet.BookData
+  if #book.defined_names > 0 then
+    local names = {} ---@type Sheet.DefinedName[]
+    for i, n in ipairs (book.defined_names) do
+      names[i] = { name = n.name, formula = n.formula }
+    end
+    data.names = names
+  end
+  return data
+end
+
+---A sheet's file data with its rules first rule first. Files before version 3 list them the
+---other way round, last rule winning, so their rules turn round.
+---@param item table
+---@param data any
+---@return table
+local function rules_first (item, data)
+  local version = type (data) == 'table' and tonumber (data.version) or nil
+  if (version and version >= 3) or type (item.rules) ~= 'table' then
+    return item
+  end
+  local copy = {} ---@type table<string, any>
+  for k, v in pairs (item) do
+    copy[k] = v
+  end
+  local turned = {} ---@type any[]
+  local rules = item.rules --[[@as any[] ]]
+  for i = #rules, 1, -1 do
+    turned[#turned + 1] = rules[i]
+  end
+  copy.rules = turned
+  return copy
 end
 
 ---Makes a book from decoded file data. Version 1 files load as one sheet named `Sheet1`.
@@ -1386,13 +1909,33 @@ function M.from_data (data, opts)
     local sheet =
       model.blank (book, name, opts and opts.rows, opts and opts.cols)
     book.sheets[#book.sheets + 1] = sheet
-    sheet:load (item)
+    sheet:load (rules_first (item, data))
   end
   if #book.sheets == 0 then
     book.sheets[1] =
       model.blank (book, 'Sheet1', opts and opts.rows, opts and opts.cols)
   end
   book:names_changed ()
+  if type (data) == 'table' and type (data.names) == 'table' then
+    local names = {} ---@type Sheet.DefinedName[]
+    local seen = {} ---@type table<string, boolean>
+    for _, n in
+      ipairs (data.names --[[@as any[] ]])
+    do
+      if
+        type (n) == 'table'
+        and type (n.name) == 'string'
+        and type (n.formula) == 'string'
+        and not formula.name_problem (n.name)
+        and formula.is_formula (n.formula)
+        and not seen[string.upper (n.name)]
+      then
+        seen[string.upper (n.name)] = true
+        names[#names + 1] = { name = n.name, formula = n.formula }
+      end
+    end
+    book:put_names (names)
+  end
   local active = type (data) == 'table' and tonumber (data.active) or 1
   book.active = math.max (1, math.min (math.floor (active or 1), #book.sheets))
   book:recalc ()
@@ -1454,7 +1997,11 @@ local RULE_KEYS = {
   'mid_color',
   'max_color',
   'color',
+  'stop',
+  'icons',
+  'reverse',
 }
+local NAME_KEYS = { 'name', 'formula' }
 local VALIDATION_KEYS = {
   'range',
   'type',
@@ -1465,6 +2012,7 @@ local VALIDATION_KEYS = {
   'integer',
   'message',
   'strict',
+  'formula',
 }
 local CHART_KEYS = {
   'id',
@@ -1660,6 +2208,54 @@ local function sheet_json (data)
   return '    {\n' .. table.concat (out, ',\n') .. '\n    }'
 end
 
+-- Names Windows keeps for devices, whatever follows them after a dot.
+local DEVICES = { con = true, prn = true, aux = true, nul = true }
+for i = 0, 9 do
+  DEVICES['com' .. i] = true
+  DEVICES['lpt' .. i] = true
+end
+for _, digit in ipairs ({ '\194\185', '\194\178', '\194\179' }) do
+  DEVICES['com' .. digit] = true
+  DEVICES['lpt' .. digit] = true
+end
+
+---Why a workbook name cannot be a file name, or nil when it can. A name cannot start with a
+---dot, hold `\ / : * ? " < > |` or a control character, or be a name Windows keeps for a
+---device, such as `CON` or `NUL`.
+---@param name string
+---@return string?
+function M.file_name_problem (name)
+  if name == '' then
+    return 'Type a name.'
+  end
+  if
+    string.find (name, '[\\/:%*%?"<>|%c]') or string.sub (name, 1, 1) == '.'
+  then
+    return 'A name cannot start with a dot or hold \\ / : * ? " < > |'
+  end
+  local stem = string.match (string.lower (name), '^([^%.]*)') or ''
+  stem = string.match (stem, '^(.-)[%s]*$')
+  if DEVICES[stem] then
+    return 'Windows keeps the name ' .. string.upper (stem) .. ' for a device.'
+  end
+  return nil
+end
+
+---A workbook name made safe for a file, from any text.
+---@param text string
+---@return string
+function M.safe_file_name (text)
+  local base = string.gsub (text, '[\\/:%*%?"<>|%c]', '-')
+  base = string.match (base, '^%s*(.-)%s*$')
+  if base == '' or string.sub (base, 1, 1) == '.' then
+    return 'Imported'
+  end
+  if M.file_name_problem (base) then
+    return base .. ' 1'
+  end
+  return base
+end
+
 ---Writes a book as the text of its `.sheet.json` file: fixed key order, one cell per line in
 ---reading order, so a small change makes a small difference between saves.
 ---@param book Sheet.Book
@@ -1670,11 +2266,19 @@ function M.encode (book)
   for i, sheet in ipairs (data.sheets) do
     sheets[i] = sheet_json (sheet)
   end
+  local names = '' ---@type string
+  if data.names then
+    local lines = {} ---@type string[]
+    for i, n in ipairs (data.names) do
+      lines[i] = '    ' .. json_inline (n, NAME_KEYS)
+    end
+    names = '  "names": [\n' .. table.concat (lines, ',\n') .. '\n  ],\n'
+  end
   return table.concat ({
     '{',
-    '  "version": 2,',
+    '  "version": 3,',
     '  "active": ' .. json_number (data.active or 1) .. ',',
-    '  "sheets": [',
+    names .. '  "sheets": [',
     table.concat (sheets, ',\n'),
     '  ]',
     '}',
@@ -2002,7 +2606,7 @@ function M.example (opts)
   end
   ---@type Sheet.BookData
   local data = {
-    version = 2,
+    version = 3,
     active = 1,
     sheets = {
       {

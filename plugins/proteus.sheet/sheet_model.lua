@@ -27,6 +27,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field busy? boolean True while the value is being worked out.
 ---@field deps? Sheet.Cell[]
 ---@field loops? boolean True when the formula reads its own cell.
+---@field spill? Sheet.Array The block of values a formula gives, which the cells around it show.
+---@field spill_area? Sheet.Rect The cells the block covers, the formula's own cell first.
 
 ---The text and style of one cell, as undo keeps them.
 ---@class Sheet.CellState
@@ -189,7 +191,7 @@ end
 
 ---@return Sheet.Watch
 function M.new_watch ()
-  return { points = {}, big = {}, by_col = {} }
+  return { points = {}, big = {}, by_col = {}, spills = {}, blocked = {} }
 end
 
 ---------------------------------------------------------------------------------------------
@@ -850,7 +852,28 @@ end
 function Sheet:value (row, col)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
-  return cell and cell.value
+  if cell and cell.text ~= '' then
+    return cell.value
+  end
+  return (self:spilled (row, col))
+end
+
+---The value a formula's block shows in an empty cell, and the formula's cell, or nil when no
+---block spills there.
+---@param row integer
+---@param col integer
+---@return Sheet.Value
+---@return Sheet.Cell?
+function Sheet:spilled (row, col)
+  local anchor = self.watch.spills[row * KEY + col]
+  if not anchor then
+    return nil, nil
+  end
+  local block, area = anchor.spill, anchor.spill_area
+  if not block or not area then
+    return nil, nil
+  end
+  return block.v[(row - area.r1) * block.w + (col - area.c1) + 1], anchor
 end
 
 ---The style a cell shows: its own style over its row's over its column's, without reset
@@ -1002,6 +1025,20 @@ end
 function Sheet:display (row, col, digits)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
+  if not cell or cell.text == '' then
+    local v, anchor = self:spilled (row, col)
+    if anchor then
+      -- A spilled number shows with the cell's format, or the formula's automatic one.
+      local own = self:style_at (row, col).format
+      if not own and type (v) == 'number' then
+        own = self:auto_format (anchor)
+      end
+      if digits and not own then
+        return formula.format_value (v, digits), nil
+      end
+      return format.format (v, own)
+    end
+  end
   if not cell then
     return '', nil
   end
@@ -1556,6 +1593,8 @@ function Sheet:put_prop (field, key, value)
     self.book:names_changed ()
   elseif field == 'rows' or field == 'cols' then
     self.book.full = true
+  elseif field == 'hidden_rows' or field == 'filter' then
+    self.book:rows_changed ()
   end
   self.book:touch ()
 end
@@ -2549,6 +2588,10 @@ function Sheet:reshape (axis, at, count)
       { sheet = name, own = own.name }
     )
   end, self)
+  -- A defined name belongs to no sheet, so only its references that name this one move.
+  self.book:rewrite_names (function (text)
+    return formula.adjust (text, axis, at, count, { sheet = name })
+  end)
   self:finish ()
 end
 
@@ -2681,10 +2724,28 @@ function Sheet:copy (rect)
     for col = r.c1, r.c2 do
       local cell = self.cells[row * KEY + col]
       local style = self:style_at (row, col)
-      t[#t + 1] = cell and cell.text or ''
+      local text = cell and cell.text or ''
+      local value = cell and cell.value
+      if text == '' then
+        -- A cell a block spills into copies as its value, unless the formula comes along.
+        local spilled, anchor = self:spilled (row, col)
+        if
+          anchor
+          and not (
+            anchor.row >= r.r1
+            and anchor.row <= r.r2
+            and anchor.col >= r.c1
+            and anchor.col <= r.c2
+          )
+        then
+          value = spilled
+          text = literal_text (spilled)
+        end
+      end
+      t[#t + 1] = text
       b[#b + 1] = style.bold == true
       st[#st + 1] = style
-      l[#l + 1] = literal_text (cell and cell.value)
+      l[#l + 1] = literal_text (value)
       s[#s + 1] = self:display (row, col)
     end
     texts[#texts + 1], bold[#bold + 1], styles[#styles + 1] = t, b, st
@@ -2721,6 +2782,161 @@ function Sheet:copy (rect)
     sheet = self,
     tsv = M.to_csv (shown, '\t', '\n'),
   }
+end
+
+---A block moved by a number of rows and columns.
+---@param rect Sheet.Rect
+---@param drow integer
+---@param dcol integer
+---@return Sheet.Rect
+local function shifted (rect, drow, dcol)
+  return {
+    r1 = rect.r1 + drow,
+    c1 = rect.c1 + dcol,
+    r2 = rect.r2 + drow,
+    c2 = rect.c2 + dcol,
+  }
+end
+
+---A copy of a rule, a validation or a chart with some fields changed.
+---@param item table
+---@param fields table<string, any>
+---@return table
+local function with_fields (item, fields)
+  local copy = {} ---@type table<string, any>
+  for k, v in
+    pairs (item --[[@as table<string, any>]])
+  do
+    copy[k] = v
+  end
+  for k, v in pairs (fields) do
+    copy[k] = v
+  end
+  return copy
+end
+
+---Follows a block of cells that a cut and paste or a drag moved from `source` to `target` on
+---this sheet, as part of the open step. Every formula in the book that points into the block
+---points where it went, and a reference to the cells it landed on turns into #REF!. The rules,
+---validation, charts and filter that lie wholly inside the block move with it. A chart stays
+---when the block moves to another sheet, since its range names no sheet. The cells in
+---`target` are left alone: the paste wrote them already.
+---@param source Sheet.Sheet
+---@param src Sheet.Rect
+---@param target Sheet.Rect
+function Sheet:follow_move (source, src, target)
+  local drow, dcol = target.r1 - src.r1, target.c1 - src.c1
+  local from, to = source.name, self.name
+  ---@param text string
+  ---@param own string
+  ---@param lands? string
+  ---@return string
+  local function move (text, own, lands)
+    return formula.move (
+      text,
+      src,
+      drow,
+      dcol,
+      { from = from, to = to, own = own, lands = lands }
+    )
+  end
+  self.book:rewrite_names (function (text)
+    return move (text, '')
+  end)
+  for _, sheet in ipairs (self.book.sheets) do
+    local list = {} ---@type Sheet.Cell[]
+    for _, cell in pairs (sheet.cells) do
+      if
+        cell.formula
+        and not (
+          sheet == self
+          and M.contains (
+            target,
+            { r1 = cell.row, c1 = cell.col, r2 = cell.row, c2 = cell.col }
+          )
+        )
+      then
+        list[#list + 1] = cell
+      end
+    end
+    for _, cell in ipairs (list) do
+      local text = move (cell.text, sheet.name)
+      if text ~= cell.text then
+        sheet:record (cell.row, cell.col, { text = text, style = cell.style })
+      end
+    end
+  end
+
+  -- Rules and validation that lie inside the block go with it, to another sheet too.
+  local arrived = { rules = {}, validation = {} } ---@type table<string, table[]>
+  for _, sheet in ipairs (self.book.sheets) do
+    for _, field in ipairs ({ 'rules', 'validation', 'charts' }) do
+      local items = (sheet --[[@as table<string, table[]>]])[field]
+      local out = {} ---@type table[]
+      local changed = false
+      for _, item in ipairs (items) do
+        local rect = sheet == source and M.parse_range (item.range)
+        local goes = rect and M.contains (src, rect)
+        if goes and field == 'charts' and source ~= self then
+          goes = false
+        end
+        local fields = {} ---@type table<string, any>
+        if type (item.formula) == 'string' then
+          local text = move (item.formula, sheet.name, goes and to or nil)
+          if text ~= item.formula then
+            fields.formula = text
+          end
+        end
+        if goes then
+          fields.range =
+            M.range_name (shifted (rect --[[@as Sheet.Rect]], drow, dcol))
+        end
+        local next_item = next (fields) and with_fields (item, fields) or item
+        if goes and source ~= self then
+          local list = arrived[field]
+          list[#list + 1] = next_item
+          changed = true
+        else
+          out[#out + 1] = next_item
+          changed = changed or next_item ~= item
+        end
+      end
+      if changed then
+        sheet:set_prop (field, nil, out)
+      end
+    end
+  end
+  for field, list in pairs (arrived) do
+    if #list > 0 then
+      local out = {} ---@type table[]
+      for _, item in
+        ipairs ((self --[[@as table<string, table[]>]])[field])
+      do
+        out[#out + 1] = item
+      end
+      for _, item in ipairs (list) do
+        out[#out + 1] = item
+      end
+      self:set_prop (field, nil, out)
+    end
+  end
+
+  -- The filter goes with the block when the block holds it all, and the rows it hides follow.
+  local f = source.filter
+  if f and M.contains (src, f.rect) and (source == self or not self.filter) then
+    local columns = {} ---@type table<integer, Sheet.FilterColumn>
+    for col, test in pairs (f.columns) do
+      columns[col + dcol] = test
+    end
+    ---@type Sheet.LiveFilter
+    local moved =
+      { rect = shifted (f.rect, drow, dcol), columns = columns, hidden = {} }
+    moved.hidden = self:hidden_by (moved)
+    if source ~= self then
+      source:set_prop ('filter', nil, nil)
+    end
+    self:set_prop ('filter', nil, moved)
+  end
 end
 
 ---Pastes a clip with its top left cell at `row` and `col`, as one undo step, and returns the
@@ -2767,8 +2983,9 @@ function Sheet:paste (row, col, clip, fill, opts)
   -- A cut moves cells within one book. From another book it pastes as a copy.
   local cut = clip.cut == true and source.book == self.book
   self:begin ({ select = target, label = 'Paste' })
+  local src = nil ---@type Sheet.Rect?
   if cut and from_row and from_col and only == nil then
-    local src = {
+    src = {
       r1 = from_row,
       c1 = from_col,
       r2 = from_row + h - 1,
@@ -2812,6 +3029,15 @@ function Sheet:paste (row, col, clip, fill, opts)
         elseif from_row and from_col and not cut then
           text =
             formula.shift (text, r - (from_row + i - 1), c - (from_col + j - 1))
+        elseif src and not turn then
+          -- A moved formula keeps pointing where it did, unless it points into the block.
+          text =
+            formula.move (text, src, target.r1 - src.r1, target.c1 - src.c1, {
+              from = source.name,
+              to = self.name,
+              own = source.name,
+              lands = self.name,
+            })
         end
         if clip.typed and only == nil then
           state = self:typed (r, c, text)
@@ -2865,6 +3091,9 @@ function Sheet:paste (row, col, clip, fill, opts)
       self:set_prop ('notes', (target.r1 + oi) * KEY + (target.c1 + oj), text)
     end
   end
+  if src and not turn then
+    self:follow_move (source, src, target)
+  end
   self:finish ()
   return target
 end
@@ -2914,10 +3143,7 @@ end
 local function compare (a, b)
   local ta, tb = type (a), type (b)
   if ta == 'number' and tb == 'number' then
-    local x, y =
-      a, --[[@as number]]
-      b --[[@as number]]
-    return x < y and -1 or (x > y and 1 or 0)
+    return formula.compare_numbers (a --[[@as number]], b --[[@as number]])
   end
   if ta == 'string' and tb == 'string' then
     local x, y = lower (a --[[@as string]]), lower (b --[[@as string]])
@@ -3060,6 +3286,7 @@ function Sheet:refilter ()
   local f = self.filter
   if f then
     f.hidden = self:hidden_by (f)
+    self.book:rows_changed ()
   end
 end
 
@@ -3194,7 +3421,16 @@ local function filter_column (t)
   return out
 end
 
+---True when a cell lies within the last row and column a sheet can have.
+---@param row integer
+---@param col integer
+---@return boolean
+local function on_sheet (row, col)
+  return row <= formula.LAST_ROW and col <= formula.LAST_COL
+end
+
 ---Fills an empty sheet from file data, without undo. Fields of the wrong type are skipped.
+---Cells past the last row or column a sheet can have are left out.
 ---@param data any
 function Sheet:load (data)
   if type (data) ~= 'table' then
@@ -3202,10 +3438,10 @@ function Sheet:load (data)
   end
   local rows, cols = whole (data.rows), whole (data.cols)
   if rows and rows >= 1 then
-    self.rows = rows
+    self.rows = math.min (rows, formula.LAST_ROW)
   end
   if cols and cols >= 1 then
-    self.cols = cols
+    self.cols = math.min (cols, formula.LAST_COL)
   end
   if type (data.cells) == 'table' then
     for addr, v in
@@ -3216,7 +3452,7 @@ function Sheet:load (data)
         row, col = M.parse_address (addr)
       end
       local text = text_of (v)
-      if row and col and text and text ~= '' then
+      if row and col and text and text ~= '' and on_sheet (row, col) then
         self:put (row, col, { text = text })
       end
     end
@@ -3230,7 +3466,7 @@ function Sheet:load (data)
         row, col = M.parse_address (addr)
       end
       local s = intern (style)
-      if row and col and s then
+      if row and col and s and on_sheet (row, col) then
         self:put (row, col, { text = self:text (row, col), style = s })
       end
     end

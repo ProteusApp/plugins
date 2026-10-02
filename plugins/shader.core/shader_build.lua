@@ -1,209 +1,10 @@
 -- Builds a shader into files that stand on their own: the complete GLSL vertex and fragment
--- shaders, the WGSL module, a page that runs the shader in any browser, a JSON list of the
--- uniforms, and a README that says how to feed them.
+-- shaders, the WGSL module, the code of each buffer, a page that runs them in any browser, a
+-- JSON list of the uniforms and channels, and a README that says how to feed them.
 
 local file = require ('shader_file') --[[@as Shader.FileModule]]
-
--- lang=html
-local GLSL_PAGE = [[
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{TITLE}}</title>
-    <style>
-      html, body { margin: 0; height: 100%; background: #000; }
-      canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-      pre { position: fixed; inset: 0; margin: 0; padding: 16px; color: #f88; background: #000; white-space: pre-wrap; }
-    </style>
-  </head>
-  <body>
-    <canvas id="view"></canvas>
-    <script>
-      // {{TITLE}}: GLSL ES 3.00 on WebGL 2, built with the Proteus shader builder.
-      const VERTEX = {{VERTEX}};
-      const FRAGMENT = {{FRAGMENT}};
-      const UNIFORMS = {{UNIFORMS}};
-
-      const canvas = document.getElementById('view');
-      const gl = canvas.getContext('webgl2');
-      const fail = (text) => { document.body.innerHTML = ''; const pre = document.createElement('pre'); pre.textContent = text; document.body.appendChild(pre); throw new Error(text); };
-      if (!gl) fail('This browser has no WebGL 2.');
-      const compile = (type, source) => {
-        const shader = gl.createShader(type);
-        gl.shaderSource(shader, source);
-        gl.compileShader(shader);
-        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) fail(gl.getShaderInfoLog(shader));
-        return shader;
-      };
-      const program = gl.createProgram();
-      gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX));
-      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT));
-      gl.linkProgram(program);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(program));
-      const active = {};
-      for (let i = 0; i < gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i++) {
-        const info = gl.getActiveUniform(program, i);
-        active[info.name] = { loc: gl.getUniformLocation(program, info.name), type: info.type };
-      }
-      const set = (name, v) => {
-        const u = active[name];
-        if (!u) return;
-        const n = (i) => v[i] ?? 0;
-        if (u.type === gl.FLOAT) gl.uniform1f(u.loc, n(0));
-        else if (u.type === gl.FLOAT_VEC2) gl.uniform2f(u.loc, n(0), n(1));
-        else if (u.type === gl.FLOAT_VEC3) gl.uniform3f(u.loc, n(0), n(1), n(2));
-        else if (u.type === gl.FLOAT_VEC4) gl.uniform4f(u.loc, n(0), n(1), n(2), n(3));
-        else if (u.type === gl.INT || u.type === gl.BOOL) gl.uniform1i(u.loc, Math.round(n(0)));
-        else if (u.type === gl.UNSIGNED_INT) gl.uniform1ui(u.loc, Math.max(0, Math.round(n(0))));
-      };
-      const mouse = { x: 0, y: 0, down: false, cx: 0, cy: 0 };
-      const at = (e) => {
-        const r = canvas.getBoundingClientRect();
-        return [((e.clientX - r.left) / r.width) * canvas.width, ((r.bottom - e.clientY) / r.height) * canvas.height];
-      };
-      canvas.addEventListener('pointerdown', (e) => { [mouse.x, mouse.y] = at(e); mouse.cx = mouse.x; mouse.cy = mouse.y; mouse.down = true; });
-      canvas.addEventListener('pointermove', (e) => { if (mouse.down) [mouse.x, mouse.y] = at(e); });
-      addEventListener('pointerup', () => { mouse.down = false; });
-      const vao = gl.createVertexArray();
-      const start = performance.now();
-      let last = start;
-      let frame = 0;
-      const draw = (now) => {
-        const ratio = devicePixelRatio || 1;
-        const w = Math.max(1, Math.floor(canvas.clientWidth * ratio));
-        const h = Math.max(1, Math.floor(canvas.clientHeight * ratio));
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-        const time = (now - start) / 1000;
-        gl.viewport(0, 0, w, h);
-        gl.useProgram(program);
-        set('u_resolution', [w, h]);
-        set('u_time', [time]);
-        set('u_frame', [frame]);
-        set('u_mouse', [mouse.x, mouse.y, mouse.down ? 1 : 0, 0]);
-        set('iResolution', [w, h, 1]);
-        set('iTime', [time]);
-        set('iTimeDelta', [(now - last) / 1000]);
-        set('iFrame', [frame]);
-        set('iMouse', [mouse.x, mouse.y, mouse.down ? mouse.cx : -mouse.cx, mouse.down ? mouse.cy : -mouse.cy]);
-        for (const u of UNIFORMS) set(u.glsl, u.value);
-        gl.bindVertexArray(vao);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        last = now;
-        frame += 1;
-        requestAnimationFrame(draw);
-      };
-      requestAnimationFrame(draw);
-    </script>
-  </body>
-</html>
-]]
-
--- lang=html
-local WGSL_PAGE = [[
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{TITLE}}</title>
-    <style>
-      html, body { margin: 0; height: 100%; background: #000; }
-      canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-      pre { position: fixed; inset: 0; margin: 0; padding: 16px; color: #f88; background: #000; white-space: pre-wrap; }
-    </style>
-  </head>
-  <body>
-    <canvas id="view"></canvas>
-    <script type="module">
-      // {{TITLE}}: WGSL on WebGPU, built with the Proteus shader builder.
-      const MODULE = {{MODULE}};
-      const VERTEX_ENTRY = {{VERTEX_ENTRY}};
-      const FRAGMENT_ENTRY = {{FRAGMENT_ENTRY}};
-      // Where each field of the uniform struct sits in its buffer, in bytes.
-      const LAYOUT = {{LAYOUT}};
-      const UNIFORMS = {{UNIFORMS}};
-
-      const canvas = document.getElementById('view');
-      const fail = (text) => { document.body.innerHTML = ''; const pre = document.createElement('pre'); pre.textContent = text; document.body.appendChild(pre); throw new Error(text); };
-      if (!navigator.gpu) fail('This browser has no WebGPU.');
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) fail('No graphics adapter offers WebGPU here.');
-      const device = await adapter.requestDevice();
-      const context = canvas.getContext('webgpu');
-      const format = navigator.gpu.getPreferredCanvasFormat();
-      context.configure({ device, format, alphaMode: 'premultiplied' });
-      const module = device.createShaderModule({ code: MODULE });
-      const info = await module.getCompilationInfo();
-      const errors = info.messages.filter((m) => m.type === 'error');
-      if (errors.length) fail(errors.map((m) => `line ${m.lineNum}: ${m.message}`).join('\n'));
-      const pipeline = await device.createRenderPipelineAsync({
-        layout: 'auto',
-        vertex: { module, entryPoint: VERTEX_ENTRY },
-        fragment: { module, entryPoint: FRAGMENT_ENTRY, targets: [{ format }] },
-        primitive: { topology: 'triangle-list' },
-      });
-      const size = Math.max(16, Math.ceil(LAYOUT.size / 16) * 16);
-      const data = new ArrayBuffer(size);
-      const f32 = new Float32Array(data);
-      const i32 = new Int32Array(data);
-      const u32 = new Uint32Array(data);
-      let buffer = null;
-      let bindGroup = null;
-      if (LAYOUT.fields.length) {
-        buffer = device.createBuffer({ size, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        try {
-          bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer } }] });
-        } catch { bindGroup = null; }
-      }
-      const values = Object.fromEntries(UNIFORMS.map((u) => [u.key, u.value]));
-      const mouse = { x: 0, y: 0, down: false };
-      const at = (e) => {
-        const r = canvas.getBoundingClientRect();
-        return [((e.clientX - r.left) / r.width) * canvas.width, ((r.bottom - e.clientY) / r.height) * canvas.height];
-      };
-      canvas.addEventListener('pointerdown', (e) => { [mouse.x, mouse.y] = at(e); mouse.down = true; });
-      canvas.addEventListener('pointermove', (e) => { if (mouse.down) [mouse.x, mouse.y] = at(e); });
-      addEventListener('pointerup', () => { mouse.down = false; });
-      const start = performance.now();
-      let frame = 0;
-      const draw = (now) => {
-        const ratio = devicePixelRatio || 1;
-        const w = Math.max(1, Math.floor(canvas.clientWidth * ratio));
-        const h = Math.max(1, Math.floor(canvas.clientHeight * ratio));
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-        const builtins = { resolution: [w, h], time: [(now - start) / 1000], frame: [frame], mouse: [mouse.x, mouse.y, mouse.down ? 1 : 0, 0] };
-        if (buffer && bindGroup) {
-          for (const f of LAYOUT.fields) {
-            const v = (f.builtin ? builtins[f.builtin] : values[f.name]) || [];
-            const n = { vec2: 2, vec3: 3, vec4: 4 }[f.type] || 1;
-            for (let i = 0; i < n; i++) {
-              const at = f.offset / 4 + i;
-              if (f.type === 'int') i32[at] = Math.round(v[i] ?? 0);
-              else if (f.type === 'uint') u32[at] = Math.max(0, Math.round(v[i] ?? 0));
-              else f32[at] = v[i] ?? 0;
-            }
-          }
-          device.queue.writeBuffer(buffer, 0, data);
-        }
-        const encoder = device.createCommandEncoder();
-        const pass = encoder.beginRenderPass({
-          colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }],
-        });
-        pass.setPipeline(pipeline);
-        if (bindGroup) pass.setBindGroup(0, bindGroup);
-        pass.draw(3);
-        pass.end();
-        device.queue.submit([encoder.finish()]);
-        frame += 1;
-        requestAnimationFrame(draw);
-      };
-      requestAnimationFrame(draw);
-    </script>
-  </body>
-</html>
-]]
+local pages = require ('shader_pages') --[[@as Shader.PagesModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 
 local M = {}
 
@@ -212,17 +13,6 @@ local M = {}
 ---@return string
 local function js (value)
   return (file.encode (value):gsub ('</', '<\\/'))
-end
-
----@param template string
----@param values table<string, string>
----@return string
-local function fill (template, values)
-  return (
-    template:gsub ('{{([%w_]+)}}', function (key)
-      return values[key] or ''
-    end)
-  )
 end
 
 ---A file name from a shader's name.
@@ -253,6 +43,100 @@ local function uniform_rows (list)
   return out
 end
 
+---What a page needs of a channel's source: no grant, since the image sits beside the page.
+---@param src Shader.ChannelSource?
+---@return table?
+local function page_source (src)
+  if not src or src.kind == 'none' then
+    return nil
+  end
+  return {
+    kind = src.kind,
+    buffer = src.buffer,
+    name = src.name,
+    filter = src.filter,
+    wrap = src.wrap,
+  }
+end
+
+---The channels a program reads, each with what it shows, for a page.
+---@param p Shader.Program
+---@param sources table<integer, Shader.ChannelSource>?
+---@return table[]
+local function page_channels (p, sources)
+  local out = file.array ({}) ---@type table[]
+  for _, c in ipairs (p.channels or {}) do
+    out[#out + 1] = {
+      index = c.index,
+      names = file.array (c.names),
+      source = page_source ((sources or {})[c.index]),
+    }
+  end
+  return out
+end
+
+---One pass of the GLSL page.
+---@param id Shader.PassId
+---@param p Shader.Program
+---@param sources table<integer, Shader.ChannelSource>?
+---@return table
+local function glsl_pass (id, p, sources)
+  return {
+    id = id,
+    vertex = p.vertex or '',
+    fragment = p.source,
+    uniforms = uniform_rows (p.uniforms),
+    channels = page_channels (p, sources),
+  }
+end
+
+---One pass of the WGSL page.
+---@param id Shader.PassId
+---@param p Shader.Program
+---@param sources table<integer, Shader.ChannelSource>?
+---@return table
+local function wgsl_pass (id, p, sources)
+  return {
+    id = id,
+    module = p.source,
+    vertex_entry = p.vertex_entry or 'vs_main',
+    fragment_entry = p.fragment_entry or 'fs_main',
+    layout = {
+      size = p.layout and p.layout.size or 16,
+      fields = file.array (p.layout and p.layout.fields or {}),
+    },
+    uniforms = uniform_rows (p.uniforms),
+    bindings = file.array (p.bindings or {}),
+    channels = page_channels (p, sources),
+  }
+end
+
+---The README's lines about the channels of one pass.
+---@param label string
+---@param p Shader.Program
+---@param sources table<integer, Shader.ChannelSource>?
+---@param into string[]
+local function channel_lines (label, p, sources, into)
+  for _, c in ipairs (p.channels or {}) do
+    local src = (sources or {})[c.index]
+    local what = passes.label (src)
+    if src and src.kind == 'image' then
+      what = '`'
+        .. tostring (src.name or 'an image')
+        .. '`, which goes beside the page'
+    end
+    into[#into + 1] = '| '
+      .. label
+      .. ' | `iChannel'
+      .. c.index
+      .. '` | `'
+      .. table.concat (c.names, '`, `')
+      .. '` | '
+      .. what
+      .. ' |'
+  end
+end
+
 ---The files a build writes, by name.
 ---@param input Shader.BuildInput
 ---@return table<string, string>
@@ -260,6 +144,24 @@ function M.files (input)
   local stem = M.stem (input.name)
   local title = tostring (input.name or stem):gsub ('[<>&]', '')
   local out = {} ---@type table<string, string>
+  local buffers = input.buffers or {}
+  -- A language builds only when every pass has code in it.
+  ---@param lang Shader.Lang
+  ---@return Shader.Program?
+  local function whole (lang)
+    local p = input[lang] ---@type Shader.Program?
+    if not p then
+      return nil
+    end
+    for _, b in ipairs (buffers) do
+      if not b[lang] then
+        return nil
+      end
+    end
+    return p
+  end
+  local glsl = whole ('glsl')
+  local wgsl = whole ('wgsl')
   ---@type string[]
   local readme = {
     '# ' .. title,
@@ -269,38 +171,45 @@ function M.files (input)
     '| File | What it holds |',
     '|------|---------------|',
   }
-  local glsl = input.glsl ---@type Shader.Program?
-  local wgsl = input.wgsl ---@type Shader.Program?
   if glsl then
     out[stem .. '.frag'] = glsl.source
     out[stem .. '.vert'] = glsl.vertex or ''
-    out['index.html'] = fill (GLSL_PAGE, {
-      TITLE = title,
-      VERTEX = js (glsl.vertex or ''),
-      FRAGMENT = js (glsl.source),
-      UNIFORMS = js (uniform_rows (glsl.uniforms)),
-    })
+    local list = file.array ({}) ---@type table[]
+    for _, b in ipairs (buffers) do
+      out[stem .. '.buffer-' .. b.id .. '.frag'] = b.glsl.source
+      list[#list + 1] =
+        glsl_pass (b.id, b.glsl --[[@as Shader.Program]], b.channels)
+    end
+    list[#list + 1] = glsl_pass ('image', glsl, input.channels)
+    out['index.html'] =
+      pages.fill (pages.GLSL, { TITLE = title, PASSES = js (list) })
     readme[#readme + 1] = '| `'
       .. stem
       .. '.frag` | The GLSL ES 3.00 fragment shader, for WebGL 2 and OpenGL ES 3 |'
     readme[#readme + 1] = '| `'
       .. stem
       .. '.vert` | Its vertex shader: one triangle over the whole picture, from `gl_VertexID`. Draw 3 vertices with no attributes |'
+    for _, b in ipairs (buffers) do
+      readme[#readme + 1] = '| `'
+        .. stem
+        .. '.buffer-'
+        .. b.id
+        .. '.frag` | '
+        .. passes.pass_label (b.id)
+        .. ' in GLSL, with the same vertex shader |'
+    end
   end
   if wgsl then
     out[stem .. '.wgsl'] = wgsl.source
-    local page = fill (WGSL_PAGE, {
-      TITLE = title,
-      MODULE = js (wgsl.source),
-      VERTEX_ENTRY = js (wgsl.vertex_entry or 'vs_main'),
-      FRAGMENT_ENTRY = js (wgsl.fragment_entry or 'fs_main'),
-      LAYOUT = js ({
-        size = wgsl.layout and wgsl.layout.size or 16,
-        fields = file.array (wgsl.layout and wgsl.layout.fields or {}),
-      }),
-      UNIFORMS = js (uniform_rows (wgsl.uniforms)),
-    })
-    out[glsl and 'webgpu.html' or 'index.html'] = page
+    local list = file.array ({}) ---@type table[]
+    for _, b in ipairs (buffers) do
+      out[stem .. '.buffer-' .. b.id .. '.wgsl'] = b.wgsl.source
+      list[#list + 1] =
+        wgsl_pass (b.id, b.wgsl --[[@as Shader.Program]], b.channels)
+    end
+    list[#list + 1] = wgsl_pass ('image', wgsl, input.channels)
+    out[glsl and 'webgpu.html' or 'index.html'] =
+      pages.fill (pages.WGSL, { TITLE = title, PASSES = js (list) })
     readme[#readme + 1] = '| `'
       .. stem
       .. '.wgsl` | The WGSL module for WebGPU, with the vertex entry point `'
@@ -308,6 +217,15 @@ function M.files (input)
       .. '` and the fragment entry point `'
       .. (wgsl.fragment_entry or 'fs_main')
       .. '`. Draw 3 vertices |'
+    for _, b in ipairs (buffers) do
+      readme[#readme + 1] = '| `'
+        .. stem
+        .. '.buffer-'
+        .. b.id
+        .. '.wgsl` | '
+        .. passes.pass_label (b.id)
+        .. ' in WGSL |'
+    end
   end
   if glsl then
     readme[#readme + 1] =
@@ -340,9 +258,8 @@ function M.files (input)
     )
       .. ' the `resolution`, `time`, `frame` and `mouse` fields of its `Uniforms` struct, bound at group 0, binding 0. `uniforms.json` gives the offset of each field in the buffer.'
   end
-  local list = (glsl or wgsl)
-      and (glsl or wgsl --[[@as Shader.Program]]).uniforms
-    or {}
+  local main = glsl or wgsl
+  local list = main and main.uniforms or {}
   if #list > 0 then
     readme[#readme + 1] = ''
     readme[#readme + 1] = '| Name | Type | Value | Range |'
@@ -364,8 +281,57 @@ function M.files (input)
         .. ' |'
     end
   end
+  -- Passes and channels, when the shader has them.
+  local channel_rows = {} ---@type string[]
+  if main then
+    for _, b in ipairs (buffers) do
+      channel_lines (
+        passes.pass_label (b.id),
+        (glsl and b.glsl or b.wgsl) --[[@as Shader.Program]],
+        b.channels,
+        channel_rows
+      )
+    end
+    channel_lines ('Image', main, input.channels, channel_rows)
+  end
+  if #buffers > 0 or #channel_rows > 0 then
+    readme[#readme + 1] = ''
+    readme[#readme + 1] = '## Passes and channels'
+    readme[#readme + 1] = ''
+    if #buffers > 0 then
+      readme[#readme + 1] =
+        'Each frame the buffers draw in order, each into two pictures the size of the canvas that take turns, so a buffer reads its own last frame. Then the image draws on the canvas. A channel that reads a buffer gets its newest picture.'
+      readme[#readme + 1] = ''
+    end
+    if #channel_rows > 0 then
+      readme[#readme + 1] = '| Pass | Channel | Read as | Shows |'
+      readme[#readme + 1] = '|------|---------|---------|-------|'
+      for _, row in ipairs (channel_rows) do
+        readme[#readme + 1] = row
+      end
+      readme[#readme + 1] = ''
+      readme[#readme + 1] =
+        'Noise and Checker are textures of 256 by 256 pixels the page makes. An image goes beside the page under its own name, and a browser loads it only when the folder is served, such as with `npx serve`, not opened as a file.'
+    end
+  end
   readme[#readme + 1] = ''
   out['README.md'] = table.concat (readme, '\n')
+  ---@param sources table<integer, Shader.ChannelSource>?
+  ---@param p Shader.Program
+  ---@return table
+  local function channel_data (p, sources)
+    return page_channels (p, sources)
+  end
+  local buffer_data = file.array ({}) ---@type table[]
+  for _, b in ipairs (buffers) do
+    local p = (glsl and b.glsl or b.wgsl) --[[@as Shader.Program?]]
+    buffer_data[#buffer_data + 1] = {
+      id = b.id,
+      glsl = glsl and b.glsl and uniform_rows (b.glsl.uniforms) or nil,
+      wgsl = wgsl and b.wgsl and uniform_rows (b.wgsl.uniforms) or nil,
+      channels = p and channel_data (p, b.channels) or nil,
+    }
+  end
   out['uniforms.json'] = file.encode ({
     name = title,
     glsl = glsl and uniform_rows (glsl.uniforms) or nil,
@@ -374,6 +340,11 @@ function M.files (input)
       fields = file.array (wgsl.layout and wgsl.layout.fields or {}),
       uniforms = uniform_rows (wgsl.uniforms),
     } or nil,
+    channels = main and #(main.channels or {}) > 0 and channel_data (
+      main,
+      input.channels
+    ) or nil,
+    buffers = #buffers > 0 and buffer_data or nil,
   }) .. '\n'
   return out
 end

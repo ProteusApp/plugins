@@ -130,7 +130,7 @@ end)
 
 test ('reading finds the sheets in order and the active one', function ()
   local book, warnings = read_ok (fixture ())
-  eq (book.version, 2)
+  eq (book.version, 3)
   eq (book.active, 2)
   eq (#book.sheets, 2)
   eq (book.sheets[1].name, 'Budget')
@@ -215,6 +215,77 @@ test ('reading sizes a sheet to what it uses', function ()
   )
   eq (book.sheets[1].rows, 250)
   eq (book.sheets[1].cols, 30)
+end)
+
+test (
+  'reading leaves out rows past the end, and far rows with no cells',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="3" ht="30" customHeight="1"><c r="A3"><v>1</v></c></row>'
+          .. '<row r="900" hidden="1"/><row r="1048576" hidden="1" ht="30" customHeight="1"/>'
+          .. '<row r="1048577"><c r="A1048577"><v>2</v></c></row>'
+          .. '<row r="5"><c r="XFE5"><v>3</v></c><c r="B5"><v>4</v></c></row></sheetData>'
+          .. '<mergeCells><mergeCell ref="A1048576:B1048577"/></mergeCells>'
+      )
+    )
+    local sheet = book.sheets[1]
+    -- A hidden row near the cells stays, and one at the bottom of the sheet does not stretch it.
+    eq (sheet.rows, 900)
+    eq (sheet.hidden_rows, { 900 })
+    eq (sheet.heights, { ['3'] = 40 })
+    eq (sheet.cells, { A3 = '1', B5 = '4' })
+    eq (sheet.merges, nil)
+    eq (
+      warnings,
+      { 'Cells in Data past row 1048576 or column XFD were left out.' }
+    )
+  end
+)
+
+test (
+  'reading keeps the last value of a formula that reads another workbook',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1"><f>[1]Sheet1!A1*2</f><v>42</v></c>'
+          .. '<c r="B1"><f>\'[2]My data\'!B2</f><v>7</v></c>'
+          .. '<c r="C1"><f>"[1]"&amp;A1</f><v>x</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, { A1 = '42', B1 = '7', C1 = '="[1]"&A1' })
+    eq (warnings, {
+      'Formulas in Data that read other workbooks were left out. Their last values are kept.',
+    })
+  end
+)
+
+test (
+  'reading an array formula leaves out the last values of its block',
+  function ()
+    local book = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1" cm="1"><f t="array" ref="A1:B2">_xlfn._xlws.SORT(D1:E2)</f><v>1</v></c>'
+          .. '<c r="B1"><v>2</v></c><c r="C1"><f>_xlfn.LET(_xlpm.x,2,_xlpm.x*3)</f><v>6</v></c></row>'
+          .. '<row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c>'
+          .. '<c r="C2"><f>SUM(_xlfn.ANCHORARRAY(A1))</f><v>10</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, {
+      A1 = '=SORT(D1:E2)',
+      C1 = '=LET(x,2,x*3)',
+      C2 = '=SUM(A1#)',
+    })
+  end
+)
+
+test ('reading drops a NUL character', function ()
+  local book = read_ok (
+    one_sheet (
+      '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>a&#0;b_x0000_c</t></is></c></row></sheetData>'
+    )
+  )
+  eq (book.sheets[1].cells, { A1 = 'abc' })
 end)
 
 test ('reading shows numbers with the digits Excel shows', function ()
@@ -385,7 +456,64 @@ test ('reading warns about each kind of thing it leaves out', function ()
     'The filter in Data was left out.',
     'The hidden sheet Secret shows here.',
     'The chart sheet Chart1 was left out.',
-    'Named ranges were left out.',
+  })
+  -- A name for the whole workbook comes over, and Excel's own names stay out.
+  eq (book.names, { { name = 'Rates', formula = '=Data!$B$1' } })
+end)
+
+test ('defined names go to Excel and come back', function ()
+  local book = {
+    version = 3,
+    sheets = {
+      { name = 'Data', cells = { A1 = '=SUM(Rates)' } },
+      { name = 'Q1/Q2' },
+    },
+    names = {
+      { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+      { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+      { name = 'Q', formula = "='Q1/Q2'!$A$1" },
+    },
+  }
+  local files, warnings = x.write (book)
+  local wb = files['xl/workbook.xml']
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Rates">Data!$B$1:$B$3</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Double">_xlfn.LAMBDA(_xlpm.x, _xlpm.x*2)</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  -- A sheet whose name Excel refuses gets a new one, and the names follow.
+  ok (
+    string.find (wb, '<definedName name="Q">Q1_Q2!$A$1</definedName>', 1, true),
+    wb
+  )
+  ok (#warnings > 0)
+  local back = read_ok (files)
+  eq (back.names, {
+    { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+    { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+    { name = 'Q', formula = '=Q1_Q2!$A$1' },
+  })
+  -- Names that belong to one sheet, or read another workbook, are left out.
+  local files2 = one_sheet ('<sheetData/>')
+  files2['xl/workbook.xml'] =
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="Local" localSheetId="0">Data!$A$1</definedName><definedName name="Far">[1]Sheet1!$A$1</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">Data!$A$1:$C$9</definedName></definedNames></workbook>'
+  local book2, warnings2 = read_ok (files2)
+  eq (book2.names, nil)
+  eq (warnings2, {
+    'Names that belong to one sheet, or that this app cannot read, were left out.',
   })
 end)
 
@@ -434,7 +562,7 @@ end)
 ---@return Sheet.BookData
 local function sample_book ()
   return {
-    version = 2,
+    version = 3,
     active = 2,
     sheets = {
       {
@@ -576,6 +704,78 @@ test ('writing stores the value of each formula when it is given', function ()
   )
 end)
 
+test (
+  'a formula that spills writes as an array formula over its block',
+  function ()
+    local book = {
+      version = 2,
+      sheets = {
+        {
+          name = 'Data',
+          cells = {
+            A1 = '=SEQUENCE(3)',
+            C1 = '=SUM(A1#)',
+            D1 = '=LET(x, 2, f, LAMBDA(n, n*x), f(5))',
+          },
+        },
+      },
+    }
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return Sheet.Value
+    local function values (_, row, col)
+      if col == 1 then
+        return row + 0.0
+      end
+      return col == 3 and 6 or 10
+    end
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return integer?
+    ---@return integer?
+    local function spills (_, row, col)
+      if row == 1 and col == 1 then
+        return 3, 1
+      end
+      return nil, nil
+    end
+    local files = x.write (book, values, spills)
+    local sheet = files['xl/worksheets/sheet1.xml']
+    ok (
+      string.find (
+        sheet,
+        '<c r="A1" cm="1"><f t="array" ref="A1:A3">_xlfn.SEQUENCE(3)</f><v>1</v></c>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (string.find (sheet, '<c r="A3"><v>3</v></c>', 1, true), sheet)
+    ok (string.find (sheet, '<f>SUM(_xlfn.ANCHORARRAY(A1))</f>', 1, true), sheet)
+    ok (
+      string.find (
+        sheet,
+        '<f>_xlfn.LET(_xlpm.x, 2, _xlpm.f, _xlfn.LAMBDA(_xlpm.n, _xlpm.n*_xlpm.x), _xlpm.f(5))</f>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (files['xl/metadata.xml'], 'the metadata part is written')
+    ok (string.find (files['[Content_Types].xml'], '/xl/metadata.xml', 1, true))
+    ok (
+      string.find (files['xl/_rels/workbook.xml.rels'], 'sheetMetadata', 1, true)
+    )
+    -- Reading it back gives the formulas, and leaves the block's values for the formula to spill.
+    local back = read_ok (files)
+    eq (back.sheets[1].cells, book.sheets[1].cells)
+    -- A book with no spills has no metadata part.
+    eq (x.write (book, values)['xl/metadata.xml'], nil)
+  end
+)
+
 test ('writing types each value and escapes text', function ()
   local files = x.write (sample_book ())
   local sheet = files['xl/worksheets/sheet1.xml']
@@ -590,7 +790,7 @@ end)
 
 test ('writing fixes sheet names Excel refuses and warns', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Plan: 2026/27 [draft]', cells = { A1 = '1' } },
       { name = 'A very long sheet name that goes past the limit' },
@@ -615,7 +815,7 @@ end)
 
 test ('writing points formulas at a sheet whose name had to change', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Q1: sales', cells = { A1 = '5' } },
       { name = 'Sums', cells = { A1 = "='Q1: sales'!A1*2", A2 = '=Sums!A1' } },
@@ -630,7 +830,7 @@ end)
 
 test ('writing gives a date formula a date format', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       {
         name = 'S',
@@ -647,7 +847,7 @@ end)
 
 test ('writing leaves out merges that overlap', function ()
   local files, warnings = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'S', merges = { 'A1:C2', 'B2:D4', 'E1:E9', '$F$1:G1' } },
     },
@@ -704,7 +904,7 @@ end)
 
 test ('writing escapes control characters in text', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = { { name = 'S', cells = { A1 = 'a\rb\1c _x0041_ d' } } },
   })
   ok (

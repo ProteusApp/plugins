@@ -1,5 +1,6 @@
 -- The open shaders follow their files: a deleted file is never written back, a changed one
--- loads again, and a rename moves the open shader with its undo.
+-- loads again, and a rename moves the open shader with its undo. A shader's buffers are
+-- found by their names, and its channels show what the notes or the user give them.
 
 ---Loads a module of shader.core the way its own `require` does, since a test here reaches
 ---only this plugin's folder through `require`.
@@ -33,6 +34,7 @@ local core = {
   compile = core_require ('shader_compile'),
   layout = core_require ('shader_layout'),
   source = core_require ('shader_source'),
+  passes = core_require ('shader_passes'),
   file = core_require ('shader_file'),
   format = core_require ('shader_format'),
   history = core_require ('shader_history'),
@@ -52,6 +54,7 @@ local plugin =
 ---@field asked string[] The prompts the picker showed.
 ---@field pending table? The question the picker has open.
 ---@field closed string[] The ids of the tabs that closed.
+---@field store table<string, any> What the plugin keeps in app.store.
 
 ---Starts shader.docs on an app that keeps its files in a table.
 ---@param with_picker? boolean
@@ -66,6 +69,7 @@ local function start (with_picker)
   local handlers = {} ---@type table<string, function[]>
   local timers = {} ---@type function[]
   local store = { examples = true } ---@type table<string, any>
+  run.store = store
   local services = {} ---@type table<string, any>
 
   run.emit = function (event, ...)
@@ -324,3 +328,124 @@ test ('a rename moves the open shader with its undo', function ()
   eq (refused, false)
   ok (tostring (why):find ('.shader.json', 1, true), why)
 end)
+
+---@param list Shader.CompileError[]
+---@return string[]
+local function messages (list)
+  local out = {} ---@type string[]
+  for i, e in ipairs (list) do
+    out[i] = e.message
+  end
+  return out
+end
+
+test ('a shader finds the buffers beside it', function ()
+  local run = start ()
+  run.files['shaders/ink.frag'] = 'void main() { fragColor = vec4(1.0); }'
+  run.files['shaders/ink.buffer-b.frag'] =
+    'void main() { fragColor = vec4(0.5); }'
+  run.files['shaders/ink.buffer-a.shader.json'] =
+    core.file.save (core.graph.new ('A'))
+  local set = run.api.passes ('shaders/ink.buffer-b.frag')
+  eq (set, {
+    base = 'shaders/ink',
+    show = 'b',
+    image = 'shaders/ink.frag',
+    buffers = {
+      a = 'shaders/ink.buffer-a.shader.json',
+      b = 'shaders/ink.buffer-b.frag',
+    },
+  })
+  -- A buffer without a tab still has a program, and a graph one runs in the language asked.
+  local p = assert (run.api.program ('shaders/ink.buffer-b.frag'))
+  eq (p.language, 'glsl')
+  local g =
+    assert (run.api.program ('shaders/ink.buffer-a.shader.json', 'wgsl'))
+  eq (g.language, 'wgsl')
+  eq (run.api.get ('shaders/ink.buffer-b.frag'), nil, 'reading it opens no tab')
+end)
+
+test ('a channel shows what its note gives, until the user picks', function ()
+  local run = start ()
+  local path = 'shaders/ink.frag'
+  run.files[path] =
+    '// @channel 0 noise\nvoid main() { fragColor = texture(iChannel0, v_uv) + texture(iChannel1, v_uv); }\n'
+  local d = assert (run.api.open (path))
+  eq (run.api.channels (path)[0], { kind = 'noise' })
+  eq (run.api.channels (path)[1], { kind = 'none' })
+  local _, errors = run.api.program (path)
+  eq (messages (errors), {
+    'iChannel1 shows nothing, so it reads black. Pick what it shows under Channels in the Preview panel.',
+  })
+  local version = d.version
+  run.api.set_channel (path, 1, { kind = 'buffer', buffer = 'a' })
+  ok (d.version > version, 'the preview runs it again')
+  eq (d.dirty, false, 'a pick is not a change to the code')
+  _, errors = run.api.program (path)
+  eq (#errors, 1)
+  ok (
+    errors[1].message:find ('Buffer A, which this shader does not have', 1, true)
+  )
+  run.api.set_channel (path, 0, { kind = 'checker' })
+  eq (run.api.channels (path)[0], { kind = 'checker' })
+  run.api.set_channel (path, 0, nil)
+  eq (
+    run.api.channels (path)[0],
+    { kind = 'noise' },
+    'nil goes back to the note'
+  )
+
+  -- The pick is kept for the file, and follows it through a rename.
+  eq (
+    run.store['channels:' .. path],
+    { ['1'] = { kind = 'buffer', buffer = 'a' } }
+  )
+  ok (run.api.rename (path, 'shaders/pen.frag'))
+  eq (
+    run.store['channels:shaders/pen.frag'],
+    { ['1'] = { kind = 'buffer', buffer = 'a' } }
+  )
+end)
+
+test ('a graph keeps its channel picks in its file, with undo', function ()
+  local run, d = with_graph ()
+  run.api.set_channel (PATH, 2, { kind = 'noise' })
+  eq (d.history.doc.channels, { ['2'] = { kind = 'noise' } })
+  eq (d.dirty, true)
+  ok (run.api.save (PATH))
+  ok (run.files[PATH]:find ('"channels"', 1, true))
+  run.api.undo (PATH)
+  eq (d.history.doc.channels, nil)
+end)
+
+test (
+  'a new buffer takes the next free letter, in the language of its shader',
+  function ()
+    local run = start ()
+    run.files['shaders/ink.frag'] = 'void main() { fragColor = vec4(1.0); }'
+    run.files['shaders/ink.buffer-a.frag'] =
+      'void main() { fragColor = vec4(1.0); }'
+    local b = assert (run.api.new_buffer ('shaders/ink.frag'))
+    eq (b.path, 'shaders/ink.buffer-b.frag')
+    ok (b.text:find ('// @channel 0 buffer-b', 1, true))
+    local _, errors = run.api.program (b.path)
+    eq (errors, {}, 'it reads its own last frame')
+
+    run.files['shaders/sky.wgsl'] = core.source.TEMPLATES.wgsl
+    local w = assert (run.api.new_buffer ('shaders/sky.wgsl'))
+    eq (w.path, 'shaders/sky.buffer-a.wgsl')
+    eq (w.language, 'wgsl')
+    ok (w.text:find ('@channel 0 buffer-a', 1, true))
+
+    local run2, g2 = with_graph ()
+    local made = assert (run2.api.new_buffer (g2.path))
+    eq (made.path, 'shaders/glow.buffer-a.shader.json')
+    eq (made.history.doc.channels, { ['0'] = { kind = 'buffer', buffer = 'a' } })
+
+    run.api.new_buffer ('shaders/ink.frag')
+    run.api.new_buffer ('shaders/ink.frag')
+    local none, why = run.api.new_buffer ('shaders/ink.frag')
+    eq (none, nil)
+    eq (why, 'This shader has all four buffers.')
+  end
+)

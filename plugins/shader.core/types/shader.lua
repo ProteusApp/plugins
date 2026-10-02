@@ -18,6 +18,46 @@
 ---What an unwired input reads when it has one: the UV, the square UV, or the pixel position.
 ---@alias Shader.Builtin 'uv'|'suv'|'frag'
 
+---Which pass of a shader a file is: the image, or Buffer A to D.
+---@alias Shader.PassId 'image'|'a'|'b'|'c'|'d'
+
+---What a channel shows: nothing, a noise or checker texture, an image the user picked, or
+---what a buffer drew.
+---@alias Shader.SourceKind 'none'|'noise'|'checker'|'image'|'buffer'
+
+---Where a channel's picture comes from.
+---@class Shader.ChannelSource
+---@field kind Shader.SourceKind
+---@field buffer? Shader.PassId For `buffer`: `a` to `d`.
+---@field grant? string For `image`: the id `app.grants` gave for the file.
+---@field name? string For `image`: the file's name.
+---@field filter? 'linear'|'nearest' Linear when nil.
+---@field wrap? 'repeat'|'clamp' Repeat when nil, and clamp for a buffer.
+
+---A channel a program reads.
+---@class Shader.Channel
+---@field index integer 0 to 3.
+---@field names string[] What reads it: GLSL samplers, or WGSL textures.
+---@field source? Shader.ChannelSource What the code's notes give it.
+---@field line? integer Where it is declared, from 1, in the user's text.
+---@field nodes? string[] In a graph: the Texture nodes that read it.
+
+---A resource a WGSL module binds.
+---@class Shader.Binding
+---@field group integer
+---@field binding integer
+---@field kind 'uniforms'|'texture'|'sampler'
+---@field name string
+---@field channel? integer For a texture, the channel it reads. For a sampler, the channel it filters as.
+---@field used boolean The code reads it, so the pipeline's layout has it.
+
+---The files of one shader's passes.
+---@class Shader.PassSet
+---@field base string The path without the pass and the ending.
+---@field show Shader.PassId The pass of the file asked about.
+---@field image? string
+---@field buffers table<Shader.PassId, string> By `a` to `d`, the ones that exist.
+
 ---@class Shader.Category
 ---@field id string
 ---@field title string
@@ -68,6 +108,8 @@
 ---@field settings Shader.SettingDef[]
 ---@field helpers? string[] Helper functions the code calls.
 ---@field unique? boolean A graph has at most one.
+---@field texture? boolean It reads the channel its `channel` setting names.
+---@field uniforms? string[] Builtin uniforms it reads beyond the four every shader has, such as `date`.
 
 ---A node as the catalog writes it: inputs and settings may be left out.
 ---@class Shader.NodeSpec
@@ -80,6 +122,8 @@
 ---@field settings? Shader.SettingDef[]
 ---@field helpers? string[]
 ---@field unique? boolean
+---@field texture? boolean
+---@field uniforms? string[]
 
 ---@class Shader.Helper
 ---@field glsl string
@@ -110,6 +154,7 @@
 ---@field nodes Shader.Node[]
 ---@field edges Shader.Edge[]
 ---@field canvas? Shader.CanvasData The canvas's frames and reroute points. The compiler never reads it.
+---@field channels? table<string, Shader.ChannelSource> What each channel shows, by `'0'` to `'3'`.
 
 ---A titled box on the canvas behind nodes. Moving it moves the nodes inside.
 ---@class Shader.Frame
@@ -142,7 +187,7 @@
 ---@field name string
 ---@field type Shader.UniformType
 ---@field offset integer Bytes from the start of the buffer.
----@field builtin? string `resolution`, `time`, `frame` or `mouse`: the preview sets it.
+---@field builtin? string `resolution`, `time`, `frame`, `mouse` or `date`: the preview sets it.
 
 ---A WGSL uniform struct laid out in its buffer.
 ---@class Shader.Layout
@@ -184,6 +229,8 @@
 ---@field vertex_offset? integer Lines added above the vertex shader's first line.
 ---@field user_lines? integer How many lines the user wrote.
 ---@field shadertoy? boolean A Shadertoy `mainImage` shader.
+---@field channels? Shader.Channel[] The channels it reads, by index.
+---@field bindings? Shader.Binding[] WGSL: what the module binds.
 
 ---@class Shader.CompileError
 ---@field message string
@@ -192,6 +239,8 @@
 ---@field column? integer From 1.
 ---@field severity? 'error'|'warning'
 ---@field stage? 'vertex'|'fragment'
+---@field pass? Shader.PassId The pass it belongs to, when that is not the one in front.
+---@field path? string The file of that pass.
 
 ---@class Shader.CompileResult
 ---@field ok boolean
@@ -270,6 +319,7 @@
 ---@field parameter fun(doc: Shader.Doc, name: string): Shader.Node?
 ---@field wire_id fun(to: string, input: string): string
 ---@field set_canvas fun(doc: Shader.Doc, data: Shader.CanvasData?): Shader.Doc?, string?
+---@field set_channel fun(doc: Shader.Doc, index: integer, source: Shader.ChannelSource?): Shader.Doc
 ---@field frames fun(doc: Shader.Doc): Shader.Frame[]
 ---@field routes fun(doc: Shader.Doc): table<string, { x: number, y: number }[]>
 ---@field with_canvas fun(doc: Shader.Doc, frames: Shader.Frame[], routes: table<string, { x: number, y: number }[]>): Shader.Doc
@@ -290,9 +340,24 @@
 ---@field reserved fun(word: string): boolean
 ---@field layout fun(fields: { name: string, type: Shader.UniformType }[]): Shader.Layout
 
+---@class Shader.PassesModule
+---@field COUNT integer How many channels: 4.
+---@field BUFFERS Shader.PassId[]
+---@field ENDINGS string[]
+---@field parse_source fun(words: string): Shader.ChannelSource?
+---@field clean_source fun(value: any): Shader.ChannelSource?
+---@field label fun(src: Shader.ChannelSource?): string
+---@field pass_label fun(pass: Shader.PassId): string
+---@field pass_of fun(path: string): string, Shader.PassId
+---@field pass_paths fun(base: string, pass: Shader.PassId): string[]
+---@field buffer_path fun(path: string, pass: Shader.PassId): string
+---@field channel_of_name fun(name: string): integer?
+---@field glsl_channels fun(text: string, extra?: integer[]): Shader.Channel[], Shader.CompileError[]
+---@field wgsl_resources fun(text: string, code: string): Shader.Binding[], Shader.Channel[], Shader.CompileError[]
+
 ---@class Shader.SourceModule
 ---@field GLSL_BUILTINS table<string, string>
----@field TEMPLATES { glsl: string, wgsl: string, shadertoy: string, vertex: string }
+---@field TEMPLATES { glsl: string, wgsl: string, shadertoy: string, vertex: string, buffer: string, buffer_wgsl: string }
 ---@field kind_of fun(path: string): Shader.Lang?, ('fragment'|'vertex')?
 ---@field notes fun(comment: string, t: Shader.UniformType): Shader.Notes
 ---@field glsl_uniforms fun(text: string): Shader.Uniform[], table<string, boolean>, Shader.CompileError[]
@@ -321,11 +386,25 @@
 ---@field undo fun(h: Shader.History): boolean
 ---@field redo fun(h: Shader.History): boolean
 
+---A buffer a build writes, with its code in each language it has.
+---@class Shader.BuildPass
+---@field id Shader.PassId `a` to `d`.
+---@field glsl? Shader.Program
+---@field wgsl? Shader.Program
+---@field channels? table<integer, Shader.ChannelSource> What its channels show.
+
 ---What a build writes files from.
 ---@class Shader.BuildInput
 ---@field name string
 ---@field glsl? Shader.Program
 ---@field wgsl? Shader.Program
+---@field channels? table<integer, Shader.ChannelSource> What the image's channels show.
+---@field buffers? Shader.BuildPass[] The buffers, in the order they draw. A language builds only when every buffer has code in it.
+
+---@class Shader.PagesModule
+---@field GLSL string The page that runs GLSL passes on WebGL 2.
+---@field WGSL string The page that runs WGSL passes on WebGPU.
+---@field fill fun(template: string, values: table<string, string>): string
 
 ---@class Shader.BuildModule
 ---@field stem fun(name: string): string
@@ -334,6 +413,7 @@
 ---@class Shader.ExamplesModule
 ---@field names string[]
 ---@field build fun(name: string): Shader.Doc?
+---@field buffer fun(pass: Shader.PassId): Shader.Doc A new graph buffer that reads its own last frame.
 
 ---The `shader` service from `shader.core`.
 ---@class Shader.Core
@@ -344,6 +424,7 @@
 ---@field compile Shader.CompileModule
 ---@field layout Shader.LayoutModule
 ---@field source Shader.SourceModule
+---@field passes Shader.PassesModule
 ---@field file Shader.FileModule
 ---@field format Shader.FormatModule
 ---@field history Shader.HistoryModule
@@ -372,6 +453,7 @@
 ---@field history? Shader.History For a graph: its document and undo.
 ---@field selection string[] For a graph: the picked nodes.
 ---@field values table<string, number[]> For code: the values the Preview's controls set.
+---@field channels table<string, Shader.ChannelSource> For code: what the user picked for each channel, by `'0'` to `'3'`. A graph keeps them in its document.
 ---@field tab? Proteus.Tab
 
 ---The `shader.docs` service from `shader.docs`.
@@ -392,7 +474,11 @@
 ---@field save fun(path: string): boolean
 ---@field select fun(path: string, ids: string[])
 ---@field compiled fun(path: string): Shader.CompileResult? A graph compiled, kept until it changes.
----@field program fun(path: string, lang?: Shader.Lang): Shader.Program?, Shader.CompileError[] What the Preview runs.
+---@field program fun(path: string, lang?: Shader.Lang): Shader.Program?, Shader.CompileError[] What the Preview runs, for an open shader or any file of one.
+---@field passes fun(path: string): Shader.PassSet The files of the shader's passes.
+---@field channels fun(path: string): table<integer, Shader.ChannelSource> What each channel, 0 to 3, shows: the user's pick, or what the code's notes give.
+---@field set_channel fun(path: string, index: integer, source?: Shader.ChannelSource) Picks what a channel shows. Nil goes back to what the notes give. A graph keeps it in its file.
+---@field new_buffer fun(path: string): Shader.OpenDoc?, string? Adds the next free buffer to the shader, in its language, and opens it. Nil and why when it has all four.
 ---@field set_language fun(path: string, lang: Shader.Lang)
 ---@field set_uniform fun(path: string, key: string, value: number[])
 ---@field remove fun(path: string): boolean Deletes a shader's file and closes its tab. A changed example goes back to the original, and its tab shows that.
@@ -527,6 +613,7 @@
 ---@field playing fun(): boolean
 ---@field set_scale fun(s: number)
 ---@field uniform fun(path: string, key: string, value: number[])
+---@field resend fun(grant: string) Sends an image's bytes to the page again when a channel next shows it.
 
 ---A problem the preview page found while compiling on the GPU.
 ---@class Shader.GpuError
@@ -535,3 +622,4 @@
 ---@field message string
 ---@field stage 'vertex'|'fragment'|'link'|'pipeline'|'setup'
 ---@field severity 'error'|'warning'
+---@field pass? Shader.PassId The pass whose code it is in.

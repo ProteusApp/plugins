@@ -40,7 +40,7 @@ return {
     'proteus.lang.selene',
     'proteus.discord.rpc',
   },
-  -- Plugins switched on in the plugin manager or installed from the store stay on.
+  -- Plugins switched on or installed from the marketplace stay on.
   extensible = true,
   settings = {
     theme = 'midnight',
