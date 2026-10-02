@@ -30,6 +30,12 @@ Close the pull request to turn a submission down, with a comment that says why. 
 
 To take a plugin or profile down, delete its folder in a pull request. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
 
+## Keep up with the app
+
+`types/` holds copies of the app's `lua/types`, which the type check reads. Copy them again when the app changes its types. With ProteusApp/app checked out beside the registry at `../app`, `npm test` also holds `reserved.json` to every plugin, profile and old id the app ships, and runs the contracts and the tests that need the app's `lib/` modules. The check workflow cannot, since the app's repository is private, so run them before merging a change that touches them.
+
+`luals-baseline.json` lists the type problems the plugins had when the type check came in: under `types` those found with `types/`, which the workflow holds, and under `app` those found with an app checkout. The check fails on any other. When a change fixes some, `node scripts/luals.mjs --update` takes them off. A pull request that adds to the list needs a reason.
+
 ## Set up the repository
 
 The workflows need three things, set once.

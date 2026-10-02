@@ -22,6 +22,8 @@ jobs:
       STYLUA_SHA256: bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
       SELENE_URL: https://github.com/Kampfkarren/selene/releases/download/0.28.0/selene-0.28.0-linux.zip
       SELENE_SHA256: 5d8706751968486d46d120316b108154693052f75af60efb3dbf4d4cf9e4d902
+      LUALS_URL: https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-x64.tar.gz
+      LUALS_SHA256: e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,18 +32,14 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      # The contracts in contracts/ hold every theme and icon pack to the app's own rules, from
-      # its lua/lib. They read them from a checkout of the app's main branch.
-      - name: The app's lua/lib
-        run: git clone --depth 1 https://github.com/ProteusApp/app.git "$RUNNER_TEMP/app"
       - name: The registry's rules
         run: node scripts/check.mjs
       - name: The registry's scripts
         run: node --test
+      # The app's repository is private and this job has no secrets, so there is no app
+      # checkout here: the contracts, and the tests that need the app's lib/, say they skip.
       - name: What each plugin declares, each plugin's tests, and the contracts
         run: node scripts/lua-test.mjs
-        env:
-          PROTEUS_APP: ${{ runner.temp }}/app
       - name: Vendored files match their published sources
         run: node scripts/vendor.mjs verify
       - name: Install StyLua and selene
@@ -62,3 +60,13 @@ jobs:
         run: |
           selene plugins profiles
           selene --config tests.selene.toml plugins/*/tests contracts
+      - name: Install lua-language-server
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o luals.tar.gz "$LUALS_URL"
+          echo "$LUALS_SHA256  luals.tar.gz" | sha256sum -c -
+          mkdir -p luals
+          tar -xzf luals.tar.gz -C luals
+          echo "$RUNNER_TEMP/luals/bin" >> "$GITHUB_PATH"
+      - name: Lua types, against the app's types in types/
+        run: node scripts/luals.mjs
