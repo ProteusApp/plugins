@@ -1164,7 +1164,7 @@
       "id": "proteus.code.project",
       "name": "Project",
       "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.core.commands",
@@ -1181,24 +1181,26 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
       },
       "files": [
         "README.md",
+        "exclude.lua",
         "handbook/project.md",
-        "init.lua"
+        "init.lua",
+        "tests/exclude.test.lua"
       ],
-      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
-      "updated": "2026-10-02T16:56:50Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1222,7 +1224,7 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -1231,8 +1233,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
-      "updated": "2026-10-02T16:56:50Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "proteus.code.plugins",
@@ -1487,8 +1489,8 @@
     {
       "id": "proteus.code.search",
       "name": "Search",
-      "description": "Finds text in every file of the folder open in the Code Editor.",
-      "version": "1.0.0",
+      "description": "Finds and replaces text in every file of the folder open in the Code Editor.",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1499,24 +1501,28 @@
         "proteus.core.commands",
         "proteus.core.keys",
         "proteus.editor.core",
-        "proteus.ui.menus"
+        "proteus.ui.menus",
+        "proteus.ui.notify",
+        "proteus.ui.palette"
       ],
       "permissions": [
         "files"
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
       },
       "files": [
         "README.md",
-        "init.lua"
+        "init.lua",
+        "search_core.lua",
+        "tests/search_core.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "shader.build",
