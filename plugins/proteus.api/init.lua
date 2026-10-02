@@ -9,6 +9,11 @@
 -- A folder's .folder.json holds the sign-in its requests inherit. Files go by the ids
 -- app.grants.open gives, so the client needs no `files` permission. The parts that need no
 -- screen are in api_core.lua, where the tests reach them.
+--
+-- This file keeps the open requests, puts the screen together and registers the commands.
+-- The rest lives in modules that share one context, ApiApp.Ctx: api_editor draws and edits
+-- the request, api_response sends it and shows the answer, api_list saves and lists the
+-- requests, api_history keeps the ones sent, and api_envs the environments.
 
 local CSS = require ('api_css') --[[@as string]]
 local core = require ('api_core') --[[@as ApiApp.Core]]
@@ -16,14 +21,10 @@ local editor_m = require ('api_editor') --[[@as ApiApp.EditorModule]]
 local envs_m = require ('api_envs') --[[@as ApiApp.EnvsModule]]
 local history_m = require ('api_history') --[[@as ApiApp.HistoryModule]]
 local list_m = require ('api_list') --[[@as ApiApp.ListModule]]
+local response_m = require ('api_response') --[[@as ApiApp.ResponseModule]]
 
 local DIR = 'data/proteus.api'
 local ENV_PATH = DIR .. '/environments.json'
-local HISTORY_MAX = 50
--- A longer answer shows as it came, since formatting it would hold up the window.
-local PRETTY_MAX = 3 * 1024 * 1024
--- How much of a binary answer shows as hex.
-local HEX_MAX = 4096
 
 ---A request open in the editor. A saved one is keyed by its path, a new one by `new:<n>`.
 ---@class ApiApp.Doc
@@ -58,6 +59,7 @@ local HEX_MAX = 4096
 ---@field menus? Proteus.Menus
 ---@field DIR string The folder the requests live in.
 ---@field ENV_PATH string The file the environments live in.
+---@field browser boolean True in the browser, where requests go through its fetch.
 ---@field envs Http.Envs
 ---@field env_problem? string What is wrong with the environments file, if anything.
 ---@field history Http.HistoryEntry[] The requests sent, newest first.
@@ -97,7 +99,6 @@ local HEX_MAX = 4096
 ---@field schedule_list fun()
 ---@field touch fun()
 ---@field render_status fun()
----@field render_response fun()
 ---@field schedule_drafts fun()
 ---@field effective_auth fun(doc: ApiApp.Doc): Http.Auth, string?
 ---@field token_key fun(auth: Http.Auth): string
@@ -116,6 +117,11 @@ local HEX_MAX = 4096
 ---@field count_html fun(n: integer): string
 ---@field fill_editor fun()
 ---@field format_body fun()
+---@field sum Proteus.El From api_response: the status line of the answer.
+---@field warn Proteus.El
+---@field res_box Proteus.El
+---@field render_response fun()
+---@field send fun()
 ---@field render_list fun() From api_list.
 ---@field badge fun(method: string): string
 ---@field walk fun(dir: string, depth: integer, out: Http.ListItem[])
@@ -174,7 +180,6 @@ return {
     local menus = app.try_use ('menus')
     local toolbar = app.try_use ('toolbar')
     local tabs = app.try_use ('tabs')
-    local esc = app.util.escape
     local browser = app.platform == 'browser'
     ui.css (CSS)
 
@@ -206,21 +211,15 @@ return {
     local docs = {} ---@type table<string, ApiApp.Doc>
     local fresh = {} ---@type string[] Keys of new requests, oldest first.
     local new_count = 0
-    local send_count = 0
     local writing = 0
-    local res_view = app.store.get ('res_view', 'body') ---@type string
-    local raw = app.store.get ('raw', false) == true
     local top_px = app.store.get ('split', nil) ---@type number?
     local file_cache = {} ---@type table<string, ApiApp.FileInfo>
     local drafts_timer = nil ---@type fun()?
 
     local render_list ---@type fun()
-    local render_history ---@type fun()
     local render_head ---@type fun()
     local render_tabs ---@type fun()
     local render_env ---@type fun()
-    local fill_editor ---@type fun()
-    local show ---@type fun(doc: ApiApp.Doc?)
 
     -- What the modules share. Each adds its own functions to it.
     local shared = {
@@ -237,6 +236,7 @@ return {
       ENV_PATH = ENV_PATH,
       say = say,
       complain = complain,
+      browser = browser,
       envs = assert (http.parse_envs (nil)),
       history = {},
       docs = docs,
@@ -521,195 +521,16 @@ return {
     ctx.effective_auth = effective_auth
     editor_m.attach (ctx)
     render_head, render_tabs = ctx.render_head, ctx.render_tabs
-    fill_editor, show = ctx.fill_editor, ctx.show
+    local fill_editor, show = ctx.fill_editor, ctx.show
     local head, line, req_tabs, pane_box =
       ctx.head, ctx.line, ctx.req_tabs, ctx.pane_box
-    local url_in, send_btn, au = ctx.url_in, ctx.send_btn, ctx.au
-    local tokens, token_key = ctx.tokens, ctx.token_key
-    local count_html, render_send = ctx.count_html, ctx.render_send
-    local render_auth, render_token = ctx.render_auth, ctx.render_token
     local format_body = ctx.format_body
 
     -- The response ------------------------------------------------------------------------
 
-    local sum = ui.div ({ class = 'api-sum' })
-    local warn = ui.div ({ class = 'api-warn' })
-    local res_hint = ui.div ({ class = 'api-hint' })
-    local res_error = ui.div ({ class = 'api-error' })
-    local res_code =
-      ui.widget ('code', { language = 'json', readonly = true, text = '' })
-    local res_code_host = ui.div ({ class = 'api-code', res_code })
-    local res_headers = ui.div ({ class = 'api-hdrs' })
-    local res_box = ui.div ({
-      class = 'api-res',
-      res_hint,
-      res_error,
-      res_code_host,
-      res_headers,
-    })
-    local shown_for = nil ---@type ApiApp.Result?
-    local shown_text = nil ---@type string?
-
-    ---@param list Proteus.HttpHeader[]
-    ---@return string
-    local function headers_html (list)
-      if #list == 0 then
-        return '<div class="api-hint">No headers came back.</div>'
-      end
-      local parts = { '<table class="api-htable">' }
-      for _, h in ipairs (list) do
-        parts[#parts + 1] = '<tr><td>'
-          .. esc (h.name)
-          .. '</td><td>'
-          .. esc (h.value)
-          .. '</td></tr>'
-      end
-      parts[#parts + 1] = '</table>'
-      return table.concat (parts)
-    end
-
-    ---@param id string
-    ---@param label string
-    ---@param on boolean
-    ---@return string
-    local function seg_button (id, label, on)
-      return '<button class="'
-        .. (on and 'on' or '')
-        .. '" data-item="'
-        .. id
-        .. '">'
-        .. label
-        .. '</button>'
-    end
-
-    local function render_response ()
-      local doc = ctx.current
-      if not doc then
-        return
-      end
-      local waiting = doc.pending ~= nil
-      local r = not waiting and doc.result or nil
-      local answer = r and r.status and r or nil
-      local kind = answer
-          and not answer.binary
-          and http.body_kind (answer.headers, answer.body)
-        or 'text'
-
-      local parts = {} ---@type string[]
-      if waiting then
-        parts[#parts + 1] =
-          '<span class="api-meta">Waiting for the answer…</span>'
-      elseif answer then
-        local code = answer.status or 0
-        parts[#parts + 1] = '<span class="api-status api-s-'
-          .. http.status_class (code)
-          .. '">'
-          .. esc (http.status_line (code))
-          .. '</span><span class="api-meta">'
-          .. http.format_ms (answer.ms)
-          .. '</span><span class="api-meta">'
-          .. http.human_size (answer.size)
-          .. (answer.binary and ', bytes' or '')
-          .. '</span>'
-        if answer.url then
-          parts[#parts + 1] = '<span class="api-to" title="'
-            .. esc (answer.url)
-            .. '">'
-            .. (answer.redirects == 1 and '1 redirect to ' or (answer.redirects .. ' redirects to '))
-            .. esc (answer.url)
-            .. '</span>'
-        end
-      else
-        parts[#parts + 1] = '<span class="api-sum-label">Response</span>'
-      end
-      parts[#parts + 1] = '<span class="api-grow"></span>'
-      if answer then
-        parts[#parts + 1] = '<span class="api-seg">'
-          .. seg_button ('body', 'Body', res_view == 'body')
-          .. seg_button (
-            'headers',
-            'Headers ' .. count_html (#answer.list),
-            res_view == 'headers'
-          )
-          .. '</span>'
-        if res_view == 'body' and kind == 'json' then
-          parts[#parts + 1] = '<span class="api-seg">'
-            .. seg_button ('pretty', 'Pretty', not raw)
-            .. seg_button ('raw', 'Raw', raw)
-            .. '</span>'
-        end
-        parts[#parts + 1] = '<button class="api-icon-btn" data-item="copy" title="'
-          .. (answer.binary and 'Copy the body as base64' or 'Copy the body')
-          .. '">'
-          .. icon ('copy')
-          .. '</button>'
-      end
-      sum:html (table.concat (parts))
-
-      local warning = waiting and doc.warning or (r and r.warning)
-      warn:text (warning or '')
-      warn:show (warning ~= nil)
-      res_hint:show (false)
-      res_error:show (false)
-      res_code_host:show (false)
-      res_headers:show (false)
-
-      ---@param text string
-      local function hint (text)
-        res_hint:text (text)
-        res_hint:show (true)
-      end
-
-      if doc.folder_auth then
-        hint ('Requests in this folder set to From folder sign in this way.')
-      elseif waiting then
-        hint ('Waiting for the answer. Cancel stops the request.')
-      elseif not r then
-        hint ('Press Ctrl+Enter to send.')
-      elseif r.error then
-        res_error:text (r.error)
-        res_error:show (true)
-      elseif not answer then
-        hint (r.note or 'Press Ctrl+Enter to send.')
-      elseif res_view == 'headers' then
-        res_headers:html (headers_html (answer.list))
-        res_headers:show (true)
-      elseif answer.body == '' then
-        hint ('The answer has no body.')
-      else
-        local text, language = answer.body, 'text'
-        if answer.binary then
-          -- Bytes that are not text show as hex, the first few kilobytes of them.
-          answer.shown = answer.shown
-            or (
-              'The answer is '
-              .. http.human_size (answer.size)
-              .. ' of bytes that are not text. The first of them:\n\n'
-              .. http.hex_dump (http.base64_decode (answer.body), HEX_MAX)
-            )
-          text = answer.shown
-        elseif kind == 'json' then
-          language = 'json'
-          if not raw and #answer.body <= PRETTY_MAX then
-            answer.pretty = answer.pretty
-              or http.pretty_json (answer.body)
-              or answer.body
-            text = answer.pretty
-          end
-        elseif kind == 'html' or kind == 'xml' then
-          language = 'html'
-        end
-        -- Sending a long body to the code editor again would reset its scroll for nothing.
-        if shown_for ~= answer or shown_text ~= text then
-          res_code:widget ('set_language', language)
-          res_code:widget ('set_text', text)
-          shown_for = answer
-          shown_text = text
-        end
-        res_code_host:show (true)
-      end
-    end
-    ctx.render_response = render_response
+    response_m.attach (ctx)
+    local sum, warn, res_box = ctx.sum, ctx.warn, ctx.res_box
+    local send = ctx.send
 
     -- The whole main area -----------------------------------------------------------------
 
@@ -778,249 +599,6 @@ return {
       return true
     end)
 
-    -- Sending -----------------------------------------------------------------------------
-
-    ---Asks the token address of an OAuth 2 sign-in for a token, and keeps it. `done` gets
-    ---the token, or nil and why not. Returns the request, so Cancel can stop it.
-    ---@param auth Http.Auth
-    ---@param done fun(token: string?, err: string?)
-    ---@return Proteus.HttpCall?
-    local function get_token (auth, done)
-      local request, err = http.oauth_request (auth, http.env_vars (ctx.envs))
-      if not request then
-        done (nil, err)
-        return nil
-      end
-      local key = token_key (auth)
-      local ok, call = pcall (app.net.fetch, request, function (reply, why)
-        if not reply then
-          done (nil, http.error_text (why, browser))
-          return
-        end
-        local token, seconds, problem = http.oauth_token (reply)
-        if not token then
-          done (nil, problem)
-          return
-        end
-        tokens[key] = core.keep_token (token, seconds, app.util.now ())
-        done (token, nil)
-      end)
-      if not ok then
-        done (nil, tostring (call))
-        return nil
-      end
-      return call --[[@as Proteus.HttpCall]]
-    end
-
-    local function send ()
-      local doc = ctx.current
-      if not doc or doc.folder_auth then
-        return
-      end
-      if doc.pending then
-        -- Cancel stops the request itself, not only the wait for it.
-        local call = doc.call
-        doc.pending = nil
-        doc.call = nil
-        if call then
-          call.cancel ()
-        end
-        doc.result =
-          core.empty_result ({ note = 'Cancelled. The request stopped.' })
-        render_send ()
-        render_response ()
-        render_status ()
-        return
-      end
-      local env = http.env_vars (ctx.envs)
-      local auth = effective_auth (doc)
-      ---@type Http.BuildContext
-      local build_ctx = { auth = auth }
-      local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
-      if kept and core.token_fresh (kept, app.util.now ()) then
-        build_ctx.token = kept.token
-      end
-      local built = http.build (doc.req, env, build_ctx)
-      if built.url == '' then
-        doc.result = core.empty_result ({ note = 'Type an address first.' })
-        render_response ()
-        url_in:focus ()
-        return
-      end
-      local problem = core.send_problem (built)
-      if problem then
-        doc.result = core.empty_result ({ error = problem })
-        render_response ()
-        render_status ()
-        return
-      end
-      send_count = send_count + 1
-      local number = send_count
-      local started = app.util.now ()
-      local warning = http.missing_text (built.missing, ctx.envs.active)
-      local snapshot = http.copy (doc.req)
-      doc.pending = number
-      doc.warning = warning
-      render_send ()
-      render_response ()
-      render_status ()
-
-      ---@param result ApiApp.Result
-      local function finish (result)
-        if doc.pending ~= number then
-          return
-        end
-        doc.pending = nil
-        doc.call = nil
-        doc.result = result
-        ctx.history = http.add_history (ctx.history, {
-          method = built.method,
-          url = built.url,
-          status = result.status or 0,
-          time = app.util.now (),
-          request = snapshot,
-        }, HISTORY_MAX)
-        app.store.set ('history', ctx.history)
-        render_history ()
-        if doc == ctx.current then
-          render_send ()
-          render_response ()
-          render_auth ()
-        end
-        render_status ()
-      end
-
-      ---@param err string
-      local function fail (err)
-        finish (core.empty_result ({
-          error = err,
-          warning = warning,
-          ms = app.util.now () - started,
-        }))
-      end
-
-      ---Sends a built request. A Digest challenge in a 401 is answered once.
-      ---@param b Http.Built
-      ---@param answered boolean
-      local function go (b, answered)
-        local ok, call = pcall (
-          app.net.fetch,
-          http.fetch_request (b),
-          function (reply, err)
-            if doc.pending ~= number then
-              return
-            end
-            if not reply then
-              fail (http.error_text (err, browser))
-              return
-            end
-            if b.digest and not answered and reply.status == 401 then
-              local header, why = http.digest_header (
-                b,
-                tostring (
-                  reply.headers and reply.headers['www-authenticate'] or ''
-                ),
-                core.random_hex (16, math.random),
-                1
-              )
-              if header then
-                b.headers.Authorization = header
-                go (b, true)
-                return
-              end
-              warning = (warning and (warning .. '\n') or '') .. tostring (why)
-            end
-            if auth.mode == 'oauth2' and reply.status == 401 then
-              -- The token may have ended early, so the next send asks for a new one.
-              tokens[token_key (auth)] = nil
-            end
-            finish (
-              core.result_of (reply, b.url, app.util.now () - started, warning)
-            )
-          end
-        )
-        if not ok then
-          fail (http.error_text (tostring (call), browser))
-          return
-        end
-        doc.call = call --[[@as Proteus.HttpCall]]
-      end
-
-      if auth.mode == 'oauth2' and not build_ctx.token then
-        doc.call = get_token (auth, function (token, err)
-          if doc.pending ~= number then
-            return
-          end
-          if not token then
-            fail ('No token came, so the request did not go. ' .. tostring (err))
-            return
-          end
-          go (http.build (doc.req, env, { auth = auth, token = token }), false)
-        end)
-      else
-        go (built, false)
-      end
-    end
-
-    au.token_btn:on ('click', function ()
-      local doc = ctx.current
-      if not doc then
-        return nil
-      end
-      local auth = effective_auth (doc)
-      if auth.mode ~= 'oauth2' then
-        return nil
-      end
-      au.token_state:text ('Asking for a token…')
-      get_token (auth, function (token, err)
-        if token then
-          say ('Got a new token.')
-        else
-          complain ('No token came. ' .. tostring (err))
-        end
-        render_token ()
-      end)
-      return nil
-    end)
-
-    send_btn:on ('click', function ()
-      send ()
-      return nil
-    end)
-    url_in:on ('keydown', function (ev)
-      if ev.key == 'Enter' and not ev.ctrl and not ev.composing then
-        send ()
-        return true
-      end
-      return nil
-    end)
-
-    sum:on ('click', function (ev)
-      local item = ev.item
-      local doc = ctx.current
-      if not item or not doc then
-        return nil
-      end
-      if item == 'body' or item == 'headers' then
-        res_view = item
-        app.store.set ('res_view', item)
-      elseif item == 'pretty' or item == 'raw' then
-        raw = item == 'raw'
-        app.store.set ('raw', raw)
-      elseif item == 'copy' then
-        local r = doc.result
-        if r then
-          app.system.clipboard (
-            (shown_for == r and not r.binary) and shown_text or r.body
-          )
-          say (r.binary and 'Copied the body as base64.' or 'Copied the body.')
-        end
-        return nil
-      end
-      render_response ()
-      return nil
-    end)
-
     -- Saving, managing and listing requests ------------------------------------------------
 
     ctx.none_new, ctx.none_import = none_new, none_import
@@ -1039,8 +617,7 @@ return {
     -- History -----------------------------------------------------------------------------
 
     history_m.attach (ctx)
-    render_history = ctx.render_history
-    local clear_history = ctx.clear_history
+    local render_history, clear_history = ctx.render_history, ctx.clear_history
 
     -- Environments ------------------------------------------------------------------------
 

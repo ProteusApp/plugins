@@ -45,6 +45,7 @@
     "api_envs.lua",
     "api_history.lua",
     "api_list.lua",
+    "api_response.lua",
     "init.lua",
     "tests/api_core.test.lua",
     "tests/client.test.lua",
