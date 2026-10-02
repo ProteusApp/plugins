@@ -13,6 +13,8 @@ The panel is shared, so other plugins may show it, as the Code Editor's folder p
 | `terminal.shell` | empty | The program each new terminal runs, such as `pwsh`, `cmd` or `bash`. Empty runs the system shell. |
 | `terminal.font_size` | `13` | The terminals' font size. |
 
+`terminal.shell` names the program that runs, so only your own choice sets it. A profile or a folder's `.proteus/settings.json` cannot.
+
 ## Permissions
 
 - `process` runs the shell in each terminal.

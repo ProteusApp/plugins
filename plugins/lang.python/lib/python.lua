@@ -25,8 +25,9 @@ local M = {}
 
 ---@param app Proteus.App
 ---@param settings Proteus.Settings
+---@param untrusted? boolean True while the open folder is not trusted, so its own `.venv` is not looked for. One the user picks still counts.
 ---@return LangPython.Python
-function M.new (app, settings)
+function M.new (app, settings, untrusted)
   ---@param root string
   ---@return string
   local function key (root)
@@ -109,7 +110,8 @@ function M.new (app, settings)
         cb ({ path = chosen, how = 'picked' })
         return
       end
-      existing (venv.candidates (root, app.os), function (envs)
+      local envs_root = not untrusted and root or nil
+      existing (venv.candidates (envs_root, app.os), function (envs)
         if envs[1] then
           cb ({ path = envs[1], how = 'venv' })
           return

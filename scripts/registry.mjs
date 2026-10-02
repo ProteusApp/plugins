@@ -524,6 +524,11 @@ export function validate(
   const names = Object.keys(files);
   const main = MAIN_FILE[kind];
   if (!names.includes(main)) problems.push(`A ${noun} needs a${main === 'init.lua' ? 'n' : ''} ${main} at its top.`);
+  if (kind === 'plugin' && names.includes(main) && Array.isArray(sub.permissions ?? [])) {
+    const text = typeof files[main] === 'string' ? files[main] : Buffer.from(files[main]).toString('utf8');
+    const problem = permissionsProblem(text, sub.permissions ?? []);
+    if (problem) problems.push(problem);
+  }
   if (names.length > LIMITS.files) problems.push(`A ${noun} can hold at most ${LIMITS.files} files.`);
   const vendor = vendorOf(files);
   problems.push(...vendor.problems);
@@ -558,6 +563,115 @@ export function validate(
     }
   }
   return problems;
+}
+
+/**
+ * The tokens of Lua source that reading a literal table needs: names (numbers among them),
+ * strings and symbols, with comments left out. A string holds `plain: false` when it has an
+ * escape. Null when a string or a comment does not end.
+ */
+export function luaTokens(text) {
+  const out = [];
+  const n = text.length;
+  /** The level of a long bracket opening at `at`, such as 1 for `[=[`, or -1. */
+  const level = (at) => {
+    const m = /^\[(=*)\[/.exec(text.slice(at, at + 66));
+    return m ? m[1].length : -1;
+  };
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    if (/\s/.test(c)) {
+      i++;
+    } else if (text.startsWith('--', i)) {
+      const lv = level(i + 2);
+      if (lv >= 0) {
+        const close = ']' + '='.repeat(lv) + ']';
+        const end = text.indexOf(close, i + 4 + lv);
+        if (end < 0) return null;
+        i = end + close.length;
+      } else {
+        const end = text.indexOf('\n', i);
+        i = end < 0 ? n : end + 1;
+      }
+    } else if (c === '[' && level(i) >= 0) {
+      const lv = level(i);
+      const close = ']' + '='.repeat(lv) + ']';
+      const end = text.indexOf(close, i + 2 + lv);
+      if (end < 0) return null;
+      out.push({ type: 'string', value: text.slice(i + 2 + lv, end), plain: false });
+      i = end + close.length;
+    } else if (c === '"' || c === "'") {
+      let j = i + 1;
+      let plain = true;
+      while (j < n && text[j] !== c) {
+        if (text[j] === '\n') return null;
+        if (text[j] === '\\') {
+          plain = false;
+          j++;
+        }
+        j++;
+      }
+      if (j >= n) return null;
+      out.push({ type: 'string', value: text.slice(i + 1, j), plain });
+      i = j + 1;
+    } else {
+      const word = /^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9][0-9A-Za-z_]*(?:\.[0-9][0-9A-Za-z_]*)?)/.exec(text.slice(i, i + 256));
+      const symbol = /^(?:\.\.\.|\.\.|==|~=|<=|>=|::|\/\/|<<|>>)/.exec(text.slice(i, i + 3));
+      const token = word ? word[0] : symbol ? symbol[0] : c;
+      out.push({ type: word ? 'name' : 'symbol', value: token });
+      i += token.length;
+    }
+  }
+  return out;
+}
+
+/**
+ * Why a plugin's init.lua does not declare its permissions as a literal list, or null. Proteus
+ * runs init.lua each time the plugin starts, so a list it works out, such as one that depends
+ * on the date, could grant more than the reviewer saw. `permissions` must be a field written
+ * as a list of plain strings, such as `permissions = { 'net', 'files' }`, holding the same
+ * names as `declared`, what the plugin declares. Nothing else may assign to it.
+ */
+export function permissionsProblem(text, declared = []) {
+  const tokens = luaTokens(text);
+  if (!tokens) return 'init.lua has a string or a comment that does not end.';
+  const literal = 'permissions must be written as a list of plain names in init.lua, such as permissions = { \'net\' }, so the list a reviewer reads is the one Proteus grants.';
+  const lists = [];
+  for (let k = 0; k < tokens.length; k++) {
+    const t = tokens[k];
+    const before = tokens[k - 1]?.value;
+    const after = tokens[k + 1]?.value;
+    // t['permissions'] names it as a string.
+    if (t.type === 'string' && t.value === 'permissions' && before === '[') return literal;
+    if (t.type !== 'name' || t.value !== 'permissions') continue;
+    // t.permissions[1] = x changes the list after it was built.
+    if ((before === '.' || before === ':') && after === '[') return literal;
+    if (after !== '=' || tokens[k + 2]?.value === '=') continue;
+    // A field of a table being built. Anything else, such as m.permissions = x, assigns to it.
+    if (!['{', ',', ';'].includes(before)) return literal;
+    if (tokens[k + 2]?.value !== '{') return literal;
+    const names = [];
+    let j = k + 3;
+    for (;;) {
+      const item = tokens[j];
+      if (!item) return literal;
+      if (item.value === '}' && item.type === 'symbol') break;
+      if (item.type !== 'string' || !item.plain) return literal;
+      names.push(item.value);
+      j++;
+      const sep = tokens[j];
+      if (sep?.type === 'symbol' && (sep.value === ',' || sep.value === ';')) j++;
+      else if (!(sep?.type === 'symbol' && sep.value === '}')) return literal;
+    }
+    lists.push(names);
+  }
+  const want = [...new Set(Array.isArray(declared) ? declared : [])].sort().join(',');
+  if (lists.length === 0) return want === '' ? null : literal;
+  if (!lists.some((names) => [...new Set(names)].sort().join(',') === want)) {
+    return 'The permissions written in init.lua are not the ones the plugin declares.';
+  }
+  return null;
 }
 
 /** The proteus.json the registry keeps beside a plugin's or a profile's files. */
@@ -878,6 +992,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] The profile does what the description says, and nothing else.',
           '- [ ] Every plugin it names ships with Proteus or is listed in this registry.',
           '- [ ] Its settings hold no secrets, tokens or personal data.',
+          '- [ ] Its settings name no program to run, no path to one, and no place code comes from, such as `marketplace.repository`.',
         ]
       : [
           '- [ ] The code does what the description says, and nothing else.',
@@ -885,6 +1000,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] It reads and writes only the files its purpose needs.',
           '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
           '- [ ] It holds no secrets, tokens or personal data.',
+          '- [ ] A setting that names a program to run, or where code comes from, is defined with `sensitive = true`.',
           '- [ ] Every vendored file comes from the source vendor.json names, under a license that lets it be shared, and `node scripts/vendor.mjs verify` agrees.',
         ];
   lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);
