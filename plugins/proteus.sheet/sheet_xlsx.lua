@@ -1784,11 +1784,35 @@ function M.read (files)
   if #book.sheets == 0 then
     return nil, 'The workbook has no sheets that can be opened.'
   end
+  -- Names for the whole workbook come over. Excel's own, such as the print area, and names
+  -- that belong to one sheet or read another workbook are left out.
+  local names, taken = {}, {} ---@type Sheet.DefinedName[], table<string, boolean>
   for _, node in ipairs (children (child (wb, 'definedNames'), 'definedName')) do
     local name = node.attrs.name or ''
+    local text = node.text or ''
     if string.sub (name, 1, 6) ~= '_xlnm.' then
-      warn_once (warnings, seen, 'names', 'Named ranges were left out.')
+      local up = string.upper (name)
+      if
+        node.attrs.localSheetId
+        or formula.name_problem (name)
+        or taken[up]
+        or external (text)
+        or not formula.parse ('=' .. from_excel (text))
+      then
+        warn_once (
+          warnings,
+          seen,
+          'names',
+          'Names that belong to one sheet, or that this app cannot read, were left out.'
+        )
+      else
+        taken[up] = true
+        names[#names + 1] = { name = name, formula = '=' .. from_excel (text) }
+      end
     end
+  end
+  if #names > 0 then
+    book.names = names
   end
   return book, warnings
 end
@@ -2965,6 +2989,24 @@ function M.write (book, values, spills)
     .. '<dc:creator>Proteus</dc:creator></cp:coreProperties>'
   -- The file asks Excel to work out every formula again on opening, since the cached values
   -- came from this app.
+  local defined = {} ---@type string[]
+  for _, entry in ipairs (type (book.names) == 'table' and book.names or {}) do
+    if
+      type (entry) == 'table'
+      and type (entry.name) == 'string'
+      and formula.is_formula (entry.formula)
+    then
+      local text = entry.formula
+      for _, pair in ipairs (renames) do
+        text = formula.rename_sheet (text, pair[1], pair[2])
+      end
+      defined[#defined + 1] = '<definedName name="'
+        .. attr (entry.name)
+        .. '">'
+        .. formula_text (to_excel (string.sub (text, 2)))
+        .. '</definedName>'
+    end
+  end
   files['xl/workbook.xml'] = table.concat ({
     XML_HEAD,
     '<workbook xmlns="' .. NS_MAIN .. '" xmlns:r="' .. NS_REL .. '">',
@@ -2972,6 +3014,9 @@ function M.write (book, values, spills)
     '<sheets>',
     table.concat (sheet_entries),
     '</sheets>',
+    #defined > 0
+        and '<definedNames>' .. table.concat (defined) .. '</definedNames>'
+      or '',
     '<calcPr fullCalcOnLoad="1"/>',
     '</workbook>',
   })

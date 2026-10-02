@@ -14,7 +14,7 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 local pop = require ('sheet_panel_pop') --[[@as Sheet.PanelPopModule]]
 local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 
----@alias Sheet.PanelName 'chart'|'rules'|'validation'|'sort'
+---@alias Sheet.PanelName 'chart'|'rules'|'validation'|'sort'|'names'
 
 ---The side panels, as sheet_panels drives them.
 ---@class Sheet.SidePanels
@@ -34,6 +34,12 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@field max_color string
 ---@field bar_color string
 ---@field stop boolean Stop if true.
+
+---A defined name being edited.
+---@class Sheet.NameDraft
+---@field old? string The name as it was, or nil for a new one.
+---@field name string
+---@field formula string
 
 ---A validation rule being edited.
 ---@class Sheet.ValidationDraft
@@ -432,6 +438,12 @@ local VIEWS = {
     title = 'Sort',
     heading = 'Sort range',
     order = 13,
+  },
+  names = {
+    id = 'sheet.panel.names',
+    title = 'Names',
+    heading = 'Defined names',
+    order = 14,
   },
 }
 
@@ -1853,6 +1865,176 @@ function M.install (env)
     end
   end
 
+  -- Defined names ----------------------------------------------------------------------
+
+  local name_draft = nil ---@type Sheet.NameDraft?
+
+  ---A new name's formula: the selection on the sheet that shows, such as
+  ---`=Sheet1!$B$2:$B$9`.
+  ---@return string
+  local function selection_formula ()
+    local rect = ctl.selection ()
+    local sheet = ctl.sheet ()
+    ---@param row integer
+    ---@param col integer
+    ---@return string
+    local function fixed (row, col)
+      return '$' .. model.col_name (col) .. '$' .. row
+    end
+    local text_now = fixed (rect.r1, rect.c1)
+    if rect.r1 ~= rect.r2 or rect.c1 ~= rect.c2 then
+      text_now = text_now .. ':' .. fixed (rect.r2, rect.c2)
+    end
+    return '='
+      .. formula.quote_sheet (sheet and sheet.name or 'Sheet1')
+      .. '!'
+      .. text_now
+  end
+
+  ---@param body Proteus.El
+  ---@param book Sheet.Book
+  local function names_list (body, book)
+    local list = ui.div ({ class = 'sheet-panel-list' })
+    for _, n in ipairs (book.defined_names) do
+      local item = n
+      local card = ui.div ({
+        class = 'sheet-panel-card',
+        title = 'Edit this name',
+        ui.icon ('tag', 16),
+        ui.div ({
+          class = 'sheet-panel-card-main',
+          ui.span ({ class = 'sheet-panel-desc', item.name }),
+          ui.span ({ class = 'sheet-panel-range', item.formula }),
+        }),
+        ui.div ({
+          class = 'sheet-panel-tools',
+          icon_button ('trash-2', 'Delete the name', function ()
+            ctl.change ('Delete name', function (b)
+              b:delete_name (item.name)
+            end)
+          end),
+        }),
+      })
+      card:on ('click', function ()
+        name_draft =
+          { old = item.name, name = item.name, formula = item.formula }
+        renders.names ()
+        return nil
+      end)
+      list:append (card)
+    end
+    if #book.defined_names == 0 then
+      list:append (empty ('This workbook has no names yet.'))
+    end
+    body:append (
+      list,
+      ui.button ({
+        'Define name',
+        icon = 'plus',
+        class = 'sheet-panel-wide',
+        onclick = function ()
+          name_draft = { name = '', formula = selection_formula () }
+          renders.names ()
+          return nil
+        end,
+      }),
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'A formula anywhere in the workbook can use a name in place of what it stands for, such as =SUM(Sales).',
+      })
+    )
+  end
+
+  ---@param body Proteus.El
+  ---@param draft Sheet.NameDraft
+  local function names_form (body, draft)
+    local name_box = input (draft.name, function (value)
+      draft.name = value
+    end, { placeholder = 'Sales' })
+    local formula_box = input (draft.formula, function (value)
+      draft.formula = value
+    end, { placeholder = '=Sheet1!$B$2:$B$9', mono = true })
+    body:append (
+      field ('Name', name_box),
+      field (
+        'Stands for',
+        formula_box,
+        ui.div ({
+          class = 'sheet-panel-hint',
+          'A reference such as =Sheet1!$B$2:$B$9, a value such as =0.2, or a function such as =LAMBDA(x, x*2).',
+        })
+      ),
+      ui.div ({
+        class = 'sheet-panel-actions',
+        draft.old and ui.button ({
+          'Delete',
+          variant = 'danger',
+          onclick = function ()
+            local old = draft.old --[[@as string]]
+            ctl.change ('Delete name', function (b)
+              b:delete_name (old)
+            end)
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }) or nil,
+        ui.span ({ class = 'sheet-panel-spacer' }),
+        ui.button ({
+          'Cancel',
+          onclick = function ()
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }),
+        ui.button ({
+          'Done',
+          variant = 'primary',
+          onclick = function ()
+            draft.name = string.match (name_box:value (), '^%s*(.-)%s*$')
+            draft.formula = string.match (formula_box:value (), '^%s*(.-)%s*$')
+            local problem = ctl.change (
+              draft.old and 'Change name' or 'Define name',
+              function (b)
+                local done, why =
+                  b:set_name (draft.name, draft.formula, draft.old)
+                if not done then
+                  return why or 'The name could not be defined.'
+                end
+                return nil
+              end
+            )
+            if type (problem) == 'string' then
+              ctl.say ('warn', problem)
+              return nil
+            end
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }),
+      })
+    )
+    name_box:focus ()
+  end
+
+  renders.names = function ()
+    local body = bodies.names
+    body:clear ()
+    local book = ctl.book ()
+    if not book then
+      name_draft = nil
+      body:append (empty ('Open a workbook to define names.'))
+      return
+    end
+    if name_draft then
+      names_form (body, name_draft)
+    else
+      names_list (body, book)
+    end
+  end
+
   -- Sort range -------------------------------------------------------------------------
 
   local sort_range = nil ---@type Sheet.Rect?
@@ -2019,7 +2201,7 @@ function M.install (env)
   -- The views --------------------------------------------------------------------------
 
   ---@type Sheet.PanelName[]
-  local NAMES = { 'chart', 'rules', 'validation', 'sort' }
+  local NAMES = { 'chart', 'rules', 'validation', 'sort', 'names' }
   local has_views = views ~= nil
   if views then
     for _, name in ipairs (NAMES) do
@@ -2057,6 +2239,8 @@ function M.install (env)
       check_draft = nil
     elseif which == 'sort' then
       sort_reset ()
+    elseif which == 'names' then
+      name_draft = nil
     end
     -- Showing the view runs its on_show, which draws it.
     views.show (VIEWS[which].id)
@@ -2065,7 +2249,7 @@ function M.install (env)
   -- Following the grid ------------------------------------------------------------------
 
   ctl.on ('book', function ()
-    chart_id, rule_draft, check_draft = nil, nil, nil
+    chart_id, rule_draft, check_draft, name_draft = nil, nil, nil, nil
     sort_reset ()
     if current then
       render (current)
@@ -2096,6 +2280,8 @@ function M.install (env)
       renders.rules ()
     elseif visible ('validation') and not check_draft then
       renders.validation ()
+    elseif visible ('names') and not name_draft then
+      renders.names ()
     end
   end)
 

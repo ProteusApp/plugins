@@ -119,6 +119,8 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field formula_text? fun(row: integer, col: integer, sheet?: string): string? The formula a cell holds, with its "=", or nil.
 ---@field sheet_index? fun(sheet?: string): integer? Where a sheet sits in the book, the formula's own when nil.
 ---@field sheet_count? fun(): integer
+---@field name? fun(name: string): Sheet.Node? The parsed formula a defined name stands for, by its name in upper case.
+---@field name_depth? integer How deep names that name other names go, while one is worked out.
 
 ---A function the formulas can call. `run` gets the argument trees and works them out as it
 ---needs to. `map` gets the argument values instead, and runs once for each value when an
@@ -2032,6 +2034,37 @@ local function invoke (fn, args, ctx)
   return apply (fn --[[@as Sheet.Lambda]], values, #args, ctx)
 end
 
+-- How deep names may name other names. A name that names itself goes round for ever, so it
+-- stops here with #CYCLE!.
+local NAME_DEPTH = 32
+
+---The value of a name the workbook defines, such as `Rates` for `=Sheet1!$B$2:$B$5`, and
+---whether there is one. The name's formula sees none of the names LET gives.
+---@param ctx Sheet.Context
+---@param name string In upper case.
+---@return Sheet.Result
+---@return boolean
+local function defined (ctx, name)
+  local find = ctx.name
+  local ast = find and find (name)
+  if not ast then
+    return nil, false
+  end
+  local depth = ctx.name_depth or 0
+  if depth >= NAME_DEPTH then
+    return raise ('#CYCLE!'), true
+  end
+  ctx.name_depth = depth + 1
+  local ok, result = pcall (within, ctx, nil, function ()
+    return eval (ast, ctx)
+  end)
+  ctx.name_depth = depth
+  if not ok then
+    error (result, 0)
+  end
+  return result, true
+end
+
 ---@param node Sheet.Node
 ---@param ctx Sheet.Context
 ---@return Sheet.Result
@@ -2044,6 +2077,11 @@ local function call (node, ctx)
   end
   local spec = FUNCS[node.name or '']
   if not spec then
+    -- A defined name can hold a LAMBDA, which works as a function of the workbook's own.
+    local fn, found = defined (ctx, node.name or '')
+    if found then
+      return invoke (fn, node.args or {}, ctx)
+    end
     return raise ('#NAME?')
   end
   local args = node.args or {}
@@ -2102,6 +2140,10 @@ eval = function (node, ctx)
   end
   if kind == 'name' then
     local v, found = lookup (ctx, node.name or '')
+    if found then
+      return v
+    end
+    v, found = defined (ctx, node.name or '')
     if found then
       return v
     end
@@ -7200,6 +7242,59 @@ function M.volatile (ast)
     end
   end)
   return found
+end
+
+---The names a formula uses that are not functions, in upper case, each once: the names a
+---workbook may define, and the names LET and LAMBDA give.
+---@param ast Sheet.Node
+---@return string[]
+function M.names (ast)
+  local out, seen = {}, {} ---@type string[], table<string, boolean>
+  walk (ast, function (node)
+    local name = node.name
+    if
+      name
+      and (node.kind == 'name' or (node.kind == 'call' and not FUNCS[name]))
+      and not seen[name]
+    then
+      seen[name] = true
+      out[#out + 1] = name
+    end
+  end)
+  return out
+end
+
+---Why text cannot be a defined name, or nil when it can. A name starts with a letter, an
+---underscore or a backslash, then has letters, digits, underscores and points. It cannot
+---look like a cell, such as `A1` or `R1C1`, be TRUE or FALSE, or be a function's name.
+---@param name string
+---@return string?
+function M.name_problem (name)
+  if name == '' then
+    return 'Type a name.'
+  end
+  if #name > 255 then
+    return 'A name can have at most 255 characters.'
+  end
+  if not string.match (name, '^[%a_\\][%w_%.\\]*$') then
+    return 'A name starts with a letter or _, and holds only letters, digits, _ and points.'
+  end
+  local up = string.upper (name)
+  if
+    string.match (up, '^%a%a?%a?%d+$')
+    or string.match (up, '^R%d*C%d*$')
+    or up == 'R'
+    or up == 'C'
+  then
+    return 'A name cannot look like a cell, such as A1 or R1C1.'
+  end
+  if up == 'TRUE' or up == 'FALSE' then
+    return 'A name cannot be TRUE or FALSE.'
+  end
+  if FUNCS[up] then
+    return up .. ' is a function.'
+  end
+  return nil
 end
 
 ---True when a formula reads which rows are hidden: it calls SUBTOTAL or AGGREGATE.

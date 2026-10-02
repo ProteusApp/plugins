@@ -2588,6 +2588,10 @@ function Sheet:reshape (axis, at, count)
       { sheet = name, own = own.name }
     )
   end, self)
+  -- A defined name belongs to no sheet, so only its references that name this one move.
+  self.book:rewrite_names (function (text)
+    return formula.adjust (text, axis, at, count, { sheet = name })
+  end)
   self:finish ()
 end
 
@@ -2836,6 +2840,9 @@ function Sheet:follow_move (source, src, target)
       { from = from, to = to, own = own, lands = lands }
     )
   end
+  self.book:rewrite_names (function (text)
+    return move (text, '')
+  end)
   for _, sheet in ipairs (self.book.sheets) do
     local list = {} ---@type Sheet.Cell[]
     for _, cell in pairs (sheet.cells) do

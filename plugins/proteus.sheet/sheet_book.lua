@@ -103,12 +103,19 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field validation? Sheet.Validation[]
 ---@field charts? Sheet.ChartSpec[]
 
+---A name the workbook gives a reference or a value, such as `Rates` for
+---`=Sheet1!$B$2:$B$5`. Formulas anywhere in the book use it as they would the reference.
+---@class Sheet.DefinedName
+---@field name string As written, such as `Rates`.
+---@field formula string What it stands for, with its "=".
+
 ---A workbook file, version 3. Version 3 lists conditional formatting rules first rule
 ---first, as Excel does, where version 2 listed them the other way round.
 ---@class Sheet.BookData
 ---@field version integer
 ---@field active? integer The sheet shown first, counting from 1.
 ---@field sheets Sheet.SheetData[]
+---@field names? Sheet.DefinedName[] The names the workbook defines, sorted by name.
 
 ---@class Sheet.BookOptions
 ---@field clock? fun(): number The date and time now, as a serial number.
@@ -144,7 +151,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---entry of a sheet's map, or a whole field when `key` is nil. `state` swaps everything a sheet
 ---holds, around an insert or a delete. `sheets` changes the list of sheets.
 ---@class Sheet.Change
----@field kind 'cell'|'prop'|'state'|'sheets'
+---@field kind 'cell'|'prop'|'state'|'sheets'|'names'
 ---@field sheet? Sheet.Sheet
 ---@field row? integer
 ---@field col? integer
@@ -201,6 +208,8 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field by_name table<string, Sheet.Sheet> Sheets by lower-case name.
 ---@field name_cache table<string, Sheet.Sheet|false> Sheets by name as a formula writes it.
 ---@field live table<Sheet.Sheet, boolean> The sheets in the book now.
+---@field defined_names Sheet.DefinedName[] The names the workbook defines, sorted by name.
+---@field name_index table<string, Sheet.DefinedName> The defined names by name in upper case.
 ---@field nesting integer How deep the formulas worked out on demand go.
 ---@field evaluated integer
 ---@field stamp integer Counts every change and recalculation, so caches know when to refresh.
@@ -300,6 +309,8 @@ local function blank_book (opts)
   self.by_name = {}
   self.name_cache = {}
   self.live = {}
+  self.defined_names = {}
+  self.name_index = {}
   self.nesting = 0
   self.evaluated = 0
   self.stamp = 0
@@ -339,6 +350,150 @@ function Book:names_changed ()
   end
   self.full = true
   self.stamp = self.stamp + 1
+end
+
+---------------------------------------------------------------------------------------------
+-- Defined names
+---------------------------------------------------------------------------------------------
+
+---@type table<string, Sheet.Node|false>
+local name_asts = setmetatable ({}, { __mode = 'v' })
+
+---The defined name with this name, ignoring case, or nil.
+---@param name string
+---@return Sheet.DefinedName?
+function Book:defined (name)
+  return self.name_index[string.upper (name)]
+end
+
+---The parsed formula a defined name stands for, or nil when there is no such name or its
+---formula does not read.
+---@param name string
+---@return Sheet.Node?
+function Book:name_ast (name)
+  local n = self.name_index[string.upper (name)]
+  if not n then
+    return nil
+  end
+  local ast = name_asts[n.formula]
+  if ast == nil then
+    ast = formula.parse (n.formula) or false
+    name_asts[n.formula] = ast
+  end
+  return ast or nil
+end
+
+---Puts a new list of defined names in place, without recording it. Every formula is worked
+---out again, since any of them may use a name.
+---@param list Sheet.DefinedName[]
+function Book:put_names (list)
+  local sorted = copy_list (list) --[[@as Sheet.DefinedName[] ]]
+  table.sort (sorted, function (a, b)
+    return string.upper (a.name) < string.upper (b.name)
+  end)
+  self.defined_names = sorted
+  self.name_index = {}
+  for _, n in ipairs (sorted) do
+    self.name_index[string.upper (n.name)] = n
+  end
+  self.full = true
+  self.stamp = self.stamp + 1
+end
+
+---Records a new list of defined names as part of the open step, and puts it in place.
+---@param list Sheet.DefinedName[]
+function Book:change_names (list)
+  self:log ({ kind = 'names', before = self.defined_names, after = list })
+  self:put_names (list)
+end
+
+---Why a name cannot be defined, or nil when it can. `except` is the name being changed,
+---which may keep its own name.
+---@param name string
+---@param except? string
+---@return string?
+function Book:defined_problem (name, except)
+  local problem = formula.name_problem (name)
+  if problem then
+    return problem
+  end
+  local other = self:defined (name)
+  if
+    other
+    and not (except and string.upper (except) == string.upper (other.name))
+  then
+    return 'The name ' .. other.name .. ' is taken.'
+  end
+  return nil
+end
+
+---Defines a name, or changes the one called `old`, as one undo step. The formula is what the
+---name stands for, such as `=Sheet1!$B$2:$B$5`. Returns false and the reason when the name or
+---the formula cannot be used.
+---@param name string
+---@param text string
+---@param old? string
+---@return boolean
+---@return string? problem
+function Book:set_name (name, text, old)
+  local problem = self:defined_problem (name, old)
+  if problem then
+    return false, problem
+  end
+  local body = formula.is_formula (text) and text or '=' .. text
+  local ast, why = formula.parse (body)
+  if not ast then
+    return false, why
+  end
+  local list = {} ---@type Sheet.DefinedName[]
+  for _, n in ipairs (self.defined_names) do
+    if not (old and string.upper (n.name) == string.upper (old)) then
+      list[#list + 1] = n
+    end
+  end
+  list[#list + 1] = { name = name, formula = formula.normalize (body) }
+  self:begin ({ label = old and 'Change name' or 'Define name' })
+  self:change_names (list)
+  self:finish ()
+  return true, nil
+end
+
+---Deletes a defined name, as one undo step. Formulas that use it give #NAME?.
+---@param name string
+---@return boolean
+function Book:delete_name (name)
+  local list = {} ---@type Sheet.DefinedName[]
+  for _, n in ipairs (self.defined_names) do
+    if string.upper (n.name) ~= string.upper (name) then
+      list[#list + 1] = n
+    end
+  end
+  if #list == #self.defined_names then
+    return false
+  end
+  self:begin ({ label = 'Delete name' })
+  self:change_names (list)
+  self:finish ()
+  return true
+end
+
+---Rewrites the formulas of the defined names through `fn`, as part of the open step.
+---@param fn fun(text: string): string
+function Book:rewrite_names (fn)
+  local list = {} ---@type Sheet.DefinedName[]
+  local changed = false
+  for i, n in ipairs (self.defined_names) do
+    local text = fn (n.formula)
+    if text ~= n.formula then
+      changed = true
+      list[i] = { name = n.name, formula = text }
+    else
+      list[i] = n
+    end
+  end
+  if changed then
+    self:change_names (list)
+  end
 end
 
 ---The sheet with this name, ignoring case, or nil.
@@ -586,6 +741,9 @@ function Book:rename_sheet (index, name)
   self:rewrite_formulas (function (text)
     return formula.rename_sheet (text, old, name)
   end)
+  self:rewrite_names (function (text)
+    return formula.rename_sheet (text, old, name)
+  end)
   sheet:set_prop ('name', nil, name)
   self:finish ()
   return true, nil
@@ -614,6 +772,9 @@ function Book:delete_sheet (index)
   self:begin ({ sheet = sheet, label = 'Delete sheet' })
   self:change_sheets (list, math.max (1, active))
   self:rewrite_formulas (function (text)
+    return formula.drop_sheet (text, sheet.name)
+  end)
+  self:rewrite_names (function (text)
     return formula.drop_sheet (text, sheet.name)
   end)
   self:finish ()
@@ -749,7 +910,37 @@ function Book:watch (sheet, cell)
   if not ast then
     return
   end
-  for _, area in ipairs (refs (ast)) do
+  local areas_read = refs (ast)
+  local volatile = is_volatile (ast)
+  if #self.defined_names > 0 then
+    -- A formula that uses a defined name reads what the name's formula reads.
+    local more = {} ---@type Sheet.Area[]
+    local seen = {} ---@type table<string, boolean>
+    local queue = formula.names (ast)
+    local i = 1
+    while i <= #queue do
+      local name = queue[i]
+      i = i + 1
+      local named = not seen[name] and self:name_ast (name)
+      seen[name] = true
+      if named then
+        for _, area in ipairs (refs (named)) do
+          more[#more + 1] = area
+        end
+        volatile = volatile or is_volatile (named)
+        for _, inner in ipairs (formula.names (named)) do
+          queue[#queue + 1] = inner
+        end
+      end
+    end
+    if #more > 0 then
+      for _, area in ipairs (areas_read) do
+        more[#more + 1] = area
+      end
+      areas_read = more
+    end
+  end
+  for _, area in ipairs (areas_read) do
     local target = sheet ---@type Sheet.Sheet?
     if area.sheet then
       target = self:find (area.sheet)
@@ -783,7 +974,7 @@ function Book:watch (sheet, cell)
       end
     end
   end
-  if is_volatile (ast) then
+  if volatile then
     cell.volatile = true
     self.volatile[cell] = true
   end
@@ -921,6 +1112,9 @@ function Book:context (sheet)
         return nil, nil
       end
       return found.rows, found.cols
+    end,
+    name = function (name)
+      return book:name_ast (name)
     end,
     hidden = function (row, name)
       local target = sheet ---@type Sheet.Sheet?
@@ -1530,6 +1724,8 @@ function Book:apply (change, back)
       active = change.active_before
     end
     self:put_sheets (value, active or 1)
+  elseif kind == 'names' then
+    self:put_names (value)
   end
 end
 
@@ -1641,7 +1837,15 @@ function M.to_data (book)
   for i, sheet in ipairs (book.sheets) do
     sheets[i] = sheet:to_data ()
   end
-  return { version = 3, active = book.active, sheets = sheets }
+  local data = { version = 3, active = book.active, sheets = sheets } ---@type Sheet.BookData
+  if #book.defined_names > 0 then
+    local names = {} ---@type Sheet.DefinedName[]
+    for i, n in ipairs (book.defined_names) do
+      names[i] = { name = n.name, formula = n.formula }
+    end
+    data.names = names
+  end
+  return data
 end
 
 ---A sheet's file data with its rules first rule first. Files before version 3 list them the
@@ -1710,6 +1914,26 @@ function M.from_data (data, opts)
       model.blank (book, 'Sheet1', opts and opts.rows, opts and opts.cols)
   end
   book:names_changed ()
+  if type (data) == 'table' and type (data.names) == 'table' then
+    local names = {} ---@type Sheet.DefinedName[]
+    local seen = {} ---@type table<string, boolean>
+    for _, n in
+      ipairs (data.names --[[@as any[] ]])
+    do
+      if
+        type (n) == 'table'
+        and type (n.name) == 'string'
+        and type (n.formula) == 'string'
+        and not formula.name_problem (n.name)
+        and formula.is_formula (n.formula)
+        and not seen[string.upper (n.name)]
+      then
+        seen[string.upper (n.name)] = true
+        names[#names + 1] = { name = n.name, formula = n.formula }
+      end
+    end
+    book:put_names (names)
+  end
   local active = type (data) == 'table' and tonumber (data.active) or 1
   book.active = math.max (1, math.min (math.floor (active or 1), #book.sheets))
   book:recalc ()
@@ -1773,6 +1997,7 @@ local RULE_KEYS = {
   'color',
   'stop',
 }
+local NAME_KEYS = { 'name', 'formula' }
 local VALIDATION_KEYS = {
   'range',
   'type',
@@ -2037,11 +2262,19 @@ function M.encode (book)
   for i, sheet in ipairs (data.sheets) do
     sheets[i] = sheet_json (sheet)
   end
+  local names = '' ---@type string
+  if data.names then
+    local lines = {} ---@type string[]
+    for i, n in ipairs (data.names) do
+      lines[i] = '    ' .. json_inline (n, NAME_KEYS)
+    end
+    names = '  "names": [\n' .. table.concat (lines, ',\n') .. '\n  ],\n'
+  end
   return table.concat ({
     '{',
     '  "version": 3,',
     '  "active": ' .. json_number (data.active or 1) .. ',',
-    '  "sheets": [',
+    names .. '  "sheets": [',
     table.concat (sheets, ',\n'),
     '  ]',
     '}',

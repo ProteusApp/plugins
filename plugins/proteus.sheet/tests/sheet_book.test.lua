@@ -529,6 +529,94 @@ test (
 )
 
 ---------------------------------------------------------------------------------------------
+-- Defined names
+---------------------------------------------------------------------------------------------
+
+test ('defined names stand for references, values and functions', function ()
+  local book = book_of ({ 'Main', 'Data' }, {
+    Main = {
+      A1 = '=SUM(Rates)',
+      A2 = '=100*Tax',
+      A3 = '=Double(21)',
+      A4 = '=Total',
+      A5 = '=Loop',
+      A6 = '=LET(Tax, 1, Tax)',
+      A7 = '=ROWS(Rates)',
+      A8 = '=Missing',
+    },
+    Data = { B2 = '1', B3 = '2', B4 = '3' },
+  })
+  local main, data = book.sheets[1], book.sheets[2]
+  ok (book:set_name ('Rates', '=Data!$B$2:$B$4'))
+  ok (book:set_name ('Tax', '0.2'))
+  ok (book:set_name ('Double', '=LAMBDA(x, x*2)'))
+  ok (book:set_name ('Total', '=SUM(Rates)*10'))
+  ok (book:set_name ('Loop', '=Loop+1'))
+  eq (
+    { shown (main, 'A1'), shown (main, 'A2'), shown (main, 'A3') },
+    { '6', '20', '42' }
+  )
+  eq ({ shown (main, 'A4'), shown (main, 'A5'), shown (main, 'A6') }, {
+    '60',
+    '#CYCLE!',
+    '1',
+  })
+  eq ({ shown (main, 'A7'), shown (main, 'A8') }, { '3', '#NAME?' })
+  -- A formula that uses a name follows the cells the name names.
+  set (data, 'B3', '20')
+  eq ({ shown (main, 'A1'), shown (main, 'A4') }, { '24', '240' })
+  -- Names refuse what is not a name, and names taken.
+  eq (
+    { book:set_name ('A1', '=1') },
+    { false, 'A name cannot look like a cell, such as A1 or R1C1.' }
+  )
+  eq ({ book:set_name ('sum', '=1') }, { false, 'SUM is a function.' })
+  eq ({ book:set_name ('rates', '=1') }, { false, 'The name Rates is taken.' })
+  eq ({ book:set_name ('Two words', '=1') }, {
+    false,
+    'A name starts with a letter or _, and holds only letters, digits, _ and points.',
+  })
+  ok (book:set_name ('Rate.2026', '=Data!$B$2'))
+  eq (book:defined ('RATE.2026').formula, '=Data!$B$2')
+  -- Each change is one step.
+  ok (book:delete_name ('Tax'))
+  eq (shown (main, 'A2'), '#NAME?')
+  book:undo ()
+  eq (shown (main, 'A2'), '20')
+  -- Renaming a name keeps its formula.
+  ok (book:set_name ('Fee', '=0.5', 'Tax'))
+  eq ({ book:defined ('Tax'), shown (main, 'A2') }, { nil, '#NAME?' })
+end)
+
+test ('defined names follow their cells and their sheets', function ()
+  local book = book_of ({ 'Main', 'Data' }, {
+    Main = { A1 = '=SUM(Rates)' },
+    Data = { B2 = '1', B3 = '2', B4 = '3' },
+  })
+  local main, data = book.sheets[1], book.sheets[2]
+  ok (book:set_name ('Rates', '=Data!$B$2:$B$4'))
+  data:insert_rows (1, 2)
+  eq (book:defined ('Rates').formula, '=Data!$B$4:$B$6')
+  eq (shown (main, 'A1'), '6')
+  ok (book:rename_sheet (2, 'Numbers'))
+  eq (book:defined ('Rates').formula, '=Numbers!$B$4:$B$6')
+  local clip = data:copy (m.parse_range ('B4:B6') --[[@as Sheet.Rect]])
+  clip.cut = true
+  data:paste (1, 5, clip)
+  eq (book:defined ('Rates').formula, '=Numbers!$E$1:$E$3')
+  eq (shown (main, 'A1'), '6')
+  book:undo ()
+  eq (book:defined ('Rates').formula, '=Numbers!$B$4:$B$6')
+  -- The file keeps the names.
+  local back = assert (B.decode (B.encode (book)))
+  eq (back:defined ('rates').formula, '=Numbers!$B$4:$B$6')
+  eq (shown (back.sheets[1], 'A1'), '6')
+  ok (book:delete_sheet (2))
+  eq (book:defined ('Rates').formula, '=#REF!')
+  eq (shown (main, 'A1'), '#REF!')
+end)
+
+---------------------------------------------------------------------------------------------
 -- Spilled blocks
 ---------------------------------------------------------------------------------------------
 

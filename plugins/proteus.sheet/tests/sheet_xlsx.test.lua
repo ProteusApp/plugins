@@ -456,7 +456,64 @@ test ('reading warns about each kind of thing it leaves out', function ()
     'The filter in Data was left out.',
     'The hidden sheet Secret shows here.',
     'The chart sheet Chart1 was left out.',
-    'Named ranges were left out.',
+  })
+  -- A name for the whole workbook comes over, and Excel's own names stay out.
+  eq (book.names, { { name = 'Rates', formula = '=Data!$B$1' } })
+end)
+
+test ('defined names go to Excel and come back', function ()
+  local book = {
+    version = 3,
+    sheets = {
+      { name = 'Data', cells = { A1 = '=SUM(Rates)' } },
+      { name = 'Q1/Q2' },
+    },
+    names = {
+      { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+      { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+      { name = 'Q', formula = "='Q1/Q2'!$A$1" },
+    },
+  }
+  local files, warnings = x.write (book)
+  local wb = files['xl/workbook.xml']
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Rates">Data!$B$1:$B$3</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Double">_xlfn.LAMBDA(_xlpm.x, _xlpm.x*2)</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  -- A sheet whose name Excel refuses gets a new one, and the names follow.
+  ok (
+    string.find (wb, '<definedName name="Q">Q1_Q2!$A$1</definedName>', 1, true),
+    wb
+  )
+  ok (#warnings > 0)
+  local back = read_ok (files)
+  eq (back.names, {
+    { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+    { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+    { name = 'Q', formula = '=Q1_Q2!$A$1' },
+  })
+  -- Names that belong to one sheet, or read another workbook, are left out.
+  local files2 = one_sheet ('<sheetData/>')
+  files2['xl/workbook.xml'] =
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="Local" localSheetId="0">Data!$A$1</definedName><definedName name="Far">[1]Sheet1!$A$1</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">Data!$A$1:$C$9</definedName></definedNames></workbook>'
+  local book2, warnings2 = read_ok (files2)
+  eq (book2.names, nil)
+  eq (warnings2, {
+    'Names that belong to one sheet, or that this app cannot read, were left out.',
   })
 end)
 
