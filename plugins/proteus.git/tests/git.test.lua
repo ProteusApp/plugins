@@ -943,7 +943,7 @@ test ('diff_html draws files, hunks and lines', function ()
     html,
     '<div class="git-line git-l-del"><span class="git-ln">18</span>'
       .. '<span class="git-ln"></span><span class="git-sign">−</span>'
-      .. '<span class="git-code">line 18</span></div>'
+      .. '<span class="git-code">line <span class="git-w">18</span></span></div>'
   )
   local staged = m.diff_html (files, { buttons = true, staged = true })
   eq (count (staged, 'Unstage Hunk'), 2)
@@ -1582,4 +1582,39 @@ test ('diff_html lets added and removed lines be picked', function ()
     'Unstage Lines'
   )
   lacks (m.diff_html (files, { buttons = true }), 'git-pick')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Word-level diff
+---------------------------------------------------------------------------------------------
+
+test ('word_diff marks the words that changed', function ()
+  local old, new = m.word_diff ('local x = foo (1, 2)', 'local y = foo (1, 3)')
+  eq (old, {
+    { text = 'local ', changed = false },
+    { text = 'x', changed = true },
+    { text = ' = foo (1, ', changed = false },
+    { text = '2', changed = true },
+    { text = ')', changed = false },
+  })
+  eq (new and new[2], { text = 'y', changed = true })
+  -- Lines with no word in common are shown whole.
+  eq ({ m.word_diff ('alpha beta', 'gamma delta') }, {})
+  eq ({ m.word_diff ('', 'x') }, {})
+  -- A letter outside ASCII stays whole.
+  local _, accent = m.word_diff ('café au lait', 'cafè au lait')
+  eq (accent and accent[1], { text = 'caf', changed = false })
+  eq (accent and accent[2], { text = 'è', changed = true })
+end)
+
+test ('diff_html marks changed words in a removed and added pair', function ()
+  local html = m.diff_html (m.parse_diff (DIFF_A_STAGED))
+  has (html, '<span class="git-code">line <span class="git-w">2</span></span>')
+  has (html, '<span class="git-code">line <span class="git-w">two</span></span>')
+  has (
+    html,
+    '<span class="git-code">line <span class="git-w">eighteen</span></span>'
+  )
+  -- A run of added lines with nothing removed before it is left plain.
+  lacks (m.diff_html (m.parse_diff (DIFF_ADDED)), 'git-w')
 end)

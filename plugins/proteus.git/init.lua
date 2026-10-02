@@ -136,6 +136,8 @@ local CSS = [[
 .git-l-add .git-sign { color: var(--success); }
 .git-l-del { background: color-mix(in srgb, var(--danger) 15%, transparent); }
 .git-l-del .git-sign { color: var(--danger); }
+.git-l-add .git-w { background: color-mix(in srgb, var(--success) 35%, transparent); border-radius: 2px; }
+.git-l-del .git-w { background: color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 2px; }
 .git-l-meta .git-code { color: var(--fg-faint); font-style: italic; }
 .git-note { padding: 12px 16px; color: var(--fg-muted); }
 .git-commit-view { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }

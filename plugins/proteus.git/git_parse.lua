@@ -86,6 +86,11 @@
 ---@field added integer
 ---@field removed integer
 
+---A piece of a changed line, for the word-level diff.
+---@class Git.Segment
+---@field text string
+---@field changed boolean True for the words the other side of the pair does not have.
+
 ---The commit header `git show` prints before its diff.
 ---@class Git.CommitInfo
 ---@field hash string
@@ -2008,12 +2013,159 @@ end
 ---@type table<Git.LineKind, string>
 local SIGN = { add = '+', del = '−', ctx = '', meta = '' }
 
+-- Two lines whose token counts multiply past this are compared whole, not word by word.
+local WORD_LIMIT = 40000
+
+---Splits a line into words, runs of spaces, and single other characters.
+---@param s string
+---@return string[]
+local function tokens (s)
+  local out = {} ---@type string[]
+  local i = 1
+  while i <= #s do
+    local a, b = s:find ('^[%w_]+', i)
+    if not a then
+      a, b = s:find ('^%s+', i)
+    end
+    if not a then
+      a, b = s:find ('^[%z\1-\127\194-\244][\128-\191]*', i)
+    end
+    if not a or not b then
+      a, b = i, i
+    end
+    out[#out + 1] = s:sub (a, b)
+    i = b + 1
+  end
+  return out
+end
+
+---Joins tokens into segments, one for each run that is changed or not.
+---@param list string[]
+---@param same table<integer, boolean>
+---@return Git.Segment[]
+local function segments (list, same)
+  local out = {} ---@type Git.Segment[]
+  for i, t in ipairs (list) do
+    local changed = not same[i]
+    local last = out[#out]
+    if last and last.changed == changed then
+      last.text = last.text .. t
+    else
+      out[#out + 1] = { text = t, changed = changed }
+    end
+  end
+  return out
+end
+
+---Compares a removed line with the added line that replaced it, word by word. Returns the
+---pieces of each, or nil when they share no word or are too long to compare.
+---@param a string
+---@param b string
+---@return Git.Segment[]? old
+---@return Git.Segment[]? new
+function M.word_diff (a, b)
+  local x, y = tokens (a), tokens (b)
+  local n, k = #x, #y
+  if n == 0 or k == 0 or n * k > WORD_LIMIT then
+    return nil, nil
+  end
+  -- len[i][j]: the longest run of tokens x[i..] and y[j..] have in common, in order.
+  local len = {} ---@type integer[][]
+  for i = n + 1, 1, -1 do
+    local row = {} ---@type integer[]
+    len[i] = row
+    for j = k + 1, 1, -1 do
+      if i > n or j > k then
+        row[j] = 0
+      elseif x[i] == y[j] then
+        row[j] = len[i + 1][j + 1] + 1
+      else
+        row[j] = math.max (len[i + 1][j], row[j + 1])
+      end
+    end
+  end
+  local same_x, same_y = {}, {} ---@type table<integer, boolean>, table<integer, boolean>
+  local words = 0
+  local i, j = 1, 1
+  while i <= n and j <= k do
+    if x[i] == y[j] then
+      same_x[i], same_y[j] = true, true
+      if x[i]:find ('%S') then
+        words = words + 1
+      end
+      i, j = i + 1, j + 1
+    elseif len[i + 1][j] >= len[i][j + 1] then
+      i = i + 1
+    else
+      j = j + 1
+    end
+  end
+  if words == 0 then
+    return nil, nil
+  end
+  return segments (x, same_x), segments (y, same_y)
+end
+
+---Pairs each run of removed lines with the run of added lines right after it, line by line,
+---and compares each pair word by word.
+---@param h Git.Hunk
+---@return table<integer, Git.Segment[]> by line position in the hunk
+local function hunk_words (h)
+  local out = {} ---@type table<integer, Git.Segment[]>
+  local dels = {} ---@type integer[]
+  local adds = {} ---@type integer[]
+  local function flush ()
+    for p = 1, math.min (#dels, #adds) do
+      local d, a = h.lines[dels[p]], h.lines[adds[p]]
+      local old, new = M.word_diff (d.text, a.text)
+      if old and new then
+        out[dels[p]], out[adds[p]] = old, new
+      end
+    end
+    dels, adds = {}, {}
+  end
+  for i, l in ipairs (h.lines) do
+    if l.kind == 'del' then
+      if #adds > 0 then
+        flush ()
+      end
+      dels[#dels + 1] = i
+    elseif l.kind == 'add' and #dels > 0 then
+      adds[#adds + 1] = i
+    else
+      flush ()
+    end
+  end
+  flush ()
+  return out
+end
+
+---A line's text as HTML, with the changed words marked when there are any.
+---@param l Git.Line
+---@param words? Git.Segment[]
+---@return string
+local function code_html (l, words)
+  if not words then
+    return esc (l.text)
+  end
+  local out = {} ---@type string[]
+  for _, seg in ipairs (words) do
+    if seg.changed then
+      out[#out + 1] = '<span class="git-w">' .. esc (seg.text) .. '</span>'
+    else
+      out[#out + 1] = esc (seg.text)
+    end
+  end
+  return table.concat (out)
+end
+
 ---One diff line. With `pick`, its line numbers are a label around a hidden checkbox that
 ---carries `data-item="<pick>"`, so a click on them picks the line.
 ---@param l Git.Line
 ---@param pick? string
+---@param words? Git.Segment[]
 ---@return string
-local function line_html (l, pick)
+local function line_html (l, pick, words)
   local gutter = '<span class="git-ln">'
     .. (l.old or '')
     .. '</span><span class="git-ln">'
@@ -2034,7 +2186,7 @@ local function line_html (l, pick)
     .. '">'
     .. gutter
     .. '<span class="git-code">'
-    .. esc (l.text)
+    .. code_html (l, words)
     .. '</span></div>'
 end
 
@@ -2101,6 +2253,7 @@ function M.diff_html (files, opts)
           .. '</button>'
       end
       out[#out + 1] = '</div>'
+      local words = f.combined and {} or hunk_words (h)
       for li, l in ipairs (h.lines) do
         if shown >= max then
           cut = true
@@ -2110,7 +2263,7 @@ function M.diff_html (files, opts)
         if pickable and (l.kind == 'add' or l.kind == 'del') then
           pick = 'line:' .. fi .. ':' .. hi .. ':' .. li
         end
-        out[#out + 1] = line_html (l, pick)
+        out[#out + 1] = line_html (l, pick, words[li])
         shown = shown + 1
       end
       out[#out + 1] = '</div>'
