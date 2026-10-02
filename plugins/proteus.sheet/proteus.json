@@ -68,6 +68,7 @@
     "sheet_grid_tabs.lua",
     "sheet_model.lua",
     "sheet_model_clip.lua",
+    "sheet_model_data.lua",
     "sheet_model_style.lua",
     "sheet_ops.lua",
     "sheet_panel_find.lua",
