@@ -4,6 +4,7 @@
 -- sheet_commands.lua call these functions.
 
 local calc = require ('sheet_grid_calc') --[[@as Sheet.GridCalcModule]]
+local clip_html = require ('sheet_clip_html') --[[@as Sheet.ClipHtmlModule]]
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 
@@ -34,7 +35,17 @@ function M.install (grid)
     local taken = s:copy (rect)
     taken.cut = cut or nil
     G.clip, G.clip_rect, G.clip_sheet = taken, rect, s
-    app.system.clipboard (taken.tsv or '')
+    -- Other spreadsheets and word processors paste the HTML, with its look. Plain text fields
+    -- paste the tab-separated text beside it.
+    local html = app.system.clipboard_html
+      and pcall (
+        app.system.clipboard_html,
+        clip_html.from_sheet (s, rect),
+        taken.tsv or ''
+      )
+    if not html then
+      app.system.clipboard (taken.tsv or '')
+    end
     G.place_boxes ()
   end
 
@@ -59,30 +70,81 @@ function M.install (grid)
     end
   end
 
-  ---Pastes from the system clipboard, for the menus. Ctrl+V pastes through the waiting editor
-  ---instead, which needs no permission.
+  ---Pastes HTML from another program: its table, with the look of each cell. The app's own
+  ---last copy pastes from the clip instead, with its formulas. Text with no table in its HTML
+  ---pastes as text.
+  ---@param html string
+  ---@param text string
+  ---@param opts? Sheet.PasteOptions
+  function G.paste_html (html, text, opts)
+    local taken = G.clip
+    local parsed = not (taken and model.same_clip (taken, text))
+      and clip_html.parse (html)
+    if not parsed then
+      G.paste_text (text, opts)
+      return
+    end
+    local rect = G.sel_rect ()
+    local area = G.change ('Paste', function (_, s)
+      return s:paste (rect.r1, rect.c1, parsed, rect, opts)
+    end) --[[@as Sheet.Rect?]]
+    if area then
+      G.select (area)
+    end
+  end
+
+  ---Pastes from the system clipboard: its HTML when it holds a table, or else its text. The
+  ---menus and Ctrl+V paste this way.
   ---@param opts? Sheet.PasteOptions
   function G.paste (opts)
-    app.system.clipboard_read (function (text, err)
-      local ok, problem = pcall (function ()
-        if text then
-          G.paste_text (text, opts)
-        elseif G.clip then
-          G.paste_text (G.clip.tsv or '', opts)
+    local read_html = app.system.clipboard_read_html
+    if read_html then
+      local asked = pcall (read_html, function (content, err)
+        if content and content.html and content.html ~= '' then
+          local ok, problem =
+            pcall (G.paste_html, content.html, content.text or '', opts)
+          if not ok then
+            env.say ('error', 'Paste failed: ' .. tostring (problem))
+          end
+          G.focus ()
+        elseif content and content.text then
+          G.paste_text_from (content.text, nil, opts)
         else
-          env.say (
-            'warn',
-            'The clipboard could not be read'
-              .. (err and (': ' .. err) or '.')
-              .. ' Ctrl+V pastes too.'
-          )
+          app.system.clipboard_read (function (text, text_err)
+            G.paste_text_from (text, text_err or err, opts)
+          end)
         end
-        G.focus ()
       end)
-      if not ok then
-        env.say ('error', 'Paste failed: ' .. tostring (problem))
+      if asked then
+        return
       end
+    end
+    app.system.clipboard_read (function (text, err)
+      G.paste_text_from (text, err, opts)
     end)
+  end
+
+  ---Pastes text read from the clipboard, or the last copy when it could not be read.
+  ---@param text string?
+  ---@param err string?
+  ---@param opts? Sheet.PasteOptions
+  function G.paste_text_from (text, err, opts)
+    local ok, problem = pcall (function ()
+      if text then
+        G.paste_text (text, opts)
+      elseif G.clip then
+        G.paste_text (G.clip.tsv or '', opts)
+      else
+        env.say (
+          'warn',
+          'The clipboard could not be read' .. (err and (': ' .. err) or '.')
+        )
+      end
+      G.focus ()
+    end)
+    if not ok then
+      env.say ('error', 'Paste failed: ' .. tostring (problem))
+    end
   end
 
   function G.clear ()
@@ -274,7 +336,8 @@ function M.install (grid)
   -- Links ----------------------------------------------------------------------------------
 
   ---Follows the link on a cell. A place in the book, such as `#Sheet2!A1`, shows that sheet
-  ---and selects the cells. A web or mail address is copied, since the app opens no pages.
+  ---and selects the cells. A web or mail address opens in the system's browser or mail
+  ---program, once the user allows its site. Any other address is copied.
   ---@param row integer
   ---@param col integer
   function G.follow_link (row, col)
@@ -284,11 +347,18 @@ function M.install (grid)
       return
     end
     if string.sub (link, 1, 1) ~= '#' then
-      app.system.clipboard (link)
-      env.say (
-        'info',
-        'Copied ' .. link .. '. Paste it in a browser to open it.'
-      )
+      local opened = pcall (app.system.open_url, link, function (_, err)
+        if err then
+          env.say ('warn', 'Did not open ' .. link .. ': ' .. tostring (err))
+        end
+      end)
+      if not opened then
+        app.system.clipboard (link)
+        env.say (
+          'info',
+          'Copied ' .. link .. '. Paste it in a browser to open it.'
+        )
+      end
       return
     end
     local rect, sheet_name = model.parse_ref (string.sub (link, 2))

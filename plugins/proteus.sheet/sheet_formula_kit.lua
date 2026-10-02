@@ -950,6 +950,7 @@ for _, name in ipairs ({
   'sheet_fn_stats',
   'sheet_fn_logic_info',
   'sheet_fn_text',
+  'sheet_fn_regex',
   'sheet_fn_lookup',
   'sheet_fn_date',
   'sheet_fn_finance',

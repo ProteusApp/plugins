@@ -161,6 +161,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field undo fun(back: boolean)
 ---@field copy fun(cut: boolean)
 ---@field paste_text fun(text: string, opts?: Sheet.PasteOptions)
+---@field paste_html fun(html: string, text: string, opts?: Sheet.PasteOptions)
+---@field paste_text_from fun(text: string?, err: string?, opts?: Sheet.PasteOptions)
 ---@field paste fun(opts?: Sheet.PasteOptions)
 ---@field clear fun()
 ---@field select_all fun()

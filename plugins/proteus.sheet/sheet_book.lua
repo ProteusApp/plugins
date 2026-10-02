@@ -34,6 +34,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field border_bottom? string
 ---@field border_left? string
 ---@field border_color? string One colour for every side. The default is a dark grey.
+---@field unlocked? boolean True for a cell that stays editable while its sheet is protected.
 
 ---A conditional formatting rule. The list runs in order of priority, as in Excel: where two
 ---rules set the same field, the one higher in the list wins, and a rule with `stop` keeps the
@@ -107,6 +108,12 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field rules? Sheet.Rule[]
 ---@field validation? Sheet.Validation[]
 ---@field charts? Sheet.ChartSpec[]
+---@field zoom? integer The zoom in percent.
+---@field protected? boolean
+---@field row_levels? table<string, integer> Row numbers, as text, to outline levels.
+---@field col_levels? table<string, integer> Column letters to outline levels.
+---@field print_area? string
+---@field page? Sheet.PageSetup
 
 ---A name the workbook gives a reference or a value, such as `Rates` for
 ---`=Sheet1!$B$2:$B$5`. Formulas anywhere in the book use it as they would the reference.
@@ -2304,6 +2311,25 @@ local function sheet_json (data)
   end
   if data.charts then
     write_list (out, 'charts', data.charts, CHART_KEYS)
+  end
+  if data.zoom then
+    out[#out + 1] = '      "zoom": ' .. json_number (data.zoom)
+  end
+  if data.protected then
+    out[#out + 1] = '      "protected": true'
+  end
+  if data.row_levels then
+    write_map (out, 'row_levels', data.row_levels)
+  end
+  if data.col_levels then
+    write_map (out, 'col_levels', data.col_levels)
+  end
+  if data.print_area then
+    out[#out + 1] = '      "print_area": ' .. json_string (data.print_area)
+  end
+  if data.page then
+    out[#out + 1] = '      "page": '
+      .. json_inline (data.page, { 'landscape', 'gridlines' })
   end
   return '    {\n' .. table.concat (out, ',\n') .. '\n    }'
 end

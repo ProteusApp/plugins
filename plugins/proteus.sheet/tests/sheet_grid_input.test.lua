@@ -13,9 +13,10 @@ local W, H = calc.HEAD_W, calc.HEAD_H
 ---@field fn fun(ev: table): any
 
 ---A grid over a fake page, showing the example book.
+---@param system? table What the grid finds as `app.system`.
 ---@return Sheet.GridView grid
 ---@return fun(name: string, ev: table) fire Runs the handlers whose name ends with `name`.
-local function grid_of ()
+local function grid_of (system)
   local handlers = {} ---@type Sheet.TestHandler[]
   local element_mt = {} ---@type table
   ---@param name string
@@ -79,6 +80,7 @@ local function grid_of ()
       return nil
     end,
     dom = dom,
+    system = system,
     timer = {
       after = function ()
         return function () end
@@ -156,3 +158,34 @@ test ('a press selects a cell, and a drag selects a block', function ()
   fire ('window:mouseup', at (8, 3))
   eq (sel (grid), { 6, 2, 8, 3 })
 end)
+
+test (
+  'following a web link opens it, and any other address is copied',
+  function ()
+    local opened, copied = {}, {} ---@type string[], string[]
+    local grid = grid_of ({
+      open_url = function (url, cb)
+        if
+          not string.match (url, '^https?:')
+          and not string.match (url, '^mailto:')
+        then
+          error ('only http, https and mailto links open')
+        end
+        opened[#opened + 1] = url
+        cb (true)
+      end,
+      clipboard = function (text)
+        copied[#copied + 1] = text
+      end,
+    })
+    local s = assert (grid.sheet ())
+    s:set_link (1, 1, 'https://example.com/a')
+    s:set_link (2, 1, 'mailto:ada@example.com')
+    s:set_link (3, 1, 'ftp://example.com/file')
+    grid.follow_link (1, 1)
+    grid.follow_link (2, 1)
+    grid.follow_link (3, 1)
+    eq (opened, { 'https://example.com/a', 'mailto:ada@example.com' })
+    eq (copied, { 'ftp://example.com/file' })
+  end
+)

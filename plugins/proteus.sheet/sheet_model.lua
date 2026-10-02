@@ -77,6 +77,7 @@ local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 ---@field cols integer
 ---@field freeze_rows integer
 ---@field freeze_cols integer
+---@field print_area? string
 
 ---What deleted rows or columns held, by their places before the delete, so undo puts it back.
 ---@class Sheet.Band
@@ -86,6 +87,7 @@ local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 ---@field styles table<integer, Sheet.Style> Row or column styles.
 ---@field sizes table<integer, number> Heights or widths.
 ---@field hidden table<integer, boolean>
+---@field levels? table<integer, integer> Outline levels.
 
 ---An insert or a delete, as undo keeps it: the move itself, the formulas on the sheet whose
 ---text it changed, and what the deleted rows or columns held. It holds only what the move
@@ -103,6 +105,7 @@ local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 ---@field texts string[][] Rows of cell text.
 ---@field bold? boolean[][]
 ---@field styles? Sheet.Style[][] The full style of each cell, for pasting formats.
+---@field patches? Sheet.StylePatch[][] Changes to each cell's style, for HTML from another program.
 ---@field literals? string[][] Each value as text that types back to it, for pasting values.
 ---@field merges? Sheet.Rect[] Merged blocks, counting rows and columns from 1 in the clip.
 ---@field notes? table<integer, string> Notes by `i * KEY + j` in the clip.
@@ -155,6 +158,12 @@ local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 ---@field rules Sheet.Rule[]
 ---@field validation Sheet.Validation[]
 ---@field charts Sheet.ChartSpec[]
+---@field zoom? integer The zoom in percent, when it is not 100.
+---@field protected? boolean Only cells styled `unlocked` change.
+---@field row_levels table<integer, integer> The outline: how deep each grouped row sits, 1 to 7.
+---@field col_levels table<integer, integer>
+---@field print_area? string The block that prints, such as `A1:F40`.
+---@field page? Sheet.PageSetup
 ---@field watch Sheet.Watch
 ---@field ctx? Sheet.Context
 ---@field merge_index? table<integer, Sheet.Rect>
@@ -526,6 +535,8 @@ function M.blank (book, name, rows, cols)
   self.rules = {}
   self.validation = {}
   self.charts = {}
+  self.row_levels = {}
+  self.col_levels = {}
   self.watch = M.new_watch ()
   self.touched = true
   return self
@@ -1351,6 +1362,7 @@ function Sheet:shape ()
     cols = self.cols,
     freeze_rows = self.freeze_rows,
     freeze_cols = self.freeze_cols,
+    print_area = self.print_area,
   }
 end
 
@@ -1366,6 +1378,7 @@ function Sheet:put_shape (st)
   self.cols = st.cols
   self.freeze_rows = st.freeze_rows
   self.freeze_cols = st.freeze_cols
+  self.print_area = st.print_area
   self.touched = true
   self.book.full = true
   self.book:touch ()
@@ -1389,6 +1402,7 @@ function Sheet:move_band (axis, at, count)
         styles = {},
         sizes = {},
         hidden = {},
+        levels = {},
       }
     or nil
   local cells = {} ---@type table<integer, Sheet.Cell>
@@ -1451,10 +1465,12 @@ function Sheet:move_band (axis, at, count)
     self.row_styles = shift_map (self.row_styles, band and band.styles)
     self.heights = shift_map (self.heights, band and band.sizes)
     self.hidden_rows = shift_map (self.hidden_rows, band and band.hidden)
+    self.row_levels = shift_map (self.row_levels, band and band.levels)
   else
     self.col_styles = shift_map (self.col_styles, band and band.styles)
     self.widths = shift_map (self.widths, band and band.sizes)
     self.hidden_cols = shift_map (self.hidden_cols, band and band.hidden)
+    self.col_levels = shift_map (self.col_levels, band and band.levels)
   end
   self.touched = true
   self.book.full = true
@@ -1489,6 +1505,10 @@ function Sheet:put_band (axis, band)
   end
   for k, v in pairs (band.hidden) do
     hidden[k] = v
+  end
+  local levels = axis == 'row' and self.row_levels or self.col_levels
+  for k, v in pairs (band.levels or {}) do
+    levels[k] = v
   end
   self.book.full = true
   self.book:touch ()
@@ -2427,6 +2447,8 @@ function Sheet:reshape (axis, at, count)
   after.rules = adjust_list (self.rules) --[[@as Sheet.Rule[] ]]
   after.validation = adjust_list (self.validation) --[[@as Sheet.Validation[] ]]
   after.charts = adjust_list (self.charts) --[[@as Sheet.ChartSpec[] ]]
+  after.print_area = self.print_area
+    and adjust_range (self.print_area, axis, at, count)
 
   ---@param frozen integer
   ---@return integer
@@ -2734,7 +2756,7 @@ local kit = {
   MIN_HEIGHT = MIN_HEIGHT,
   MAX_HEIGHT = MAX_HEIGHT,
 }
-for _, name in ipairs ({ 'sheet_model_clip', 'sheet_model_data' }) do
+for _, name in ipairs ({ 'sheet_model_clip', 'sheet_model_data', 'sheet_model_view' }) do
   local add = require (name) --[[@as fun(kit: Sheet.ModelKit)]]
   add (kit)
 end

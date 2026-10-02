@@ -325,10 +325,17 @@ local function xf_of (sheet, style)
   if s.wrap then
     align[#align + 1] = ' wrapText="1"'
   end
+  local inner = {} ---@type string[]
   if #align > 0 then
-    xf[#xf + 1] = ' applyAlignment="1"><alignment'
-      .. table.concat (align)
-      .. '/></xf>'
+    xf[#xf + 1] = ' applyAlignment="1"'
+    inner[#inner + 1] = '<alignment' .. table.concat (align) .. '/>'
+  end
+  if s.unlocked then
+    xf[#xf + 1] = ' applyProtection="1"'
+    inner[#inner + 1] = '<protection locked="0"/>'
+  end
+  if #inner > 0 then
+    xf[#xf + 1] = '>' .. table.concat (inner) .. '</xf>'
   else
     xf[#xf + 1] = '/>'
   end

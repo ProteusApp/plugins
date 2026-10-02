@@ -51,6 +51,7 @@ return function (K)
     copy.validation = self.validation
     copy.charts = self.charts
     copy.freeze_rows, copy.freeze_cols = self.freeze_rows, self.freeze_cols
+    self:copy_view (copy)
     local f = self.filter
     if f then
       local hidden = {} ---@type table<integer, boolean>
@@ -245,6 +246,7 @@ return function (K)
       self.freeze_rows = math.max (0, whole (data.freeze.rows) or 0)
       self.freeze_cols = math.max (0, whole (data.freeze.cols) or 0)
     end
+    self:load_view (data, whole, col_key)
     if type (data.col_styles) == 'table' then
       for key, style in
         pairs (data.col_styles --[[@as table<any, any>]])
@@ -462,6 +464,7 @@ return function (K)
     if #self.charts > 0 then
       data.charts = copy_table (self.charts) --[[@as Sheet.ChartSpec[] ]]
     end
+    self:save_view (data)
     return data
   end
 end

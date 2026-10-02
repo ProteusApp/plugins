@@ -24,6 +24,7 @@ M.STYLE_FIELDS = {
   'border_bottom',
   'border_left',
   'border_color',
+  'unlocked',
 }
 
 -- The value an own style holds to cancel a row or column field. Each is also the default.
@@ -44,6 +45,7 @@ M.RESET = {
   border_bottom = 'none',
   border_left = 'none',
   border_color = 'none',
+  unlocked = false,
 }
 
 local FLAGS = {
@@ -52,6 +54,7 @@ local FLAGS = {
   underline = true,
   strike = true,
   wrap = true,
+  unlocked = true,
 }
 local ALIGNS = { left = true, center = true, right = true, general = true }
 local VALIGNS = { top = true, middle = true, bottom = true }
