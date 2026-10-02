@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The community plugins and profiles for Proteus, and the scripts that keep them.",
   "scripts": {
-    "test": "node --test && node scripts/lua-test.mjs",
+    "test": "node --test \"test/*.test.mjs\" && node scripts/lua-test.mjs",
     "check": "node scripts/check.mjs"
   },
   "devDependencies": {
