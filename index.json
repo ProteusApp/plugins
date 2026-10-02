@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -37,8 +37,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "525ab1da877f78ae0b42f8976d9c079eb3fa25f4",
+      "updated": "2026-10-02T05:27:10Z"
     },
     {
       "id": "view.aseprite",
@@ -2058,7 +2058,7 @@
       "id": "proteus.todo",
       "name": "Todo",
       "description": "A single-screen to-do list.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui"
@@ -2079,8 +2079,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "525ab1da877f78ae0b42f8976d9c079eb3fa25f4",
+      "updated": "2026-10-02T05:27:10Z"
     },
     {
       "id": "lang.toml",
