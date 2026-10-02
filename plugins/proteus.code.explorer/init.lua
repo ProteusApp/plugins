@@ -14,8 +14,13 @@
 --   F2, Delete            rename and delete
 --   Ctrl+C, Ctrl+X, Ctrl+V   copy, cut and paste files
 --   Ctrl+A                selects every row
+--   Ctrl+Z                takes back the last rename, move, paste, drop, new item or delete
 --   letters               jump to the next name that starts with them
 -- Ctrl+click adds a row to the selection, and Shift+click selects a run of rows.
+--
+-- Files dropped from the system are copied into the folder under the pointer. What the
+-- `project.exclude` setting matches is left out. What .gitignore leaves out shows dimmed, or
+-- is left out with `code.explorer.gitignore`.
 --
 -- Paths inside the tree are relative to the project folder, which is ''. They become full
 -- paths only where they leave it: on disk, in the editor, and in the `code:disk_renamed` and
@@ -50,6 +55,7 @@ local CSS = [[
 .tree-row .ui-icon { color: var(--fg-muted); }
 .tree-row .tree-name { flex: 1; margin-left: 2px; overflow: hidden; text-overflow: ellipsis; }
 .tree-row.dotfile .tree-name { color: var(--fg-muted); }
+.tree-row.ignored .tree-name { color: var(--fg-faint); }
 .tree-mark { flex: none; display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-muted); }
 .tree-row.unsaved .tree-mark { display: block; }
 .tree-badge { flex: none; font-size: 10px; font-weight: 700; width: 14px; text-align: center; color: var(--fg-faint); }
@@ -90,8 +96,8 @@ local SCROLL_EDGE = 24
 local FIND_RESET = 1000
 -- A second click on a folder this soon after the first is a double-click, which leaves it open.
 local DOUBLE_CLICK = 400
--- Names the tree leaves out unless the setting says otherwise.
-local HIDE = { '.git', '.DS_Store', 'Thumbs.db', 'desktop.ini' }
+-- The most file changes Undo remembers.
+local UNDO_LIMIT = 50
 
 -- The letter shown after a name for each thing Git can say about a file.
 ---@type table<string, string>
@@ -111,6 +117,7 @@ local GIT_LETTER = {
 ---@field name string
 ---@field path string From the project folder, with `/`.
 ---@field dir boolean
+---@field ignored? boolean `.gitignore` leaves it out.
 
 ---A row drawn in the tree.
 ---@class CodeExplorer.Row
@@ -144,6 +151,14 @@ local GIT_LETTER = {
 ---@field bottom number
 ---@field cancel_open? fun()
 ---@field stop fun()
+
+---A change to the folder that Undo takes back: items that moved, items made, or items moved
+---to the trash.
+---@class CodeExplorer.Step
+---@field kind 'move'|'made'|'trash'
+---@field moves? CodeExplorer.Move[] For `move`.
+---@field paths? string[] For `made` and `trash`.
+---@field what string What the change was, for the menu, such as `'Rename'`.
 
 ---Items copied or cut with Ctrl+C or Ctrl+X, waiting for Ctrl+V.
 ---@class CodeExplorer.Clip
@@ -209,7 +224,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.1.0',
+  version = '1.2.0',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -231,7 +246,7 @@ return {
   conflicts = { 'proteus.ws.explorer' },
   -- `files` to read and change the folder on disk, and for the `project` and `editor` services.
   permissions = { 'files' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   activate = function (app)
     -- Full paths on disk need `files`, as the `project` service does.
     app.protect_event ('code:disk_renamed', { needs = 'files' })
@@ -246,11 +261,13 @@ return {
     local root = project.root ()
     local fold = disk.folds_case (app.os)
 
-    settings.define ('code.explorer.hide', {
-      title = 'Names the file tree hides',
-      type = 'json',
-      default = HIDE,
-      description = 'File and folder names the Code Editor file tree leaves out, such as .git.',
+    -- What the tree leaves out is the `project.exclude` setting, which Search and Go to File
+    -- share. This one says what to do with what .gitignore leaves out.
+    settings.define ('code.explorer.gitignore', {
+      title = 'Hide what .gitignore leaves out',
+      type = 'boolean',
+      default = false,
+      description = 'Leaves out of the Code Editor file tree what .gitignore ignores, such as build output. Off, it shows dimmed.',
     })
 
     -- With no folder open there is no tree. The Welcome page opens a folder instead.
@@ -258,20 +275,18 @@ return {
       return
     end
 
-    ---@return table<string, boolean>
-    local function hidden_names ()
-      local out = {} ---@type table<string, boolean>
-      local list = settings.get ('code.explorer.hide')
-      if type (list) == 'table' then
-        for _, v in
-          ipairs (list --[[@as any[] ]])
-        do
-          if type (v) == 'string' then
-            out[fold and v:lower () or v] = true
-          end
-        end
+    ---True for a path the tree leaves out: what `project.exclude` matches, and with the
+    ---`code.explorer.gitignore` setting, what .gitignore leaves out.
+    ---@param path string In the tree.
+    ---@param is_dir boolean
+    ---@param ignored boolean
+    ---@return boolean
+    local function hidden (path, is_dir, ignored)
+      if ignored and settings.get ('code.explorer.gitignore') == true then
+        return true
       end
-      return out
+      -- A `project` service from before 1.1.0 has no patterns to match.
+      return project.excludes ~= nil and project.excludes (path, is_dir)
     end
 
     ---The full path of a path in the tree.
@@ -305,6 +320,8 @@ return {
     local anchor = nil ---@type string?
     local edit = nil ---@type CodeExplorer.Edit?
     local drag = nil ---@type CodeExplorer.Drag?
+    -- The folder files dragged in from the system would land in, while they are over the tree.
+    local os_drop = nil ---@type string?
     local clip = nil ---@type CodeExplorer.Clip?
     -- A row to scroll to once it is drawn, such as a file just opened in a folder not yet read.
     local reveal_next = nil ---@type string?
@@ -312,6 +329,9 @@ return {
     local git_kind = {} ---@type table<string, string> Path to what Git says about it.
     local git_inside = {} ---@type table<string, boolean> Folders with changes inside.
     local find_text = ''
+    -- Changes Undo takes back, the last one at the end.
+    local undo_steps = {} ---@type CodeExplorer.Step[]
+    local undoing = false
     local tree = ui.div ({ class = 'explorer-tree', attrs = { tabindex = 0 } })
     local find_label = ui.div ({ class = 'tree-find' })
     find_label:show (false)
@@ -348,6 +368,15 @@ return {
       end
     end
 
+    ---The path in the tree of the file in the tab in front, if it is in the folder.
+    ---@return string?
+    local function active_tab_path ()
+      local tabs = app.try_use ('tabs')
+      local tab = tabs and tabs.active ()
+      local path = rel_of (tab and tab.data and tab.data.path or nil)
+      return path ~= '' and path or nil
+    end
+
     ---Opens a file of the tree in the editor.
     ---@param path string In the tree.
     ---@param opts? Proteus.OpenOptions
@@ -368,6 +397,22 @@ return {
         editor.disk_renamed (abs (from), abs (to))
       end
       app.emit ('code:disk_renamed', abs (from), abs (to))
+    end
+
+    ---Remembers a change for Undo.
+    ---@param step CodeExplorer.Step
+    local function record (step)
+      if undoing then
+        return
+      end
+      local list = step.moves or step.paths or {}
+      if #list == 0 then
+        return
+      end
+      undo_steps[#undo_steps + 1] = step
+      if #undo_steps > UNDO_LIMIT then
+        table.remove (undo_steps, 1)
+      end
     end
 
     ---@type fun()
@@ -434,23 +479,31 @@ return {
         return
       end
       loading[dir] = true
-      app.fs.list_dir (abs (dir), function (names, err)
+      -- The folder's names, and the ones .gitignore leaves out, come in any order.
+      local names, err, skipped = nil, nil, nil ---@type string[]?, string?, table<string, boolean>?
+      local function both_read ()
+        if not names and not err or not skipped then
+          return
+        end
         loading[dir] = nil
         if not names then
           failed[dir] = first_line (err or 'Could not read this folder')
           listing[dir] = {}
         else
           failed[dir] = nil
-          local hide = hidden_names ()
           local list = {} ---@type CodeExplorer.Entry[]
-          for _, raw in
-            ipairs (names --[[@as string[] ]])
-          do
+          for _, raw in ipairs (names) do
             local is_dir = raw:sub (-1) == '/'
             local name = is_dir and raw:sub (1, -2) or raw
-            if not hide[fold and name:lower () or name] then
-              list[#list + 1] =
-                { name = name, path = paths.join (dir, name), dir = is_dir }
+            local path = paths.join (dir, name)
+            local ignored = skipped[raw] == true
+            if not hidden (path, is_dir, ignored) then
+              list[#list + 1] = {
+                name = name,
+                path = path,
+                dir = is_dir,
+                ignored = ignored or nil,
+              }
             end
           end
           table.sort (list, function (a, b)
@@ -472,6 +525,27 @@ return {
           app.try (fn)
         end
         render_soon ()
+      end
+      if not app.fs.ignored_names then
+        -- An older Proteus cannot tell what .gitignore leaves out.
+        skipped = {}
+      end
+      app.fs.list_dir (abs (dir), function (found, list_err)
+        names, err =
+          found, list_err or (not found and 'Could not read this folder') or nil
+        both_read ()
+      end)
+      if not app.fs.ignored_names then
+        return
+      end
+      app.fs.ignored_names (abs (dir), function (found)
+        skipped = {}
+        for _, raw in
+          ipairs (found or {} --[[@as string[] ]])
+        do
+          skipped[raw] = true
+        end
+        both_read ()
       end)
     end
 
@@ -793,6 +867,20 @@ return {
           report (err)
           return
         end
+        if kind == 'rename' and entry then
+          record ({
+            kind = 'move',
+            moves = { { from = entry.path, to = path } },
+            what = 'Rename',
+          })
+        else
+          local made = { copy = 'Duplicate', folder = 'New Folder' }
+          record ({
+            kind = 'made',
+            paths = { path },
+            what = made[kind] or 'New File',
+          })
+        end
         if kind == 'folder' then
           expand_to (path)
         elseif paths.parent (path) ~= '' then
@@ -1010,13 +1098,27 @@ return {
             end
           end
           next_row = next_row or (first and rows[first.index - 1])
+          -- What went to the trash, which Undo brings back.
+          local trashed = {} ---@type string[]
+          ---@type { left: integer }
+          local trash = { left = 0 }
           select_one (next_row and next_row.entry.path or nil)
           for _, e in ipairs (list) do
             local entry = e
+            trash.left = trash.left + 1
             app.fs.trash_path (abs (entry.path), function (_, err)
               if not err then
+                trashed[#trashed + 1] = entry.path
+                trash.left = trash.left - 1
+                if trash.left == 0 then
+                  record ({ kind = 'trash', paths = trashed, what = 'Delete' })
+                end
                 refresh ({ paths.parent (entry.path) })
                 return
+              end
+              trash.left = trash.left - 1
+              if trash.left == 0 then
+                record ({ kind = 'trash', paths = trashed, what = 'Delete' })
               end
               p.confirm ({
                 message = entry.name
@@ -1088,8 +1190,9 @@ return {
     end
 
     ---Copies or moves the clipboard's items into `dir`. A copy that meets a name already
-    ---there gets a free name instead. Every item is worked out first, then they all go at
-    ---once, and the tree is read again when the last one is done.
+    ---there, or one an earlier item of this paste takes, gets a free name instead. Every item
+    ---is worked out first, then they all go at once, and the tree is read again when the last
+    ---one is done.
     ---@param dir string
     local function paste (dir)
       local c = clip
@@ -1097,6 +1200,14 @@ return {
         return
       end
       local moves = {} ---@type CodeExplorer.Move[]
+      -- The paths this paste has given out, compared the way the system compares names.
+      local claimed = {} ---@type table<string, boolean>
+      ---@param path string
+      ---@return boolean
+      local function taken (path)
+        return known (path) ~= nil
+          or claimed[fold and path:lower () or path] == true
+      end
       for _, from in ipairs (c.paths) do
         local name = from:match ('[^/]+$') or from ---@type string
         local to, problem = nil, nil ---@type string?, string?
@@ -1105,11 +1216,11 @@ return {
         else
           local entry = known (from)
           to = paths.join (dir, name)
-          if known (to) then
+          if taken (to) then
             to = paths.join (
               dir,
               paths.copy_name (name, entry ~= nil and entry.dir, function (n)
-                return known (paths.join (dir, n)) ~= nil
+                return taken (paths.join (dir, n))
               end)
             )
           end
@@ -1118,6 +1229,7 @@ return {
         if problem then
           report (problem)
         elseif to then
+          claimed[fold and to:lower () or to] = true
           moves[#moves + 1] = { from = from, to = to }
         end
       end
@@ -1129,8 +1241,14 @@ return {
         return
       end
       local done = {} ---@type string[]
+      local done_moves = {} ---@type CodeExplorer.Move[]
       local left = #moves
       local function finish ()
+        if cut then
+          record ({ kind = 'move', moves = done_moves, what = 'Move' })
+        else
+          record ({ kind = 'made', paths = done, what = 'Paste' })
+        end
         if dir ~= '' then
           expand_to (dir)
         end
@@ -1159,6 +1277,7 @@ return {
               moved_on_disk (move.from, move.to)
             end
             done[#done + 1] = move.to
+            done_moves[#done_moves + 1] = move
           end
           left = left - 1
           if left == 0 then
@@ -1171,6 +1290,119 @@ return {
           app.fs.copy_path (abs (move.from), abs (move.to), after)
         end
       end
+    end
+
+    -- Undo -------------------------------------------------------------------------------
+
+    ---Takes back the last change made in the tree: items that moved go back, items it made go
+    ---to the trash, and items it moved to the trash come back.
+    local function undo ()
+      local step = undo_steps[#undo_steps]
+      if not step or undoing then
+        return
+      end
+      local list = step.moves or step.paths or {}
+      local function go ()
+        if undo_steps[#undo_steps] ~= step or undoing then
+          return
+        end
+        undo_steps[#undo_steps] = nil
+        undoing = true
+        local left = #list
+        local dirs, back = {}, {} ---@type string[], string[]
+        ---@param err string?
+        ---@param path string?
+        local function one_done (err, path)
+          if err then
+            report (err)
+          elseif path then
+            back[#back + 1] = path
+            if paths.parent (path) ~= '' then
+              expand_to (paths.parent (path))
+            end
+          end
+          left = left - 1
+          if left > 0 then
+            return
+          end
+          undoing = false
+          refresh (dirs, function ()
+            if #back > 0 then
+              select_paths (back, back[1])
+              anchor = back[1]
+              reveal_next = back[1]
+            end
+          end)
+        end
+        if step.kind == 'move' then
+          for _, m in
+            ipairs (list --[[@as CodeExplorer.Move[] ]])
+          do
+            local move = m
+            dirs[#dirs + 1] = paths.parent (move.from)
+            dirs[#dirs + 1] = paths.parent (move.to)
+            app.fs.move_path (abs (move.to), abs (move.from), function (_, err)
+              if not err then
+                follow_move (move.to, move.from)
+                moved_on_disk (move.to, move.from)
+              end
+              one_done (err, not err and move.from or nil)
+            end)
+          end
+        elseif step.kind == 'made' then
+          for _, p in
+            ipairs (list --[[@as string[] ]])
+          do
+            dirs[#dirs + 1] = paths.parent (p)
+            app.fs.trash_path (abs (p), function (_, err)
+              one_done (err)
+            end)
+          end
+        elseif not app.fs.untrash_path then
+          undoing = false
+          report (
+            'This version of Proteus cannot bring files back from the trash.'
+          )
+        else
+          for _, p in
+            ipairs (list --[[@as string[] ]])
+          do
+            local path = p
+            dirs[#dirs + 1] = paths.parent (path)
+            app.fs.untrash_path (abs (path), function (_, err)
+              one_done (err, not err and path or nil)
+            end)
+          end
+        end
+      end
+      -- What the tree made may have been changed since, so taking it away asks first. It goes
+      -- to the trash, where it can come back.
+      local p = picker ()
+      if step.kind ~= 'made' or not p then
+        go ()
+        return
+      end
+      local first = list[1] --[[@as string]]
+      local what = #list == 1 and (first:match ('[^/]+$') or first)
+        or (#list .. ' items')
+      p.confirm ({
+        message = 'Undo '
+          .. step.what
+          .. ' and move '
+          .. what
+          .. ' to '
+          .. bin_name ()
+          .. '?',
+        yes = 'Undo ' .. step.what,
+        on_yes = go,
+      })
+    end
+
+    ---The label of the menu item that undoes the last change, or nil with nothing to undo.
+    ---@return string?
+    local function undo_label ()
+      local step = undo_steps[#undo_steps]
+      return step and ('Undo ' .. step.what) or nil
     end
 
     -- Type to find -----------------------------------------------------------------------
@@ -1442,6 +1674,15 @@ return {
         })
       else
         add (sep)
+        local undo_title = undo_label ()
+        if undo_title then
+          add ({
+            label = undo_title,
+            icon = 'undo-2',
+            key = 'Ctrl+Z',
+            run = undo,
+          })
+        end
         add ({
           label = 'Refresh',
           icon = 'refresh-cw',
@@ -1492,7 +1733,7 @@ return {
     ---Marks the folder a drag would drop into, with everything drawn inside it.
     local function mark_drop ()
       local d = drag
-      local dir = d and d.moves and d.dir
+      local dir = d and d.moves and d.dir or os_drop
       tree:class ('drop-root', dir == '')
       if not dir and not marked then
         return
@@ -1533,6 +1774,7 @@ return {
         end
       end
       add_class (entry.name:sub (1, 1) == '.', 'dotfile')
+      add_class (entry.ignored, 'ignored')
       add_class (picked[p], 'selected')
       add_class (p == cursor, 'cursor')
       add_class (renaming, 'editing')
@@ -1709,6 +1951,7 @@ return {
         return
       end
       local done = {} ---@type string[]
+      local moved = {} ---@type CodeExplorer.Move[]
       local dirs = { d.dir or '' }
       local pending = #moves
       for _, m in ipairs (moves) do
@@ -1722,8 +1965,10 @@ return {
             follow_move (move.from, move.to)
             moved_on_disk (move.from, move.to)
             done[#done + 1] = move.to
+            moved[#moved + 1] = move
           end
           if pending == 0 then
+            record ({ kind = 'move', moves = moved, what = 'Move' })
             if d.dir and d.dir ~= '' then
               expand_to (d.dir)
             end
@@ -1959,6 +2204,145 @@ return {
       end_find ()
     end)
 
+    -- Files dropped from the system -------------------------------------------------------
+
+    local cancel_os_open = nil ---@type fun()?
+
+    ---The folder a drop on a row lands in: the folder itself, or the folder of a file. Below
+    ---the rows it is the project folder.
+    ---@param item string?
+    ---@return string dir
+    ---@return CodeExplorer.Row? row
+    local function drop_dir (item)
+      local r = item and row_at[item] or nil
+      if not r then
+        return '', nil
+      end
+      return r.entry.dir and r.entry.path or paths.parent (r.entry.path), r
+    end
+
+    local function end_os_drag ()
+      if cancel_os_open then
+        cancel_os_open ()
+        cancel_os_open = nil
+      end
+      if os_drop then
+        os_drop = nil
+        mark_drop ()
+      end
+    end
+
+    ---Copies files and folders from elsewhere on disk into `dir`. A name already there gets a
+    ---free name instead, as a paste does.
+    ---@param sources string[] Full paths.
+    ---@param dir string In the tree.
+    local function drop_files (sources, dir)
+      local found = {} ---@type { from: string, dir: boolean }[]
+      local left = #sources
+      ---Works out every name once all the sources are known, then copies them all.
+      local function copy_all ()
+        local claimed = {} ---@type table<string, boolean>
+        ---@param path string
+        ---@return boolean
+        local function taken (path)
+          return known (path) ~= nil
+            or claimed[fold and path:lower () or path] == true
+        end
+        local made = {} ---@type string[]
+        local pending = #found
+        if pending == 0 then
+          return
+        end
+        for _, f in ipairs (found) do
+          local name = disk.name (f.from)
+          local to = paths.join (dir, name)
+          if taken (to) then
+            to = paths.join (
+              dir,
+              paths.copy_name (name, f.dir, function (n)
+                return taken (paths.join (dir, n))
+              end)
+            )
+          end
+          claimed[fold and to:lower () or to] = true
+          local target = to
+          app.fs.copy_path (f.from, abs (target), function (_, err)
+            if err then
+              report (err)
+            else
+              made[#made + 1] = target
+            end
+            pending = pending - 1
+            if pending > 0 then
+              return
+            end
+            record ({ kind = 'made', paths = made, what = 'Drop' })
+            if dir ~= '' then
+              expand_to (dir)
+            end
+            refresh ({ dir }, function ()
+              if #made > 0 then
+                select_paths (made, made[1])
+                anchor = made[1]
+                reveal_next = made[1]
+              end
+            end)
+          end)
+        end
+      end
+      for _, src in ipairs (sources) do
+        local from = disk.normalize (src)
+        app.fs.stat_path (from, function (stat)
+          if stat and stat.exists then
+            found[#found + 1] = { from = from, dir = stat.dir }
+          end
+          left = left - 1
+          if left == 0 then
+            copy_all ()
+          end
+        end)
+      end
+    end
+
+    tree:on ('filedragover', function (ev)
+      if drag or edit then
+        return nil
+      end
+      local dir, r = drop_dir (ev.item)
+      if dir == os_drop then
+        return true
+      end
+      end_os_drag ()
+      os_drop = dir
+      mark_drop ()
+      -- A closed folder opens once the files rest on it, as in a drag inside the tree.
+      if r and r.entry.dir and not expanded[r.entry.path] then
+        local folder = r.entry.path
+        cancel_os_open = app.timer.after (HOVER_OPEN, function ()
+          cancel_os_open = nil
+          if os_drop == folder then
+            expanded[folder] = true
+            save_expanded ()
+            render ()
+          end
+        end)
+      end
+      return true
+    end)
+    tree:on ('filedragleave', function ()
+      end_os_drag ()
+      return nil
+    end)
+    tree:on ('filedrop', function (ev)
+      end_os_drag ()
+      local list = ev.paths
+      if drag or edit or type (list) ~= 'table' or #list == 0 then
+        return nil
+      end
+      drop_files (list, (drop_dir (ev.item)))
+      return true
+    end)
+
     -- Keys -------------------------------------------------------------------------------
 
     -- These keys are commands bound ahead of everything else, so while the tree has the
@@ -2001,6 +2385,12 @@ return {
         id = 'select_all',
         title = 'Select All',
         run = select_all,
+      },
+      {
+        combo = 'ctrl+z',
+        id = 'undo',
+        title = 'Undo',
+        run = undo,
       },
       {
         combo = 'backspace',
@@ -2149,16 +2539,16 @@ return {
       end)
     end)
 
-    settings.watch ('code.explorer.hide', function ()
-      if root and listing[''] then
-        refresh_all ()
-      end
-    end)
+    for _, key in ipairs ({ 'project.exclude', 'code.explorer.gitignore' }) do
+      settings.watch (key, function ()
+        if root and listing[''] then
+          refresh_all ()
+        end
+      end)
+    end
 
     app.on ('tabs:changed', function ()
-      local tabs = app.try_use ('tabs')
-      local tab = tabs and tabs.active ()
-      local path = rel_of (tab and tab.data and tab.data.path or nil)
+      local path = active_tab_path ()
       if path == active_path then
         return
       end
@@ -2300,6 +2690,39 @@ return {
         title = 'Collapse All',
         icon = 'list-collapse',
         run = collapse_all,
+      })
+      commands.register ({
+        id = 'code.explorer.reveal_active',
+        category = 'Explorer',
+        title = 'Reveal Active File in Explorer',
+        icon = 'locate',
+        when = function ()
+          return active_tab_path () ~= nil
+        end,
+        run = function ()
+          local path = active_tab_path ()
+          if not path then
+            return
+          end
+          views.show ('explorer')
+          if paths.parent (path) ~= '' then
+            expand_to (paths.parent (path))
+          end
+          select_one (path)
+          reveal_next = path
+          render ()
+          tree:focus ()
+        end,
+      })
+      commands.register ({
+        id = 'code.explorer.undo_last',
+        category = 'Explorer',
+        title = 'Undo the Last File Change',
+        icon = 'undo-2',
+        when = function ()
+          return #undo_steps > 0
+        end,
+        run = undo,
       })
     end
   end,

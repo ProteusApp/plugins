@@ -5,7 +5,8 @@ A log viewer. It follows log files and running programs, and shows their lines a
 ## What it does
 
 - **Sources.** Follow a log file (Ctrl+O), run a command and read what it prints (Ctrl+Shift+R), or paste a log. Each one is a source in the Sources view, and Open Recent brings one back.
-- **Filter.** Ctrl+F filters the lines: words, `-word` to leave lines out, `"a phrase"`, and `level:error`. The level buttons show or hide errors, warnings, info, debug and the rest.
+- **Filter.** Ctrl+F filters the lines: words, `-word` to leave lines out, `"a phrase"`, `level:error` to keep one level and `-level:error` to hide one. `level:` takes `error`, `warn`, `info`, `debug` and `other`, the lines with no level, or the start of one, such as `level:w`. The level buttons show or hide errors, warnings, info, debug and the rest.
+- **Levels.** A line's level comes from a JSON or logfmt field such as `level=warn`, from the letter that starts a glog or klog line such as `E1001 12:00:00.000000`, or from a word such as `ERROR` near the start.
 - **Detail.** A click shows a whole line, with its JSON formatted. Copy one line or every line that matches.
 - **Follow.** The list keeps to the newest line until you scroll up.
 

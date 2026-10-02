@@ -21,7 +21,7 @@ local GRAPH_FILE = 'kanban.ndg'
 return {
   name = NAME,
   description = 'Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.',
-  version = '1.2.1',
+  version = '1.3.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },

@@ -130,7 +130,7 @@ return {
       title = 'Terminal program',
       type = 'string',
       default = '',
-      description = 'The program the default profile runs, such as pwsh, cmd or bash. Empty runs the system shell.',
+      description = 'The program the default profile runs, with any arguments, such as pwsh -NoLogo or bash -l. Quote a path with spaces. Empty runs the system shell.',
       sensitive = true,
     })
     settings.define ('terminal.profiles', {

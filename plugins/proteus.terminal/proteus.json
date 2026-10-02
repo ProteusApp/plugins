@@ -41,6 +41,7 @@
     "README.md",
     "handbook/terminal.md",
     "init.lua",
+    "shell_words.lua",
     "terminal_groups.lua",
     "terminal_profiles.lua",
     "terminal_session.lua",
@@ -49,6 +50,7 @@
     "tests/panel.test.lua",
     "tests/profiles.test.lua",
     "tests/session.test.lua",
+    "tests/shell_words.test.lua",
     "tests/tasks.test.lua"
   ]
 }

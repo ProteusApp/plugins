@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -28,7 +28,7 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -37,8 +37,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "525ab1da877f78ae0b42f8976d9c079eb3fa25f4",
-      "updated": "2026-10-02T05:27:10Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "view.aseprite",
@@ -427,7 +427,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.3.2",
+      "version": "1.3.3",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -472,8 +472,8 @@
         "tests/git_paths.test.lua",
         "tests/git_text.test.lua"
       ],
-      "commit": "2df28fe8a817069a6aa7e58582c6d75b283d0725",
-      "updated": "2026-10-02T16:49:20Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "lang.gitfiles",
@@ -754,7 +754,7 @@
       "id": "proteus.kanban",
       "name": "Kanban",
       "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -785,8 +785,8 @@
         "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
-      "updated": "2026-10-02T05:20:34Z"
+      "commit": "f887ffa17450a90b72157162973fe3c9db6860f0",
+      "updated": "2026-10-02T06:16:53Z"
     },
     {
       "id": "icons.badges",
@@ -820,7 +820,7 @@
       "id": "proteus.logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -855,8 +855,8 @@
         "log_filter.lua",
         "tests/logs.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "81a87889eff2618ef4fdaf075e60c201328cd5cd",
+      "updated": "2026-10-02T05:09:05Z"
     },
     {
       "id": "lang.luau-lsp",
@@ -1048,7 +1048,7 @@
       "id": "proteus.notes",
       "name": "Notes",
       "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1079,8 +1079,8 @@
         "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
-      "updated": "2026-10-02T05:20:34Z"
+      "commit": "e663a1166734378276a93ee2a98353dbaa265483",
+      "updated": "2026-10-02T06:24:02Z"
     },
     {
       "id": "theme.outrun",
@@ -1164,7 +1164,7 @@
       "id": "proteus.code.project",
       "name": "Project",
       "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
-      "version": "1.1.0",
+      "version": "1.1.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.core.commands",
@@ -1181,24 +1181,26 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
       },
       "files": [
         "README.md",
+        "exclude.lua",
         "handbook/project.md",
-        "init.lua"
+        "init.lua",
+        "tests/exclude.test.lua"
       ],
-      "commit": "005a1dd00f59e6dc20f72e2e7cbb82a177f1a257",
-      "updated": "2026-10-02T16:29:38Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1222,7 +1224,7 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -1231,8 +1233,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "141fc070f421f4510fc2eff97ae2c1df35c865b0",
-      "updated": "2026-10-02T16:42:16Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "proteus.code.plugins",
@@ -1366,7 +1368,7 @@
       "id": "lang.rust",
       "name": "Rust",
       "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "nanoqoi",
       "depends": [
         "core.settings",
@@ -1391,7 +1393,8 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "tool-command"
         ]
       },
       "files": [
@@ -1407,8 +1410,8 @@
         "lib/rustfmt.lua",
         "lib/server.lua"
       ],
-      "commit": "67582143f8ad1b68b30e7eab192c4e7455fb9a80",
-      "updated": "2026-10-02T16:25:47Z"
+      "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
+      "updated": "2026-10-02T16:53:40Z"
     },
     {
       "id": "sample.plugin",
@@ -1486,8 +1489,8 @@
     {
       "id": "proteus.code.search",
       "name": "Search",
-      "description": "Finds text in every file of the folder open in the Code Editor.",
-      "version": "1.0.0",
+      "description": "Finds and replaces text in every file of the folder open in the Code Editor.",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1498,24 +1501,28 @@
         "proteus.core.commands",
         "proteus.core.keys",
         "proteus.editor.core",
-        "proteus.ui.menus"
+        "proteus.ui.menus",
+        "proteus.ui.notify",
+        "proteus.ui.palette"
       ],
       "permissions": [
         "files"
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
       },
       "files": [
         "README.md",
-        "init.lua"
+        "init.lua",
+        "search_core.lua",
+        "tests/search_core.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
+      "updated": "2026-10-02T17:00:51Z"
     },
     {
       "id": "shader.build",
@@ -2035,7 +2042,7 @@
       "id": "proteus.terminal",
       "name": "Terminal",
       "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2067,13 +2074,15 @@
         "README.md",
         "handbook/terminal.md",
         "init.lua",
+        "shell_words.lua",
         "terminal_groups.lua",
         "terminal_profiles.lua",
         "tests/groups.test.lua",
-        "tests/profiles.test.lua"
+        "tests/profiles.test.lua",
+        "tests/shell_words.test.lua"
       ],
-      "commit": "8c32afafc73f0f37b7d52fbf31b0ff0b8a9d43fb",
-      "updated": "2026-10-02T16:37:52Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "proteus.todo",
@@ -2107,7 +2116,7 @@
       "id": "lang.toml",
       "name": "TOML",
       "description": "TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.",
-      "version": "1.1.1",
+      "version": "1.1.2",
       "author": "nanoqoi",
       "depends": [
         "core.settings",
@@ -2128,9 +2137,10 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.2.0",
+        "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "tool-command"
         ]
       },
       "files": [
@@ -2142,8 +2152,8 @@
         "lib/server.lua",
         "tests/schemas.test.lua"
       ],
-      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
-      "updated": "2026-10-02T05:08:32Z"
+      "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
+      "updated": "2026-10-02T16:53:40Z"
     },
     {
       "id": "lang.typescript",
@@ -2346,7 +2356,7 @@
       "id": "code",
       "name": "Code Editor",
       "description": "Open a project folder: edit, search, run a terminal, and commit to Git.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "ProteusApp",
       "requires": {
         "proteus": ">=0.3.1",
@@ -2370,13 +2380,17 @@
         "proteus.code.plugins",
         "proteus.tools.registry",
         "proteus.lang.prettier",
+        "proteus.tools.diagnostics",
+        "proteus.lang.luals",
+        "proteus.lang.stylua",
+        "proteus.lang.selene",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
-      "updated": "2026-10-02T16:31:26Z"
+      "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
+      "updated": "2026-10-02T16:53:40Z"
     },
     {
       "id": "git",

@@ -86,7 +86,8 @@ local Keys = {}
 ---@param command_id string
 function Keys.bind (combo, command_id) end
 
----The display label of the shortest key bound to a command, such as `'Ctrl+S'`.
+---The display label of the shortest key that would run a command if pressed now, such as
+---`'Ctrl+S'`. A key that goes to another command first does not count.
 ---@param command_id string
 ---@return string?
 function Keys.label (command_id) end
@@ -854,6 +855,13 @@ function Editor.add_completions (words) end
 ---@return Proteus.DocInfo[]
 function Editor.docs () end
 
+---Puts `text` in place of the whole text of the open document at `path`, as one edit the
+---user can undo, without saving it. False when no document is open there, or it is read-only.
+---@param path string The path a document's `path` field gives.
+---@param text string
+---@return boolean
+function Editor.set_text (path, text) end
+
 ---Gives every document in `language` smarter help, such as from a language server. Open
 ---documents get it at once. Returns a function that takes it away again, which also happens
 ---when the plugin stops.
@@ -938,6 +946,15 @@ function Console.clear () end
 ---@field check? fun() Looks for the tool again, for example after it was installed.
 ---@field settings? string[] Setting keys that belong to this tool, shown beside it.
 ---@field release? Proteus.ToolRelease An official download, for when the program is not on the PATH.
+---@field npm? Proteus.ToolPackage npm packages to install, for a program that runs on Node.js and is not on the PATH.
+---@field languages? string[] The editor languages the tool serves, such as `{ 'yaml' }`. A server with them shows in the status bar only while a file in one of them is in front.
+
+---npm packages that `proteus.tools.registry` installs into the app's cache folder. Installing
+---needs `npm` on the PATH. Each package is pinned to one version, and npm runs no install
+---scripts.
+---@class Proteus.ToolPackage
+---@field packages string[] Each package and its exact version, such as `'yaml-language-server@1.24.0'`. The first one holds the program.
+---@field bin string The program the first package installs, such as `'yaml-language-server'`.
 
 ---An official release of a tool, pinned by checksums, which `proteus.tools.registry` can download.
 ---@class Proteus.ToolRelease
@@ -949,7 +966,7 @@ function Console.clear () end
 ---@class Proteus.ToolAsset
 ---@field url string An https address.
 ---@field sha256 string The file's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
 
 ---@class Proteus.ToolInfo: Proteus.ToolSpec
 ---@field state Proteus.ToolState
@@ -996,8 +1013,9 @@ function Tools.builtin_dir (cb) end
 ---@field set_path fun(path: string?)
 ---@field log fun(stream: 'out'|'err'|'info'|'send'|'recv', text: string)
 ---@field locate fun(cb: fun(path: string?)) Finds the program on the PATH, then among downloads. When neither has it, it offers the download and gives nil.
----@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, if there is one.
----@field offer fun() Offers the release's download, once. Useful when the copy on the PATH does not run.
+---@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, or the program npm installed, if there is one.
+---@field offer fun() Offers the release's download or the npm install, once. Useful when the copy on the PATH does not run.
+---@field set_languages fun(languages: string[]?) Changes the editor languages the tool serves.
 
 ---------------------------------------------------------------------------------------------
 -- diagnostics (proteus.tools.diagnostics)
@@ -1103,7 +1121,7 @@ function Discord.connected () end
 ---@class Proteus.FileAssociation
 ---@field kind string Such as `'schema'`. The plugins that handle a kind decide what its values mean.
 ---@field pattern string Which files: `'Cargo.toml'` matches the name anywhere, `'*.ndg'` any name that fits, and `'.cargo/config.toml'` the end of a path. `**` crosses folders.
----@field value any For `'schema'`, a JSON schema's address. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
+---@field value any For `'schema'`, a JSON schema's address for a language server, or the schema itself as a table, or a function `(path)` that returns it, which the code editor uses for JSON files. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
 ---@field owner? string Set by the service: the plugin that added it.
 
 ---The file association system. Any plugin adds associations, and the plugins that handle
@@ -1263,8 +1281,9 @@ function Project.recent () end
 function Project.forget (path) end
 
 ---Every file in the folder, as paths from the root, sorted. What `.gitignore` leaves out and
----the folder names in `excluded` are skipped. The list is kept until files come or go.
----@param cb fun(files: string[]?, err: string?)
+---what the patterns in `excluded` match are skipped. The list is kept until files come or go. The
+---walk stops at 50,000 files, and then `truncated` is true.
+---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
 function Project.files (cb) end
 
 ---The path from the root, or nil for a path outside the folder. '' is the root itself.
@@ -1272,14 +1291,21 @@ function Project.files (cb) end
 ---@return string?
 function Project.relative (path) end
 
----The full path for a path from the root.
+---The full path for a path from the root, or nil when no folder is open.
 ---@param rel string
----@return string
+---@return string?
 function Project.absolute (rel) end
 
----Folder names that search and Go to File leave out, from the `project.exclude` setting.
+---The glob patterns of the `project.exclude` setting, such as `node_modules` or `*.min.js`,
+---which the file tree, search and Go to File leave out.
 ---@return string[]
 function Project.excluded () end
+
+---True when the path from the root, or a folder above it, fits a pattern in `excluded`.
+---@param rel string Such as `'src/main.rs'`.
+---@param dir? boolean True for a folder, which a pattern that ends in `/` needs.
+---@return boolean
+function Project.excludes (rel, dir) end
 
 ---True when the user trusts the open folder. Opening a folder runs nothing of its own until
 ---then: its `.proteus` files, its Git settings and its build scripts all wait.
@@ -1372,8 +1398,20 @@ function Terminal.run_task (label) end
 ---@field headers table<string, string> Names in lower case.
 ---@field body string
 
----HTTP from plugins. The desktop app sends requests itself, so any address works. The
----browser can only reach addresses that allow cross-origin requests.
+---@class Proteus.ConnectOptions
+---@field framing? 'lsp'|'lines' `'lsp'` reads and writes Language Server Protocol messages. `'lines'` when nil.
+---@field on_message? fun(text: string) One message or one line from the server.
+---@field on_close? fun() The server closed the connection, or `close` was called.
+---@field on_error? fun(err: string) The connection could not open, or it broke. Without it, the Console shows the error.
+
+---@class Proteus.NetConnection
+---@field write fun(text: string) Sends one message or line. Text sent before the connection opens waits for it.
+---@field close fun()
+---@field alive fun(): boolean
+
+---HTTP from plugins, and connections to servers on this computer. The desktop app sends
+---requests itself, so any address works. The browser can only reach addresses that allow
+---cross-origin requests.
 ---@class Proteus.Net
 local Net = {}
 
@@ -1381,6 +1419,13 @@ local Net = {}
 ---@param request Proteus.HttpRequest
 ---@param cb fun(reply: Proteus.HttpReply?, err: string?)
 function Net.fetch (request, cb) end
+
+---Connects to a port on this computer, at `127.0.0.1`. It cannot reach another machine. The
+---connection closes when the plugin stops. Needs the desktop app.
+---@param port integer From 1 to 65535.
+---@param opts? Proteus.ConnectOptions
+---@return Proteus.NetConnection
+function Net.connect (port, opts) end
 
 ---Runs programs. Needs the desktop app.
 ---@class Proteus.Process
@@ -1430,9 +1475,10 @@ function Process.export_builtin (cb) end
 ---@field name string The program's file name once installed, such as `'taplo.exe'`.
 ---@field url string An https address.
 ---@field sha256 string The download's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
 
----The path of a tool downloaded before, or nil when that version is not downloaded yet.
+---The path of a tool downloaded before, or nil when that version is not downloaded yet. The
+---name may hold folders, split by `/`, such as `'bin/taplo'`.
 ---@param spec { id: string, version: string, name: string }
 ---@param cb fun(path: string?, err: string?)
 function Process.cached_tool (spec, cb) end
@@ -1442,3 +1488,9 @@ function Process.cached_tool (spec, cb) end
 ---@param spec Proteus.ToolDownload
 ---@param cb fun(path: string?, err: string?)
 function Process.download_tool (spec, cb) end
+
+---A tool version's folder in the app's cache, made if it is missing, for a tool that npm
+---installs. `proteus.tools.registry` runs npm there.
+---@param spec { id: string, version: string }
+---@param cb fun(path: string?, err: string?)
+function Process.tool_folder (spec, cb) end
