@@ -253,7 +253,7 @@
       "id": "theme.bevel",
       "name": "Bevel theme",
       "description": "A 1990s desktop: silver panels with raised and sunken bevels, and navy title bars.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -264,22 +264,46 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
-      "updated": "2026-09-30T20:33:10Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+          "updated": "2026-09-30T20:33:10Z"
+        }
+      ]
     },
     {
       "id": "theme.blueprint",
       "name": "Blueprint theme",
       "description": "White lines on Prussian blue drafting paper, with a measured grid behind the code.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -290,22 +314,46 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
-      "updated": "2026-09-30T20:33:10Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+          "updated": "2026-09-30T20:33:10Z"
+        }
+      ]
     },
     {
       "id": "theme.catppuccin",
       "name": "Catppuccin themes",
       "description": "Soothing pastel themes: Mocha, which is dark, and Latte, which is light.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -316,16 +364,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+          "updated": "2026-09-30T20:09:08Z"
+        }
+      ]
     },
     {
       "id": "lang.css",
@@ -595,7 +667,7 @@
       "id": "theme.dracula",
       "name": "Dracula theme",
       "description": "A dark theme with vivid pink, purple and green, from the Dracula palette.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -606,16 +678,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+          "updated": "2026-09-30T20:09:08Z"
+        }
+      ]
     },
     {
       "id": "view.fonts",
@@ -856,7 +952,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -903,9 +999,59 @@
         "tests/git_paths.test.lua",
         "tests/git_text.test.lua"
       ],
-      "commit": "ee411be89453df5e4abed7a512a011b1e1932612",
-      "updated": "2026-10-02T21:42:33Z",
+      "commit": "fbcb42a4fc6dc62d7669f7c060e8849c1116c7f7",
+      "updated": "2026-10-02T21:43:41Z",
       "versions": [
+        {
+          "version": "1.4.0",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.shell",
+            "proteus.ui.views",
+            "proteus.core.commands"
+          ],
+          "optional": [
+            "proteus.ui.toolbar",
+            "proteus.ui.statusbar",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.core.keys",
+            "proteus.ui.menus",
+            "proteus.ui.tabs",
+            "proteus.code.project",
+            "proteus.core.settings"
+          ],
+          "permissions": [
+            "files",
+            "process"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions",
+              "highlight"
+            ]
+          },
+          "files": [
+            "README.md",
+            "git_args.lua",
+            "git_blame.lua",
+            "git_graph.lua",
+            "git_html.lua",
+            "git_parse.lua",
+            "git_paths.lua",
+            "git_text.lua",
+            "init.lua",
+            "tests/git.test.lua",
+            "tests/git_args.test.lua",
+            "tests/git_html.test.lua",
+            "tests/git_paths.test.lua",
+            "tests/git_text.test.lua"
+          ],
+          "commit": "ee411be89453df5e4abed7a512a011b1e1932612",
+          "updated": "2026-10-02T21:42:33Z"
+        },
         {
           "version": "1.3.3",
           "depends": [
@@ -1249,8 +1395,8 @@
             "init.lua",
             "tests/git.test.lua"
           ],
-          "commit": "bd4e8f19996508a8cef266b0c24812a8d62eaf6e",
-          "updated": "2026-10-02T05:35:27Z"
+          "commit": "dc3eea667bc48b0b88063fdbff1aadb6024d84a2",
+          "updated": "2026-10-02T06:14:29Z"
         },
         {
           "version": "1.0.0",
@@ -1347,7 +1493,7 @@
       "id": "theme.gruvbox",
       "name": "Gruvbox themes",
       "description": "Retro groove colors, warm and easy on the eyes, in a dark and a light theme.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -1358,16 +1504,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+          "updated": "2026-09-30T20:09:08Z"
+        }
+      ]
     },
     {
       "id": "proteus.hello",
@@ -1869,11 +2039,10 @@
       "id": "icons.badges",
       "name": "Letter Badges",
       "description": "A file icon pack of small letter badges, such as TS and MD, drawn in the syntax colors of the color theme.",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "author": "nanoqoi",
       "depends": [
-        "core.icons",
-        "core.files"
+        "core.icons"
       ],
       "optional": [],
       "permissions": [],
@@ -1882,17 +2051,41 @@
         "proteus": ">=0.2.0",
         "features": [
           "permissions",
-          "icons"
+          "icons",
+          "file-kinds"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/pack.test.lua"
+        "init.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00",
+      "commit": "f61c231db49e7630c25329a3241ece32cb743cb7",
+      "updated": "2026-10-02T06:14:29Z",
       "versions": [
+        {
+          "version": "1.1.0",
+          "depends": [
+            "core.icons",
+            "core.files"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "icons"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/pack.test.lua"
+          ],
+          "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+          "updated": "2026-10-01T15:10:14-06:00"
+        },
         {
           "version": "1.0.0",
           "depends": [
@@ -2484,7 +2677,7 @@
       "id": "theme.nanoqoi",
       "name": "nanoqoi theme",
       "description": "A near-black theme in amethyst purples, from nanoqoi's Neovim colors.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -2495,22 +2688,46 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "dd7ae7b5bc1a30a8ae71b4f9bdcbecdf42d60bd4",
-      "updated": "2026-10-01T13:18:22-06:00"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "dd7ae7b5bc1a30a8ae71b4f9bdcbecdf42d60bd4",
+          "updated": "2026-10-01T13:18:22-06:00"
+        }
+      ]
     },
     {
       "id": "theme.nord",
       "name": "Nord theme",
       "description": "An arctic, north-bluish dark theme, from the Nord palette.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -2521,16 +2738,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+          "updated": "2026-09-30T20:09:08Z"
+        }
+      ]
     },
     {
       "id": "proteus.notes",
@@ -2747,7 +2988,7 @@
       "id": "theme.outrun",
       "name": "Outrun theme",
       "description": "Synthwave neon on a midnight purple sky, with a glowing grid running to the horizon under the code.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -2758,22 +2999,46 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
-      "updated": "2026-09-30T20:33:10Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+          "updated": "2026-09-30T20:33:10Z"
+        }
+      ]
     },
     {
       "id": "theme.parchment",
       "name": "Parchment theme",
       "description": "Iron-gall ink on warm paper, with book type, rubric red and a ruled margin beside the code.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -2784,16 +3049,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
-      "updated": "2026-09-30T20:33:10Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+          "updated": "2026-09-30T20:33:10Z"
+        }
+      ]
     },
     {
       "id": "proteus.template",
@@ -2835,7 +3124,7 @@
       "id": "theme.pocket",
       "name": "Pocket theme",
       "description": "The four greens of an early handheld game screen, with square corners, pixel shadows and an LCD dot grid.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -2846,16 +3135,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
-      "updated": "2026-09-30T20:33:10Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "13bc3b785554a3a181b2e8173e201f09869b8f20",
+          "updated": "2026-09-30T20:33:10Z"
+        }
+      ]
     },
     {
       "id": "perf.profiler",
@@ -3090,7 +3403,7 @@
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.3.0",
+      "version": "1.3.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -3124,9 +3437,46 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "443f6a3c879adda459c9625dd89673b0b44827f5",
-      "updated": "2026-10-02T17:02:34Z",
+      "commit": "fbcb42a4fc6dc62d7669f7c060e8849c1116c7f7",
+      "updated": "2026-10-02T21:43:41Z",
       "versions": [
+        {
+          "version": "1.3.0",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.views",
+            "proteus.code.project",
+            "proteus.core.settings",
+            "proteus.core.icons"
+          ],
+          "optional": [
+            "proteus.core.keys",
+            "proteus.core.commands",
+            "proteus.ui.menus",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.ui.tabs",
+            "proteus.editor.core",
+            "proteus.terminal"
+          ],
+          "permissions": [
+            "files"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions",
+              "file-tree"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua"
+          ],
+          "commit": "443f6a3c879adda459c9625dd89673b0b44827f5",
+          "updated": "2026-10-02T17:02:34Z"
+        },
         {
           "version": "1.2.0",
           "depends": [
@@ -3267,8 +3617,8 @@
             "README.md",
             "init.lua"
           ],
-          "commit": "d93b90ec6674bdd8c220f4cb8a024e327c66e35a",
-          "updated": "2026-10-02T05:29:00Z"
+          "commit": "dc3eea667bc48b0b88063fdbff1aadb6024d84a2",
+          "updated": "2026-10-02T06:14:29Z"
         },
         {
           "version": "1.0.0",
@@ -5519,7 +5869,7 @@
       "id": "theme.solarized",
       "name": "Solarized themes",
       "description": "The precise, low-contrast Solarized colors, in a dark and a light theme.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "core.themes"
@@ -5530,16 +5880,40 @@
       "requires": {
         "proteus": ">=0.2.0",
         "features": [
-          "permissions"
+          "permissions",
+          "theme-data"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/theme.test.lua"
+        "init.lua"
       ],
-      "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
-      "updated": "2026-09-30T20:09:08Z"
+      "commit": "c76d8141568723720d5131d675607b7bf03187e5",
+      "updated": "2026-10-02T06:14:28Z",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "core.themes"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/theme.test.lua"
+          ],
+          "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
+          "updated": "2026-09-30T20:09:08Z"
+        }
+      ]
     },
     {
       "id": "lang.tailwind",
@@ -6490,11 +6864,10 @@
       "id": "icons.vivid",
       "name": "Vivid Icons",
       "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "author": "nanoqoi",
       "depends": [
-        "core.icons",
-        "core.files"
+        "core.icons"
       ],
       "optional": [],
       "permissions": [],
@@ -6503,17 +6876,41 @@
         "proteus": ">=0.2.0",
         "features": [
           "permissions",
-          "icons"
+          "icons",
+          "file-kinds"
         ]
       },
       "files": [
         "README.md",
-        "init.lua",
-        "tests/pack.test.lua"
+        "init.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00",
+      "commit": "f61c231db49e7630c25329a3241ece32cb743cb7",
+      "updated": "2026-10-02T06:14:29Z",
       "versions": [
+        {
+          "version": "1.1.0",
+          "depends": [
+            "core.icons",
+            "core.files"
+          ],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "icons"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "tests/pack.test.lua"
+          ],
+          "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
+          "updated": "2026-10-01T15:10:14-06:00"
+        },
         {
           "version": "1.0.0",
           "depends": [
