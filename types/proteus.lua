@@ -55,6 +55,8 @@
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
+---| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
+---| 'grants-read' # `app.grants.read`, the text of a file the user picked.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -676,6 +678,12 @@ function Grants.list () end
 ---Gives a file back. The plugin cannot reach it again unless the user picks it again.
 ---@param id string
 function Grants.forget (id) end
+
+---Reads the text of a file the user picked to open. A file from an earlier session asks the
+---user first. Raises an error for an id the plugin does not hold, or a file picked to save.
+---@param id string
+---@param cb fun(text: string?, err: string?)
+function Grants.read (id, cb) end
 
 ---One message from a MIDI keyboard.
 ---@class Proteus.MidiMessage

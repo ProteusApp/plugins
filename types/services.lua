@@ -1311,21 +1311,53 @@ function Project.excluded () end
 ---@field method? string `'GET'` when nil.
 ---@field url string
 ---@field headers? table<string, string>
----@field body? string
+---@field body? string The body as text.
+---@field body_base64? string The body as base64, for bytes that are not text.
+---@field file? string The id of a file the user picked in `app.grants.open`. Its bytes are the body.
+---@field parts? Proteus.HttpPart[] A multipart/form-data body. It sets its own Content-Type.
+---@field timeout? number Seconds to wait for the whole answer, over every redirect. 30 when nil, at most 3600.
+---@field redirects? boolean False returns a redirect as the answer instead of following it.
+---@field encoding? 'text'|'base64' `'base64'` returns the body as base64 even when it is text.
+
+---One part of a multipart form: a text value, or a file the user picked.
+---@class Proteus.HttpPart
+---@field name string The field's name.
+---@field value? string The text of a text part.
+---@field file? string The id of a file the user picked in `app.grants.open`.
+---@field filename? string The file name the server sees. The picked file's name when nil.
+---@field type? string The part's Content-Type. A file's comes from its extension when nil.
+
+---One header of an answer.
+---@class Proteus.HttpHeader
+---@field name string In lower case.
+---@field value string
 
 ---@class Proteus.HttpReply
 ---@field status integer
----@field headers table<string, string> Names in lower case.
----@field body string
+---@field headers table<string, string> Names in lower case. Values of a header that came more than once are joined by `, `, or by a line break for `set-cookie`.
+---@field header_list Proteus.HttpHeader[] Every header in the order it came, repeats included.
+---@field body string The body as text, or as base64 when `encoding` says so.
+---@field encoding 'text'|'base64' `'base64'` when the request asked for it or the body is not UTF-8 text.
+---@field size integer The body's length in bytes.
+---@field url string The address that answered, after any redirects.
+---@field redirects integer How many redirects it followed.
+---@field ms number Milliseconds from sending until the whole answer was read.
+
+---A request under way.
+---@class Proteus.HttpCall
+---@field cancel fun() Stops the request. Its callback gets the error `'cancelled'` at once.
+---@field done fun(): boolean True once the callback ran or the request was cancelled.
 
 ---HTTP from plugins. The desktop app sends requests itself, so any address works. The
 ---browser can only reach addresses that allow cross-origin requests.
 ---@class Proteus.Net
 local Net = {}
 
----Sends a request. `err` means there was no answer at all. A 404 or 500 is an answer.
+---Sends a request. `err` means there was no answer at all. A 404 or 500 is an answer. Raises
+---an error for a `file` id the plugin does not hold.
 ---@param request Proteus.HttpRequest
 ---@param cb fun(reply: Proteus.HttpReply?, err: string?)
+---@return Proteus.HttpCall
 function Net.fetch (request, cb) end
 
 ---Runs programs. Needs the desktop app.
