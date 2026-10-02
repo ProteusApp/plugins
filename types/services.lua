@@ -86,8 +86,7 @@ local Keys = {}
 ---@param command_id string
 function Keys.bind (combo, command_id) end
 
----The display label of the shortest key that would run a command if pressed now, such as
----`'Ctrl+S'`. A key that goes to another command first does not count.
+---The display label of the shortest key bound to a command, such as `'Ctrl+S'`.
 ---@param command_id string
 ---@return string?
 function Keys.label (command_id) end
@@ -179,7 +178,6 @@ function Settings.project_file () end
 ---@field id string
 ---@field name? string
 ---@field dark? boolean
----@field extends? string The id of a theme whose variables this one starts from. Its own `vars` win.
 ---@field vars? table<string, string> CSS variables without the leading `--`, such as `{ bg = '#000' }`.
 ---@field css? string Extra CSS applied with the theme.
 
@@ -210,17 +208,9 @@ function Themes.current () end
 ---@return Proteus.ThemeSpec[]
 function Themes.list () end
 
----Every theme variable with its default value: the dark defaults, or the light ones when `dark`
----is false.
----@param dark? boolean
+---Every theme variable with its default value.
 ---@return table<string, string>
-function Themes.defaults (dark) end
-
----Every variable a registered theme shows, with the ones it leaves out filled in from the theme
----it extends and the defaults. Nil when no theme has that id.
----@param id string
----@return table<string, string>?
-function Themes.resolve (id) end
+function Themes.defaults () end
 
 ---------------------------------------------------------------------------------------------
 -- icons (proteus.core.icons)
@@ -238,35 +228,25 @@ function Themes.resolve (id) end
 ---@field pack? string The pack it belongs to. Without one, it counts in every pack, after the pack's own.
 ---@field folder? boolean True when the pattern names folders, not files.
 
----A kind of file or folder that icon packs draw, such as `rust` for `*.rs`. `lib/file_kinds.lua`
----lists the app's own.
----@class Proteus.FileKind
----@field id string Such as `'rust'`.
----@field exts? string[] Extensions without the first dot, such as `{ 'rs' }` or `{ 'd.ts' }`.
----@field names? string[] Whole file or folder names, such as `{ 'Cargo.toml' }`.
----@field folder? boolean True for a kind of folder.
-
 ---@class Proteus.IconPackSpec
 ---@field id string
 ---@field name? string
 ---@field description? string
 ---@field file? Proteus.FileIcon The icon of a file nothing else fits.
 ---@field folder? Proteus.FileIcon The icon of a folder nothing else fits, with `open`.
----@field kinds? table<string, Proteus.FileIcon> How each kind of file or folder looks, by kind id, such as `{ rust = { icon = 'cog' } }`.
 
 ---@class Proteus.IconPack: Proteus.IconPackSpec
 ---@field name string
 ---@field owner string The plugin that registered it.
 
----File icon packs. A pack registers itself with a look for each kind of file in `kinds`, and
----may add associations of the kind `'icon'` through proteus.core.files, each with `pack` set to
----the pack's id. The setting `icon_pack` picks one, and `'default'` keeps the icons each plugin
----draws.
+---File icon packs. A pack plugin registers the pack, then adds associations of the kind
+---`'icon'` through proteus.core.files, each with `pack` set to the pack's id. The setting `icon_pack`
+---picks one, and `'default'` keeps the icons each plugin draws.
 ---
 ---```lua
----app.use('icons').register({ id = 'vivid', name = 'Vivid', kinds = { rust = { icon = 'cog' } } })
+---app.use('icons').register({ id = 'vivid', name = 'Vivid' })
 ---app.use('files').associate({
----  kind = 'icon', pattern = 'build.rs', value = { pack = 'vivid', icon = 'hammer' },
+---  kind = 'icon', pattern = '*.rs', value = { pack = 'vivid', icon = 'cog', color = '#dea584' },
 ---})
 ---```
 ---@class Proteus.Icons
@@ -279,15 +259,6 @@ function Icons.register (spec) end
 ---Removes a pack. A restricted plugin removes only its own.
 ---@param id string
 function Icons.unregister (id) end
-
----Adds a kind of file that packs may draw, such as a language's files. It goes away when its
----plugin stops. A kind the app or another plugin has already raises an error.
----@param kind Proteus.FileKind
-function Icons.add_kind (kind) end
-
----Every kind of file and folder: the app's own, then the ones plugins added.
----@return Proteus.FileKind[]
-function Icons.kinds () end
 
 ---Shows a pack now without saving the choice. False when no such pack is registered.
 ---@param id string
@@ -966,15 +937,6 @@ function Console.clear () end
 ---@field check? fun() Looks for the tool again, for example after it was installed.
 ---@field settings? string[] Setting keys that belong to this tool, shown beside it.
 ---@field release? Proteus.ToolRelease An official download, for when the program is not on the PATH.
----@field npm? Proteus.ToolPackage npm packages to install, for a program that runs on Node.js and is not on the PATH.
----@field languages? string[] The editor languages the tool serves, such as `{ 'yaml' }`. A server with them shows in the status bar only while a file in one of them is in front.
-
----npm packages that `proteus.tools.registry` installs into the app's cache folder. Installing
----needs `npm` on the PATH. Each package is pinned to one version, and npm runs no install
----scripts.
----@class Proteus.ToolPackage
----@field packages string[] Each package and its exact version, such as `'yaml-language-server@1.24.0'`. The first one holds the program.
----@field bin string The program the first package installs, such as `'yaml-language-server'`.
 
 ---An official release of a tool, pinned by checksums, which `proteus.tools.registry` can download.
 ---@class Proteus.ToolRelease
@@ -986,7 +948,7 @@ function Console.clear () end
 ---@class Proteus.ToolAsset
 ---@field url string An https address.
 ---@field sha256 string The file's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
 
 ---@class Proteus.ToolInfo: Proteus.ToolSpec
 ---@field state Proteus.ToolState
@@ -1033,9 +995,8 @@ function Tools.builtin_dir (cb) end
 ---@field set_path fun(path: string?)
 ---@field log fun(stream: 'out'|'err'|'info'|'send'|'recv', text: string)
 ---@field locate fun(cb: fun(path: string?)) Finds the program on the PATH, then among downloads. When neither has it, it offers the download and gives nil.
----@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, or the program npm installed, if there is one.
----@field offer fun() Offers the release's download or the npm install, once. Useful when the copy on the PATH does not run.
----@field set_languages fun(languages: string[]?) Changes the editor languages the tool serves.
+---@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, if there is one.
+---@field offer fun() Offers the release's download, once. Useful when the copy on the PATH does not run.
 
 ---------------------------------------------------------------------------------------------
 -- diagnostics (proteus.tools.diagnostics)
@@ -1141,7 +1102,7 @@ function Discord.connected () end
 ---@class Proteus.FileAssociation
 ---@field kind string Such as `'schema'`. The plugins that handle a kind decide what its values mean.
 ---@field pattern string Which files: `'Cargo.toml'` matches the name anywhere, `'*.ndg'` any name that fits, and `'.cargo/config.toml'` the end of a path. `**` crosses folders.
----@field value any For `'schema'`, a JSON schema's address for a language server, or the schema itself as a table, or a function `(path)` that returns it, which the code editor uses for JSON files. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
+---@field value any For `'schema'`, a JSON schema's address. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
 ---@field owner? string Set by the service: the plugin that added it.
 
 ---The file association system. Any plugin adds associations, and the plugins that handle
@@ -1356,20 +1317,8 @@ function Project.excluded () end
 ---@field headers table<string, string> Names in lower case.
 ---@field body string
 
----@class Proteus.ConnectOptions
----@field framing? 'lsp'|'lines' `'lsp'` reads and writes Language Server Protocol messages. `'lines'` when nil.
----@field on_message? fun(text: string) One message or one line from the server.
----@field on_close? fun() The server closed the connection, or `close` was called.
----@field on_error? fun(err: string) The connection could not open, or it broke. Without it, the Console shows the error.
-
----@class Proteus.NetConnection
----@field write fun(text: string) Sends one message or line. Text sent before the connection opens waits for it.
----@field close fun()
----@field alive fun(): boolean
-
----HTTP from plugins, and connections to servers on this computer. The desktop app sends
----requests itself, so any address works. The browser can only reach addresses that allow
----cross-origin requests.
+---HTTP from plugins. The desktop app sends requests itself, so any address works. The
+---browser can only reach addresses that allow cross-origin requests.
 ---@class Proteus.Net
 local Net = {}
 
@@ -1377,13 +1326,6 @@ local Net = {}
 ---@param request Proteus.HttpRequest
 ---@param cb fun(reply: Proteus.HttpReply?, err: string?)
 function Net.fetch (request, cb) end
-
----Connects to a port on this computer, at `127.0.0.1`. It cannot reach another machine. The
----connection closes when the plugin stops. Needs the desktop app.
----@param port integer From 1 to 65535.
----@param opts? Proteus.ConnectOptions
----@return Proteus.NetConnection
-function Net.connect (port, opts) end
 
 ---Runs programs. Needs the desktop app.
 ---@class Proteus.Process
@@ -1420,10 +1362,9 @@ function Process.export_builtin (cb) end
 ---@field name string The program's file name once installed, such as `'taplo.exe'`.
 ---@field url string An https address.
 ---@field sha256 string The download's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
 
----The path of a tool downloaded before, or nil when that version is not downloaded yet. The
----name may hold folders, split by `/`, such as `'bin/taplo'`.
+---The path of a tool downloaded before, or nil when that version is not downloaded yet.
 ---@param spec { id: string, version: string, name: string }
 ---@param cb fun(path: string?, err: string?)
 function Process.cached_tool (spec, cb) end
@@ -1433,9 +1374,3 @@ function Process.cached_tool (spec, cb) end
 ---@param spec Proteus.ToolDownload
 ---@param cb fun(path: string?, err: string?)
 function Process.download_tool (spec, cb) end
-
----A tool version's folder in the app's cache, made if it is missing, for a tool that npm
----installs. `proteus.tools.registry` runs npm there.
----@param spec { id: string, version: string }
----@param cb fun(path: string?, err: string?)
-function Process.tool_folder (spec, cb) end

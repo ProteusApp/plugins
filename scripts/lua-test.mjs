@@ -205,7 +205,10 @@ const contractDir = join(ROOT, 'contracts');
 const contracts = existsSync(contractDir) ? readdirSync(contractDir).filter((n) => n.endsWith('.test.lua') && n.includes(filter)).sort() : [];
 if (contracts.length > 0 && !APP_LIB) {
   skipped += contracts.length;
-  console.log(`skip contracts: they need the app's lua/lib, and ${NO_APP}`);
+  console.log(
+    `skip ${contracts.map((n) => `contracts/${n}`).join(', ')}: they need the app's lua/lib, and ${NO_APP}. ` +
+      'Run them locally before a pull request that changes a theme or an icon pack.',
+  );
 }
 const pluginIds = existsSync(join(ROOT, 'plugins'))
   ? readdirSync(join(ROOT, 'plugins'))

@@ -1,5 +1,11 @@
 {
   "types": {
+    "plugins/icons.badges/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/icons.vivid/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
     "plugins/lang.css/init.lua": {
       "param-type-mismatch  Cannot assign `Proteus.Editor` to parameter `LangCss.RouterEditor`.": 1
     },
@@ -94,7 +100,6 @@
       "undefined-field  Undefined field `normalize`.": 2
     },
     "plugins/lang.gdscript/lib/server.lua": {
-      "missing-fields  Missing required fields in type `Proteus.ToolHandle`: `set_languages`": 1,
       "param-type-mismatch  Cannot assign `fun(port: integer, root: string, init_options?: table)?` to parameter `fun(...any):...unknown`.": 1,
       "undefined-doc-class  Undefined class `Lsp.Client`.": 1,
       "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
@@ -393,7 +398,8 @@
     },
     "plugins/lang.tailwind/lib/server.lua": {
       "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
-      "undefined-field  Undefined field `parent`.": 1
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `set_languages`.": 2
     },
     "plugins/lang.toml/init.lua": {
       "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
@@ -445,6 +451,7 @@
       "undefined-field  Undefined field `path`.": 1,
       "undefined-field  Undefined field `reset`.": 1,
       "undefined-field  Undefined field `same`.": 1,
+      "undefined-field  Undefined field `set_languages`.": 2,
       "undefined-field  Undefined field `sync`.": 1,
       "undefined-field  Undefined field `uri`.": 2
     },
@@ -656,6 +663,39 @@
       "missing-fields  Missing required fields in type `DocsTest.Run`: `api`, `files`, `listed`, `emit`, `flush`, `asked`, `closed`": 1,
       "missing-fields  Missing required fields in type `Proteus.El`: `id`, `dom`": 2
     },
+    "plugins/theme.bevel/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.blueprint/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.catppuccin/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.dracula/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.gruvbox/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.nanoqoi/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.nord/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.outrun/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.parchment/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.pocket/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
+    "plugins/theme.solarized/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'folders'|'grants'|'icons'|'languages'...(+8)`.": 1
+    },
     "plugins/view.aseprite/viewer.lua": {
       "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
     },
@@ -695,6 +735,9 @@
       "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `LangPython.DocPath`.": 1
     },
     "plugins/lang.python/lib/pyright.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1
+    },
+    "plugins/lang.python/lib/ruff.lua": {
       "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1
     },
     "plugins/lang.python/lib/select.lua": {
