@@ -3,13 +3,15 @@
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and Excel files.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.1', features = { 'profile-extends' } },
   -- The themes, keys, menus, status bar, side panels, palette, messages, Settings and
   -- Profiles come from the app's shell, profiles/base/shell.lua.
   extends = 'shell',
   plugins = {
     'proteus.ui.menubar',
+    -- The marketplace, to install plugins from inside the app.
+    'proteus.marketplace',
     'proteus.sheet',
     'proteus.discord.rpc',
   },

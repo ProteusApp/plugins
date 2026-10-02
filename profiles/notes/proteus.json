@@ -2,10 +2,11 @@
   "id": "notes",
   "name": "Notes",
   "description": "Markdown notes, saved as files in data/notes.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "kind": "profile",
   "plugins": [
     "proteus.ui.toolbar",
+    "proteus.marketplace",
     "proteus.notes",
     "proteus.discord.rpc"
   ],

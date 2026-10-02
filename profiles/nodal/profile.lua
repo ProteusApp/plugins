@@ -3,7 +3,7 @@
 return {
   name = 'Nodal',
   description = 'Wire blocks together to build an app, then get TypeScript, Lua or a plugin.',
-  version = '1.1.0',
+  version = '1.2.0',
   -- It runs plugins by the ids they took in Proteus 0.3.0.
   requires = { proteus = '>=0.3.1', features = { 'profile-extends' } },
   -- The themes, keys, menus, status bar, side panels, palette, messages, Settings and
@@ -11,6 +11,8 @@ return {
   extends = 'shell',
   plugins = {
     'proteus.ui.toolbar',
+    -- The marketplace, to install plugins from inside the app.
+    'proteus.marketplace',
     -- The editor, so blocks written as Lua files open with types, completion and checks.
     'proteus.ui.tabs',
     'proteus.ui.menubar',
