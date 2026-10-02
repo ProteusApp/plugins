@@ -16,36 +16,20 @@
 -- user trusts the folder.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local exclude = require ('exclude') --[[@as CodeProject.Exclude]]
+local file_glob = require ('file_glob') --[[@as FileGlob]]
 
 local MAX_RECENT = 12
-
--- Folders that a build or an install fills. Search and Go to File skip them wherever they
--- are, on top of what .gitignore leaves out.
-local EXCLUDE = {
-  'node_modules',
-  'target',
-  'dist',
-  'build',
-  'out',
-  '.venv',
-  'venv',
-  '__pycache__',
-  'dist-newstyle',
-  '.stack-work',
-  '.next',
-  '.cache',
-  'coverage',
-}
 
 ---@type Proteus.Plugin
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.1.1',
+  version = '1.1.3',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = { 'proteus.core.commands', 'proteus.core.settings' },
   optional = {
     'proteus.ui.notify',
@@ -63,11 +47,28 @@ return {
     local desktop = app.platform ~= 'browser'
 
     settings.define ('project.exclude', {
-      title = 'Folders that search leaves out',
+      title = 'Files and folders the Code Editor leaves out',
       type = 'json',
-      default = EXCLUDE,
-      description = 'Folder names that Search and Go to File skip wherever they are, on top of what .gitignore leaves out.',
+      default = exclude.DEFAULT,
+      description = 'Glob patterns, such as node_modules, *.min.js or docs/build. The file tree, Search and Go to File leave out what matches, and everything inside a folder that matches.',
     })
+    -- `project.exclude` once held folder names for search alone, and the file tree hid the
+    -- names in `code.explorer.hide`. One setting holds both now, so what the user had set in
+    -- either is kept, once.
+    if not app.store.get ('exclude_merged') then
+      app.store.set ('exclude_merged', true)
+      local merged = exclude.migrate (
+        settings.source ('project.exclude') == 'user'
+            and settings.get ('project.exclude')
+          or nil,
+        settings.source ('code.explorer.hide') == 'user'
+            and settings.get ('code.explorer.hide')
+          or nil
+      )
+      if merged then
+        settings.set ('project.exclude', merged)
+      end
+    end
     settings.define ('project.reopen', {
       title = 'Reopen the last folder',
       type = 'boolean',
@@ -151,20 +152,21 @@ return {
     app.kernel.set_folder (root or false)
     local layer = app.kernel.project ()
 
+    local fold = disk.folds_case (app.os)
+
+    ---The patterns of `project.exclude`, written so a walk on disk reads them the same way.
     ---@return string[]
     local function excluded ()
-      local list = settings.get ('project.exclude')
-      local out = {} ---@type string[]
-      if type (list) == 'table' then
-        for _, v in
-          ipairs (list --[[@as any[] ]])
-        do
-          if type (v) == 'string' and v ~= '' then
-            out[#out + 1] = v
-          end
-        end
-      end
-      return out
+      return exclude.for_walk (exclude.clean (settings.get ('project.exclude')))
+    end
+
+    ---True when the path from the root, or a folder above it, fits `project.exclude`.
+    ---@param rel string
+    ---@param dir? boolean
+    ---@return boolean
+    local function excludes (rel, dir)
+      return type (rel) == 'string'
+        and exclude.matches (file_glob, excluded (), rel, dir, fold)
     end
 
     ---Reloads the window into `path`, or into no folder. With the editor's session on, open
@@ -298,7 +300,7 @@ return {
       end
       waiting = { cb }
       local started_at = generation
-      app.fs.walk_dir (root, { skip = excluded () }, function (result, err)
+      app.fs.walk_dir (root, { exclude = excluded () }, function (result, err)
         local list = waiting or {}
         waiting = nil
         local found = result and result.files or nil
@@ -382,25 +384,6 @@ return {
       end)
     end
 
-    ---True for a path inside a folder that `project.exclude` names, which the list of files
-    ---leaves out.
-    ---@param rel string
-    ---@param names table<string, boolean> The names in `project.exclude`.
-    ---@return boolean
-    local function in_excluded (rel, names)
-      local parts = {} ---@type string[]
-      for part in rel:gmatch ('[^/]+') do
-        parts[#parts + 1] = part
-      end
-      -- The last part is the path itself, and only folders are left out.
-      for i = 1, #parts - 1 do
-        if names[parts[i]] then
-          return true
-        end
-      end
-      return false
-    end
-
     ---True for a path inside the folder's `.proteus` folder, or that folder itself.
     ---@param rel string?
     ---@return boolean
@@ -423,16 +406,22 @@ return {
       app.fs.watch_dir (folder, function (ev)
         -- A file that only changed keeps the list. Anything that came, went or moved does not,
         -- unless it is where the list never looks: what .gitignore leaves out, such as build
-        -- output and logs, and the folders `project.exclude` names.
+        -- output and logs, and what `project.exclude` leaves out.
         local stale = ev.overflow
-        local names = {} ---@type table<string, boolean>
-        for _, n in ipairs (excluded ()) do
-          names[n] = true
-        end
+        local patterns = excluded ()
         for _, change in ipairs (ev.changes) do
           local rel = disk.relative (folder, change.path, app.os)
           local unlisted = change.ignored == true
-            or (rel ~= nil and in_excluded (rel, names))
+            or (
+              rel ~= nil
+              and exclude.matches (
+                file_glob,
+                patterns,
+                rel,
+                change.kind == 'dir',
+                fold
+              )
+            )
           if
             not unlisted
             and (change.kind ~= 'file' or (rel ~= nil and not files_known[rel]))
@@ -533,6 +522,7 @@ return {
       id = 'project.recent',
       category = 'File',
       title = 'Open Recent Folder…',
+      menu_title = 'Open Recent',
       key = 'ctrl+r',
       icon = 'history',
       menu = 'File',
@@ -542,6 +532,32 @@ return {
       shared = true,
       when = function ()
         return desktop
+      end,
+      -- The menu bar lists the folders in a submenu. The key and the palette search them.
+      menu_items = function ()
+        local items = {} ---@type Proteus.MenuItem[]
+        for _, path in ipairs (recent) do
+          if not (root and disk.same (path, root, app.os)) then
+            items[#items + 1] = {
+              label = disk.name (path),
+              tooltip = disk.native (path, app.os),
+              icon = 'folder',
+              run = function ()
+                open (path)
+              end,
+            }
+          end
+        end
+        if #items == 0 then
+          items[1] = { label = 'No other folders yet', disabled = true }
+        end
+        items[#items + 1] = { separator = true }
+        items[#items + 1] = {
+          label = 'Search Recent Folders…',
+          icon = 'search',
+          run = open_recent,
+        }
+        return items
       end,
       run = open_recent,
     })
@@ -644,6 +660,7 @@ return {
         return root and disk.join (root, rel) or nil
       end,
       excluded = excluded,
+      excludes = excludes,
       trusted = function ()
         return root ~= nil and layer.trusted
       end,

@@ -8,6 +8,8 @@ A plugin from this registry does not get the run of the computer. Proteus runs i
 
 Open the **Marketplace** in Proteus (Ctrl+Shift+X) and pick **Community**. It lists every plugin and profile in `index.json`. **Install** copies a plugin into `plugins/community/<id>` in the workspace, exactly as it was when it was approved. In the Code Editor it can go into the open folder's `.proteus/plugins/community/<id>` instead, for everyone who opens that folder. A profile installs into `profiles/<id>.lua`, together with any plugin from this registry that it runs.
 
+A plugin's page in the marketplace also offers **Install version…**, for an earlier version that was approved, exactly as it was then. An older version holds the plugin's updates until you allow them again. The page shows how many people gave the plugin's submission issue a thumbs up. To rate a plugin, react to that issue on GitHub.
+
 ## Publish a plugin or a profile
 
 Write the plugin in the Plugin Editor, then choose **Plugins > Publish Plugin**. For a profile, choose **Profile > Publish Profile**. Proteus asks to sign in with GitHub. The sign-in grants one permission: opening issues on this repository.
@@ -52,6 +54,7 @@ A restricted plugin names its services, events, commands and settings after the 
 - A profile may start from a base that ships with Proteus, such as `extends = 'shell'`: the themes, keys, menus, status bar, side panels, palette, messages, Settings and Profiles. Its `plugins` list then holds only what it adds, and its `requires` names the feature, as in `requires = { proteus = '>=0.3.1', features = { 'profile-extends' } }`, so an older Proteus does not install it.
 - No two file paths differ only in case, such as `init.lua` and `INIT.lua`. Windows and macOS would see them as one file.
 - Every file is text a reviewer can read, of any kind: UTF-8, without control characters other than tabs and line breaks, without the characters that reorder text on screen, and without lines longer than 1000 characters, so no code hides in minified lines.
+- The one exception is a PNG picture, such as a sprite sheet. It must be exactly one whole PNG, with nothing after its end, and at most 4096 pixels on a side. A plugin that holds one lists `'png'` in `requires.features`, so a Proteus that would save the picture as text refuses the plugin. Publishing from Proteus sends a picture as base64, and the registry turns it back into the picture. A reviewer looks at it in the pull request.
 - What `init.lua` declares matches `proteus.json`: name, description, version, `depends`, `optional`, `permissions`, `folders` and `requires`. The marketplace reads `proteus.json` before an install, and Proteus runs what `init.lua` says, so they must agree.
 - `init.lua` writes `permissions` as a list of plain names, such as `permissions = { 'net', 'files' }`, and nothing else changes it. Proteus runs `init.lua` on every start, so a list worked out in code could ask for more later than the reviewer saw. Proteus itself grants no more than you allowed when you installed the plugin, and asks before it grants anything new.
 - Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
@@ -67,7 +70,7 @@ A restricted plugin names its services, events, commands and settings after the 
 | `profiles/<id>/` | One profile's `profile.lua`, plus `proteus.json` with `"kind": "profile"` |
 | `plugins/<id>/tests/` | The plugin's own tests, `*.test.lua`, which the check runs |
 | `plugins/<id>/handbook/` | Pages the plugin adds to the Handbook, as Markdown. The `handbook` plugin's `handbook/writing-pages.md` explains them. |
-| `index.json` | Every approved plugin in `plugins`, and every profile in `profiles`, with the commit to install it from. Only the index workflow writes it, and the check holds each entry to the commit it names. |
+| `index.json` | Every approved plugin in `plugins`, and every profile in `profiles`, with the commit to install it from, its earlier approved versions in `versions` (up to 20, each with its own commit), and the issue that first submitted it in `issue`. Only the index workflow writes it, and the check holds each entry, and each earlier version, to the commit it names. |
 | `removed.json` | The ids of plugins and profiles that were taken down, each with its owner |
 | `reserved.json` | Ids that belong to the plugins and profiles shipped with Proteus |
 | `scripts/` | The rules and the workflows' code |
@@ -77,5 +80,7 @@ A restricted plugin names its services, events, commands and settings after the 
 ## Test and check locally
 
 `npm ci`, then `npm test` runs the scripts' tests and `scripts/lua-test.mjs`, which loads each `init.lua` as Proteus does, compares what it declares with `proteus.json`, and runs every plugin's `tests/*.test.lua`. `npm run check` holds every folder to the rules. `node scripts/manifest.mjs plugins/<id> --author <login>:<id>` writes the `proteus.json` of a folder added by hand. `node scripts/index.mjs --verify` checks that each entry in `index.json` names a commit of main that changed its folder, and says what its `proteus.json` said there. The check workflow runs all of this on each pull request, with pinned StyLua and selene releases.
+
+A test can compile shader code with real compilers through `shader_check (lang, stage, source)`: glslangValidator for GLSL ES and naga for WGSL. Without them installed, those checks are left out. The check workflow installs both and sets `SHADER_TOOLS=required`, so there a missing compiler fails the test.
 
 `REVIEWING.md` covers the maintainers' side: the review checklist and how the repository is set up.

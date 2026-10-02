@@ -1,6 +1,6 @@
 # Notes
 
-Markdown notes, saved as you type. Install the **Notes** profile from the marketplace to run it as an app of its own.
+Markdown notes, saved as you type. Install the **Notes** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 This plugin is a Nodal graph built as an app. Every list, button and command in it is a block. The graph ships with Proteus as `graphs/notes.ndg`. Open it in the Plugin Editor or the **Nodal** profile to see how it works.
 

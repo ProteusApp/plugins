@@ -2,10 +2,11 @@
   "id": "nodal",
   "name": "Nodal",
   "description": "Wire blocks together to build an app, then get TypeScript, Lua or a plugin.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "kind": "profile",
   "plugins": [
     "proteus.ui.toolbar",
+    "proteus.marketplace",
     "proteus.ui.tabs",
     "proteus.ui.menubar",
     "proteus.editor.core",

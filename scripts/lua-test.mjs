@@ -22,6 +22,9 @@
 import { declaredOf, engine, reader } from './lua.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -135,6 +138,51 @@ function compare(declared, meta, kind) {
   return problems;
 }
 
+// Tests can also check shader code with real compilers, through
+//   shader_check(lang, stage, source)
+// lang is 'glsl' or 'wgsl', and stage is 'fragment' or 'vertex' (WGSL checks the whole module).
+// It returns true when the code compiles, false and the compiler's messages when it does not,
+// and nil and why when the compiler is not installed: glslangValidator for GLSL ES, naga for
+// WGSL. With SHADER_TOOLS=required in the environment, as in the check workflow, a missing
+// compiler fails the test instead.
+const SHADER_TOOLS = {
+  glsl: { tool: 'glslangValidator', ext: { fragment: 'frag', vertex: 'vert' }, args: (file) => [file] },
+  wgsl: { tool: 'naga', ext: { fragment: 'wgsl', vertex: 'wgsl' }, args: (file) => [file] },
+};
+
+/** 'ok', 'missing:<why>' or 'error:<messages>', which the Lua side turns into its results. */
+function shaderCheck(lang, stage, source) {
+  const spec = SHADER_TOOLS[String(lang)];
+  const ext = spec?.ext[String(stage)];
+  if (!spec || !ext) throw new Error(`shader_check: no compiler for ${lang} ${stage}`);
+  const dir = mkdtempSync(join(tmpdir(), 'shader-check-'));
+  try {
+    const file = join(dir, `shader.${ext}`);
+    writeFileSync(file, String(source));
+    const run = spawnSync(spec.tool, spec.args(file), { encoding: 'utf8', timeout: 30000 });
+    if (run.error?.code === 'ENOENT') {
+      const why = `${spec.tool} is not installed`;
+      if (process.env.SHADER_TOOLS === 'required') throw new Error(`shader_check: ${why}`);
+      return `missing:${why}`;
+    }
+    if (run.error) throw run.error;
+    if (run.status === 0) return 'ok';
+    return `error:${`${run.stdout}${run.stderr}`.split(file).join(`shader.${ext}`).trim()}`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const SHADER_PRELUDE = `
+function shader_check (lang, stage, source)
+  local result = __shader_check (lang, stage, source)
+  if result == 'ok' then return true end
+  local kind, rest = result:match ('^(%a+):(.*)$')
+  if kind == 'missing' then return nil, rest end
+  return false, rest
+end
+`;
+
 let failed = 0;
 let passed = 0;
 
@@ -175,12 +223,14 @@ for (const [root, kind, main] of [
         writeFileSync(target, body);
       });
       t.global.set('__read_own', reader(dir));
+      t.global.set('__shader_check', shaderCheck);
       // Tests run with the whole standard library, and require from the plugin's own folder.
       t.doStringSync(`
         local own = __sandbox (__read_own).require
         function require (name) return own (name) end
       `);
       t.doStringSync(PRELUDE);
+      t.doStringSync(SHADER_PRELUDE);
       const shown = relative(ROOT, file);
       try {
         await t.doString(readFileSync(file, 'utf8'));

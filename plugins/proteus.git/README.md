@@ -1,6 +1,6 @@
 # Git
 
-A Git client for any folder that holds a repository. It runs the real `git` program and shows the changed files, the diff of each one, and the history. Install the **Git** profile from the marketplace to run it as an app of its own.
+A Git client for any folder that holds a repository. It runs the real `git` program and shows the changed files, the diff of each one, and the history. Install the **Git** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 ## What it does
 

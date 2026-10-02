@@ -33,7 +33,7 @@
 ---@field deactivate? fun(app: Proteus.App) Runs when the plugin stops, before its cleanup functions.
 
 ---@alias Proteus.Permission
----| 'net' # Sends HTTP requests and opens web pages in the browser.
+---| 'net' # Sends HTTP requests, opens web pages in the browser and connects to servers on this computer.
 ---| 'clipboard' # Reads the clipboard, and pastes.
 ---| 'midi' # Hears MIDI keyboards: notes and controls, never SysEx, and nothing sent back.
 ---| 'files' # Reads and writes files anywhere on disk. Amounts to full access.
@@ -54,7 +54,11 @@
 ---| 'windows' # Floating windows on a desktop, from `proteus.ui.windows` and the `windows` service.
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
+---| 'png' # PNG pictures in a plugin's folder: `fs.read_base64`, `fs.write_base64`, and installs and publishing that keep their bytes.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
+---| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
+---| 'grants-read' # `app.grants.read`, the text of a file the user picked.
+---| 'perf' # `app.kernel.perf`: how long each plugin's callbacks take, and the page's frames and size.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -140,8 +144,9 @@ function PluginFiles.list (rel) end
 ---| 'editor:changed' # Receives the Proteus.DocInfo of an edited document. A restricted plugin needs `files`.
 ---| 'editor:closed' # Receives the closed document's path. A restricted plugin needs `files` to hear about a file outside the workspace.
 ---| 'editor:dirty' # A document gained or lost unsaved edits. Receives its path and true while it has them. A restricted plugin needs `files` to hear about a file outside the workspace.
----| 'nodal:changed' # The Nodal document changed. Receives the new Nodal.Snapshot.
+---| 'nodal:changed' # The Nodal document changed, or the values of the app running in the Preview did. Receives the new Nodal.Snapshot.
 ---| 'nodal:selected' # The Nodal selection changed. Receives the node id, or nil.
+---| 'nodal:debug' # The Nodal watch list or breakpoints changed.
 
 ---The table each plugin receives in `activate`. Everything a plugin does goes through it.
 ---@class Proteus.App
@@ -160,7 +165,7 @@ function PluginFiles.list (rel) end
 ---@field window Proteus.Window
 ---@field system Proteus.System
 ---@field process Proteus.Process Runs programs such as language servers.
----@field net Proteus.Net Sends HTTP requests.
+---@field net Proteus.Net Sends HTTP requests and connects to servers on this computer.
 ---@field kernel Proteus.Kernel Lists, starts and reloads plugins, and switches profiles.
 ---@field trusted boolean True when the plugin ships with the app, or is a workspace edit of one. Every other plugin is restricted to its `permissions`.
 ---@field permissions Proteus.Permission[] The permissions the plugin runs with. A trusted plugin has them all.
@@ -363,6 +368,21 @@ function Fs.read (path, layer) end
 ---@param layer? 'user'|'project'
 function Fs.write (path, text, layer) end
 
+---Writes a PNG picture from its bytes, given as base64, to the layer `write` would pick.
+---The workspace lists the picture like any file, and `read` gives nil for it, since it holds
+---no text. Only paths that end in `.png` take bytes.
+---@param path string
+---@param data string The picture's bytes as base64.
+---@param layer? 'user'|'project'
+function Fs.write_base64 (path, data, layer) end
+
+---Reads a file's bytes from disk, as base64, from the layer that holds it. `cb` gets the
+---base64, or nil and an error.
+---@param path string
+---@param layer? Proteus.Layer
+---@param cb fun(data: string?, err: string?)
+function Fs.read_base64 (path, layer, cb) end
+
 ---Removes a workspace file, or a folder and everything in it.
 ---A builtin file underneath becomes visible again.
 ---@param path string
@@ -487,6 +507,13 @@ function Fs.delete_path (path, cb) end
 ---@param cb? fun(ok: any, err: string?)
 function Fs.trash_path (path, cb) end
 
+---Brings back what `trash_path` last moved to the trash from `path`, as an undo of the
+---delete. It fails when something is at `path` again, and on macOS, whose Trash lets only
+---the user put things back. Needs the desktop app.
+---@param path string
+---@param cb? fun(ok: any, err: string?)
+function Fs.untrash_path (path, cb) end
+
 ---Moves or renames a file or folder on disk. Fails when `to` exists already, unless only the
 ---case of its letters differs. Folders above `to` are made as needed. Needs the desktop app.
 ---@param from string
@@ -509,12 +536,29 @@ function Fs.copy_path (from, to, cb) end
 function Fs.walk_dir (path, opts, cb) end
 
 ---Finds text in every file under a folder on disk. It reads the same files `walk_dir` lists,
----and skips binary files and files over 2 MB. Needs the desktop app.
+---and skips binary files and files over 2 MB. `cancel` on the handle stops the search, and
+---`cb` is not called. Needs the desktop app.
 ---@param path string
 ---@param query string
 ---@param opts? Proteus.SearchOptions
 ---@param cb fun(result: Proteus.SearchResult?, err: string?)
+---@return Proteus.SearchHandle
 function Fs.search_dir (path, query, opts, cb) end
+
+---The names in a folder on disk that `.gitignore` leaves out, as `walk_dir` would, with `/`
+---after folders. The rules of the folders above count too. Needs the desktop app.
+---@param path string
+---@param cb fun(names: string[]?, err: string?)
+function Fs.ignored_names (path, cb) end
+
+---Puts `opts.replace` in place of every match of a search in `text`, as `search_dir` finds
+---them: line by line, keeping each line's ending. `cb` gets the new text and how many matches
+---changed. Needs the desktop app.
+---@param text string
+---@param query string
+---@param opts Proteus.SearchOptions
+---@param cb fun(result: { text: string, count: integer }?, err: string?)
+function Fs.replace_text (text, query, opts, cb) end
 
 ---Watches a folder on disk and everything in it. `fn` gets the changes in batches, a moment
 ---after they happen. The watcher stops when the plugin stops, or on `close`. Needs the
@@ -547,6 +591,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field case? boolean Letters must match in case.
 ---@field word? boolean Matches whole words only.
 ---@field regex? boolean The query is a regular expression.
+---@field replace? string Text to put in place of each match. With `regex`, `$1` or `${name}` stands for a group, and `${1}` keeps a group apart from letters after it. Each match then carries `with`.
 
 ---One match. The line is split around it, so the matched text can be marked.
 ---@class Proteus.SearchMatch
@@ -556,6 +601,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field before string The line before the match, cut short when long.
 ---@field hit string The matched text.
 ---@field after string The line after the match, cut short when long.
+---@field with? string What the match becomes, when the search has `replace`.
 
 ---@class Proteus.SearchResult
 ---@field matches Proteus.SearchMatch[]
@@ -572,6 +618,9 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field changes Proteus.DirChange[]
 ---@field overflow boolean Too much changed to list, so read everything again.
 ---@field git boolean Git's own records changed, such as the branch or a new commit.
+
+---@class Proteus.SearchHandle
+---@field cancel fun() Stops the search. Its callback is not called.
 
 ---@class Proteus.WatchHandle
 ---@field close fun() Stops watching.
@@ -683,6 +732,12 @@ function Grants.list () end
 ---Gives a file back. The plugin cannot reach it again unless the user picks it again.
 ---@param id string
 function Grants.forget (id) end
+
+---Reads the text of a file the user picked to open. A file from an earlier session asks the
+---user first. Raises an error for an id the plugin does not hold, or a file picked to save.
+---@param id string
+---@param cb fun(text: string?, err: string?)
+function Grants.read (id, cb) end
 
 ---One message from a MIDI keyboard.
 ---@class Proteus.MidiMessage
@@ -940,6 +995,7 @@ function System.create_launcher (name, profile, cb) end
 
 ---@class Proteus.Kernel
 ---@field launch Proteus.LaunchInfo
+---@field perf Proteus.Perf How long each plugin's code takes. A restricted plugin needs `kernel`.
 local Kernel = {}
 
 ---Every plugin found, running or not.
@@ -1082,6 +1138,117 @@ function Kernel.satisfies (version, spec) end
 
 ---@return Proteus.ServiceInfo[]
 function Kernel.services () end
+
+---------------------------------------------------------------------------------------------
+-- Profiling
+---------------------------------------------------------------------------------------------
+
+---The numbers kept for one kind of callback, such as `'timer'`, `'click handler'`,
+---`"handler for 'fs:changed'"` or `"command 'file.save'"`. `'load'` is reading the plugin's
+---file and running its top level, and `'start'` is its `activate`. Times are in milliseconds.
+---@class Proteus.PerfKind
+---@field calls integer
+---@field self number Time in the plugin's own code: the whole time, less the callbacks of any plugin that ran inside it, such as handlers for an event it sent.
+---@field total number The whole time, nested callbacks included.
+---@field max number The longest self time of one call.
+
+---What one plugin's callbacks took since counting started.
+---@class Proteus.PerfPlugin: Proteus.PerfKind
+---@field errors integer Callbacks that raised an error.
+---@field load? number How long its code took to load the last time.
+---@field start? number How long its `activate` took the last time it started.
+---@field kinds table<string, Proteus.PerfKind> The same numbers for each kind of callback.
+
+---@class Proteus.PerfEvent
+---@field sent integer How many times it was sent.
+---@field ms number How long its listeners took, all together.
+
+---@class Proteus.PerfStats
+---@field since number When counting started, in milliseconds since 1970: the app's start, or the last `reset`.
+---@field now number
+---@field busy number Milliseconds the window spent running plugin code.
+---@field plugins table<string, Proteus.PerfPlugin> By plugin id. `'kernel'` holds what the kernel runs for itself.
+---@field events table<string, Proteus.PerfEvent> By event name.
+---@field lua_kb number Memory the Lua code holds, in kilobytes.
+---@field js_kb? number Memory the page's JavaScript holds, in kilobytes, where the browser tells.
+
+---One plugin's share of a task.
+---@class Proteus.PerfPart
+---@field owner string
+---@field what string The kind of callback.
+---@field ms number Its self time inside the task.
+
+---A task: a callback the browser started, such as a click or a timer, with everything that ran
+---inside it. Only tasks of 4 ms or more are kept, the last 500.
+---@class Proteus.PerfTask
+---@field seq integer Goes up by one for each task kept.
+---@field at number When it ended, in milliseconds since 1970.
+---@field ms number
+---@field owner string The plugin whose callback started it.
+---@field what string
+---@field parts Proteus.PerfPart[] Each plugin's self time in it, longest first.
+
+---A stretch of time, numbered so a reader can ask for what came after the last one it saw.
+---@class Proteus.PerfMoment
+---@field seq integer
+---@field at number When it started, in milliseconds since 1970.
+---@field ms number
+
+---@class Proteus.PerfSecond
+---@field at number The start of the second, in milliseconds since 1970.
+---@field frames integer Frames drawn in it.
+---@field worst number The longest time between two frames in it.
+
+---@class Proteus.PerfFrames
+---@field seconds Proteus.PerfSecond[] The last minute, oldest first.
+---@field gaps Proteus.PerfMoment[] Times the page went 50 ms or more without drawing.
+---@field long_tasks Proteus.PerfMoment[] Tasks of 50 ms or more, as the browser reports them.
+---@field long_task_support boolean False where the browser reports no long tasks, such as on macOS.
+
+---@class Proteus.PerfDom
+---@field total integer Elements on the page.
+---@field unowned? integer Elements the app's own page holds, outside every plugin.
+---@field plugins table<string, { nodes: integer, widgets: integer }> Elements and widgets by plugin id.
+
+---How long each plugin's code takes, kept by the kernel from the moment the app starts. Every
+---plugin callback counts: event handlers, timers, clicks, replies and commands. The browser's
+---own work, such as laying out the page, shows only in the frames.
+---@class Proteus.Perf
+local Perf = {}
+
+---A copy of everything counted since the app started or the last `reset`.
+---@return Proteus.PerfStats
+function Perf.stats () end
+
+---The slow tasks kept after the one numbered `after`, oldest first.
+---@param after? integer
+---@return Proteus.PerfTask[]
+function Perf.tasks (after) end
+
+---Starts counting again. How long each plugin took to load and start stays.
+function Perf.reset () end
+
+---How often the page drew in the last minute, and its stalls after the one numbered `after`.
+---A call starts watching the frames, which stops a few seconds after the last call. Watching
+---keeps the page drawing every frame, so pass false for `watch` to read what is kept without
+---it. The browser's long tasks are kept either way.
+---@param after? integer
+---@param watch? boolean True when nil.
+---@return Proteus.PerfFrames
+function Perf.frames (after, watch) end
+
+---How many elements and widgets each plugin has on the page now.
+---@return Proteus.PerfDom
+function Perf.dom () end
+
+---Runs `fn` and counts its time to `owner`, as if a callback of `owner` ran it. A service calls
+---it for a function another plugin gave it, such as a command's `run`. Errors pass through.
+---@param owner string
+---@param what string
+---@param fn function
+---@param ... any
+---@return any ...
+function Perf.charge (owner, what, fn, ...) end
 
 ---The project folder this window works on, and whether its `.proteus` files are in use.
 ---@return Proteus.ProjectLayer

@@ -30,6 +30,9 @@
 ---@field toolbar_text? string Text beside the toolbar icon.
 ---@field icon? string A Lucide icon name.
 ---@field when? fun(): boolean The command is hidden or greyed out when this returns false.
+---@field why_not? fun(): string? Says why the command cannot run now, such as `'No file is open'`, while `when` returns false. The palette lists it greyed out with this, and menus and the toolbar show it as a tooltip.
+---@field checked? fun(): boolean For a command that turns something on or off: true while it is on. Menus show a tick, and the toolbar a pressed button.
+---@field menu_items? fun(): Proteus.MenuItem[] Shows the command as a submenu in the menu bar, with these items, such as Open Recent.
 ---@field hidden? boolean Leaves the command out of the palette.
 ---@field shared? boolean Lets restricted plugins run it. Without it they run only their own commands.
 ---@field owner? string Set by the service: the plugin that registered it.
@@ -62,6 +65,17 @@ function Commands.get (id) end
 ---@return boolean
 function Commands.can_run (id) end
 
+---Whether a command with `checked` is on now. Nil for a command without it.
+---@param id string
+---@return boolean?
+function Commands.is_checked (id) end
+
+---Why the command cannot run now, from its `why_not`. Nil while it can run, or when it does
+---not say.
+---@param id string
+---@return string?
+function Commands.why_not (id) end
+
 ---@return Proteus.CommandSpec[]
 function Commands.list () end
 
@@ -86,7 +100,8 @@ local Keys = {}
 ---@param command_id string
 function Keys.bind (combo, command_id) end
 
----The display label of the shortest key bound to a command, such as `'Ctrl+S'`.
+---The display label of the shortest key that would run a command if pressed now, such as
+---`'Ctrl+S'`. A key that goes to another command first does not count.
 ---@param command_id string
 ---@return string?
 function Keys.label (command_id) end
@@ -300,11 +315,18 @@ function Icons.folder (path, open) end
 ---@field disabled? boolean
 ---@field danger? boolean Shows the item in red.
 ---@field separator? boolean A line between groups. Other fields are ignored.
+---@field command? string A command whose title, icon, key, state and tick the item takes, and which it runs. Fields the item sets win.
+---@field checked? boolean Shows a tick, for something that is on. False keeps the room for one.
+---@field radio? boolean With `checked`: one choice of several, shown with a dot instead of a tick.
+---@field items? Proteus.MenuItem[]|fun(): Proteus.MenuItem[] A submenu, which opens to the side.
+---@field tooltip? string Shown under the pointer, such as why the item cannot be picked.
 
 ---@class Proteus.PopupOptions
 ---@field owner? Proteus.El Clicks inside this element do not close the menu.
 ---@field on_close? fun()
 ---@field on_key? fun(ev: Proteus.DomEvent): Proteus.EventResult
+---@field label? string What a screen reader calls the menu, such as `'File'`.
+---@field select_first? boolean Starts with the first item picked out, as when the keyboard opened the menu.
 
 ---@class Proteus.Menus
 local Menus = {}
@@ -593,9 +615,13 @@ function Tabs.set_empty (el) end
 ---@field icon? string
 ---@field value? any
 ---@field search? string Text to match against instead of the label and detail.
+---@field category? string Shown before the label, fainter, as in `File: Save`. It is matched too.
+---@field group? string A heading the item shows under, while nothing is typed. Items of a group sit together in the list.
+---@field disabled? boolean Shows the item greyed out. It cannot be picked. `detail` can say why.
 
 ---@class Proteus.PickOptions
 ---@field items Proteus.PickItem[]
+---@field load? fun(done: fun(items: Proteus.PickItem[])) Hands the items to `done` once it has them, in place of `items`, which can be `{}`. The box says Loading until then, and calling `done` again shows the new list.
 ---@field placeholder? string
 ---@field prompt? string A line above the input.
 ---@field value? string The starting query.
@@ -603,6 +629,19 @@ function Tabs.set_empty (el) end
 ---@field on_pick? fun(item: Proteus.PickItem)
 ---@field on_highlight? fun(item: Proteus.PickItem) Runs as the arrow keys move.
 ---@field on_cancel? fun()
+---@field multi? boolean Tab or a click ticks items, and Enter takes the ticked ones, through `on_pick_many`.
+---@field on_pick_many? fun(items: Proteus.PickItem[]) With `multi`: the ticked items, or the highlighted one when none is.
+---@field modes? boolean The first letter typed switches to another list, such as `>` for the commands. `picker.add_mode` adds them.
+
+---A list a box with `modes` switches to when the query starts with its prefix.
+---@class Proteus.PickerMode
+---@field prefix string One character, such as `'@'`.
+---@field title string Shown under the box beside the prefix, such as `'Symbols'`.
+---@field items fun(query: string, done: fun(items: Proteus.PickItem[])): Proteus.PickItem[]? The items, for the query after the prefix. Return them, or hand them to `done` later.
+---@field on_pick fun(item: Proteus.PickItem, query: string)
+---@field live? boolean Asks for the items again each time the query changes, such as for a line number. Otherwise once, as the mode starts.
+---@field filter? boolean False shows the items as they come, without matching them to the query.
+---@field empty? string Shown when there is nothing to list.
 
 ---@class Proteus.InputOptions
 ---@field prompt? string
@@ -632,6 +671,14 @@ function Picker.input (opts) end
 
 ---@param opts Proteus.ConfirmOptions
 function Picker.confirm (opts) end
+
+---Adds a list that boxes with `modes` switch to when the query starts with its prefix, such as
+---`@` for symbols. The palette has `>` for commands. Returns a function that takes it away,
+---which also happens when the plugin stops. A restricted plugin takes only a prefix no other
+---plugin holds.
+---@param spec Proteus.PickerMode
+---@return fun() remove
+function Picker.add_mode (spec) end
 
 function Picker.close () end
 
@@ -698,9 +745,30 @@ function Overlays.open (el, opts) end
 -- notify (proteus.ui.notify)
 ---------------------------------------------------------------------------------------------
 
+---A button on a message. A click closes the message, then runs `run`.
+---@class Proteus.NotifyAction
+---@field label string
+---@field run fun()
+
 ---@class Proteus.NotifyOptions
 ---@field timeout? number Milliseconds. 0 keeps the message until it is closed.
----@field action? { label: string, run: fun() } A button on the message.
+---@field sticky? boolean Keeps the message until it is closed, as `timeout = 0` does.
+---@field action? Proteus.NotifyAction A button on the message.
+---@field actions? Proteus.NotifyAction[] Buttons on the message, before `action`.
+
+---A message with a bar, from `notify.progress`. It stays until `done` or `close`.
+---@class Proteus.NotifyProgress
+---@field set fun(fraction?: number, text?: string) Fills the bar to `fraction`, from 0 to 1, and changes the text. Until the first fraction the bar shows only that work goes on.
+---@field done fun(text?: string, kind?: 'success'|'info'|'warn'|'error') Turns it into an ordinary message, a success unless `kind` says otherwise, which goes away by itself.
+---@field close fun()
+
+---A message as the list of messages keeps it.
+---@class Proteus.NotifyEntry
+---@field kind 'info'|'success'|'warn'|'error'
+---@field text string
+---@field count integer How many times it came in a row.
+---@field time number When it last came, from `app.util.now`.
+---@field from string The plugin that sent it.
 
 ---Pop-up messages in the corner. Each function returns one that closes the message.
 ---@class Proteus.Notify
@@ -708,6 +776,10 @@ function Overlays.open (el, opts) end
 ---@field success fun(text: string, opts?: Proteus.NotifyOptions): fun()
 ---@field warn fun(text: string, opts?: Proteus.NotifyOptions): fun()
 ---@field error fun(text: string, opts?: Proteus.NotifyOptions): fun()
+---@field progress fun(text: string, opts?: Proteus.NotifyOptions): Proteus.NotifyProgress A message with a bar, for work that takes a while.
+---@field history fun(): Proteus.NotifyEntry[] Every message since the start, newest first, up to 100.
+---@field show_history fun() Opens the list of messages.
+---@field clear fun() Empties the list of messages.
 
 ---------------------------------------------------------------------------------------------
 -- toolbar (proteus.ui.toolbar) and status (proteus.ui.statusbar)
@@ -854,6 +926,13 @@ function Editor.add_completions (words) end
 ---@return Proteus.DocInfo[]
 function Editor.docs () end
 
+---Puts `text` in place of the whole text of the open document at `path`, as one edit the
+---user can undo, without saving it. False when no document is open there, or it is read-only.
+---@param path string The path a document's `path` field gives.
+---@param text string
+---@return boolean
+function Editor.set_text (path, text) end
+
 ---Gives every document in `language` smarter help, such as from a language server. Open
 ---documents get it at once. Returns a function that takes it away again, which also happens
 ---when the plugin stops.
@@ -938,6 +1017,15 @@ function Console.clear () end
 ---@field check? fun() Looks for the tool again, for example after it was installed.
 ---@field settings? string[] Setting keys that belong to this tool, shown beside it.
 ---@field release? Proteus.ToolRelease An official download, for when the program is not on the PATH.
+---@field npm? Proteus.ToolPackage npm packages to install, for a program that runs on Node.js and is not on the PATH.
+---@field languages? string[] The editor languages the tool serves, such as `{ 'yaml' }`. A server with them shows in the status bar only while a file in one of them is in front.
+
+---npm packages that `proteus.tools.registry` installs into the app's cache folder. Installing
+---needs `npm` on the PATH. Each package is pinned to one version, and npm runs no install
+---scripts.
+---@class Proteus.ToolPackage
+---@field packages string[] Each package and its exact version, such as `'yaml-language-server@1.24.0'`. The first one holds the program.
+---@field bin string The program the first package installs, such as `'yaml-language-server'`.
 
 ---An official release of a tool, pinned by checksums, which `proteus.tools.registry` can download.
 ---@class Proteus.ToolRelease
@@ -949,7 +1037,7 @@ function Console.clear () end
 ---@class Proteus.ToolAsset
 ---@field url string An https address.
 ---@field sha256 string The file's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
 
 ---@class Proteus.ToolInfo: Proteus.ToolSpec
 ---@field state Proteus.ToolState
@@ -996,8 +1084,9 @@ function Tools.builtin_dir (cb) end
 ---@field set_path fun(path: string?)
 ---@field log fun(stream: 'out'|'err'|'info'|'send'|'recv', text: string)
 ---@field locate fun(cb: fun(path: string?)) Finds the program on the PATH, then among downloads. When neither has it, it offers the download and gives nil.
----@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, if there is one.
----@field offer fun() Offers the release's download, once. Useful when the copy on the PATH does not run.
+---@field cached fun(cb: fun(path: string?)) The downloaded copy of the release, or the program npm installed, if there is one.
+---@field offer fun() Offers the release's download or the npm install, once. Useful when the copy on the PATH does not run.
+---@field set_languages fun(languages: string[]?) Changes the editor languages the tool serves.
 
 ---------------------------------------------------------------------------------------------
 -- diagnostics (proteus.tools.diagnostics)
@@ -1103,7 +1192,7 @@ function Discord.connected () end
 ---@class Proteus.FileAssociation
 ---@field kind string Such as `'schema'`. The plugins that handle a kind decide what its values mean.
 ---@field pattern string Which files: `'Cargo.toml'` matches the name anywhere, `'*.ndg'` any name that fits, and `'.cargo/config.toml'` the end of a path. `**` crosses folders.
----@field value any For `'schema'`, a JSON schema's address. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
+---@field value any For `'schema'`, a JSON schema's address for a language server, or the schema itself as a table, or a function `(path)` that returns it, which the code editor uses for JSON files. For `'completion'`, a function `(doc, pos, respond)` that answers `respond ({ items = ..., from = column })` with more completion, which language plugins built on `lsp.client` show. For `'icon'`, a `Proteus.IconAssociation`, which proteus.core.icons shows.
 ---@field owner? string Set by the service: the plugin that added it.
 
 ---The file association system. Any plugin adds associations, and the plugins that handle
@@ -1263,7 +1352,7 @@ function Project.recent () end
 function Project.forget (path) end
 
 ---Every file in the folder, as paths from the root, sorted. What `.gitignore` leaves out and
----the folder names in `excluded` are skipped. The list is kept until files come or go. The
+---what the patterns in `excluded` match are skipped. The list is kept until files come or go. The
 ---walk stops at 50,000 files, and then `truncated` is true.
 ---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
 function Project.files (cb) end
@@ -1278,9 +1367,16 @@ function Project.relative (path) end
 ---@return string?
 function Project.absolute (rel) end
 
----Folder names that search and Go to File leave out, from the `project.exclude` setting.
+---The glob patterns of the `project.exclude` setting, such as `node_modules` or `*.min.js`,
+---which the file tree, search and Go to File leave out.
 ---@return string[]
 function Project.excluded () end
+
+---True when the path from the root, or a folder above it, fits a pattern in `excluded`.
+---@param rel string Such as `'src/main.rs'`.
+---@param dir? boolean True for a folder, which a pattern that ends in `/` needs.
+---@return boolean
+function Project.excludes (rel, dir) end
 
 ---True when the user trusts the open folder. Opening a folder runs nothing of its own until
 ---then: its `.proteus` files, its Git settings and its build scripts all wait.
@@ -1355,22 +1451,73 @@ function Terminal.profiles () end
 ---@field method? string `'GET'` when nil.
 ---@field url string
 ---@field headers? table<string, string>
----@field body? string
+---@field body? string The body as text.
+---@field body_base64? string The body as base64, for bytes that are not text.
+---@field file? string The id of a file the user picked in `app.grants.open`. Its bytes are the body.
+---@field parts? Proteus.HttpPart[] A multipart/form-data body. It sets its own Content-Type.
+---@field timeout? number Seconds to wait for the whole answer, over every redirect. 30 when nil, at most 3600.
+---@field redirects? boolean False returns a redirect as the answer instead of following it.
+---@field encoding? 'text'|'base64' `'base64'` returns the body as base64 even when it is text.
+
+---One part of a multipart form: a text value, or a file the user picked.
+---@class Proteus.HttpPart
+---@field name string The field's name.
+---@field value? string The text of a text part.
+---@field file? string The id of a file the user picked in `app.grants.open`.
+---@field filename? string The file name the server sees. The picked file's name when nil.
+---@field type? string The part's Content-Type. A file's comes from its extension when nil.
+
+---One header of an answer.
+---@class Proteus.HttpHeader
+---@field name string In lower case.
+---@field value string
 
 ---@class Proteus.HttpReply
 ---@field status integer
----@field headers table<string, string> Names in lower case.
----@field body string
+---@field headers table<string, string> Names in lower case. Values of a header that came more than once are joined by `, `, or by a line break for `set-cookie`.
+---@field header_list Proteus.HttpHeader[] Every header in the order it came, repeats included.
+---@field body string The body as text, or as base64 when `encoding` says so.
+---@field encoding 'text'|'base64' `'base64'` when the request asked for it or the body is not UTF-8 text.
+---@field size integer The body's length in bytes.
+---@field url string The address that answered, after any redirects.
+---@field redirects integer How many redirects it followed.
+---@field ms number Milliseconds from sending until the whole answer was read.
 
----HTTP from plugins. The desktop app sends requests itself, so any address works. The
----browser can only reach addresses that allow cross-origin requests.
+---A request under way.
+---@class Proteus.HttpCall
+---@field cancel fun() Stops the request. Its callback gets the error `'cancelled'` at once.
+---@field done fun(): boolean True once the callback ran or the request was cancelled.
+
+---@class Proteus.ConnectOptions
+---@field framing? 'lsp'|'lines' `'lsp'` reads and writes Language Server Protocol messages. `'lines'` when nil.
+---@field on_message? fun(text: string) One message or one line from the server.
+---@field on_close? fun() The server closed the connection, or `close` was called.
+---@field on_error? fun(err: string) The connection could not open, or it broke. Without it, the Console shows the error.
+
+---@class Proteus.NetConnection
+---@field write fun(text: string) Sends one message or line. Text sent before the connection opens waits for it.
+---@field close fun()
+---@field alive fun(): boolean
+
+---HTTP from plugins, and connections to servers on this computer. The desktop app sends
+---requests itself, so any address works. The browser can only reach addresses that allow
+---cross-origin requests.
 ---@class Proteus.Net
 local Net = {}
 
----Sends a request. `err` means there was no answer at all. A 404 or 500 is an answer.
+---Sends a request. `err` means there was no answer at all. A 404 or 500 is an answer. Raises
+---an error for a `file` id the plugin does not hold.
 ---@param request Proteus.HttpRequest
 ---@param cb fun(reply: Proteus.HttpReply?, err: string?)
+---@return Proteus.HttpCall
 function Net.fetch (request, cb) end
+
+---Connects to a port on this computer, at `127.0.0.1`. It cannot reach another machine. The
+---connection closes when the plugin stops. Needs the desktop app.
+---@param port integer From 1 to 65535.
+---@param opts? Proteus.ConnectOptions
+---@return Proteus.NetConnection
+function Net.connect (port, opts) end
 
 ---Runs programs. Needs the desktop app.
 ---@class Proteus.Process
@@ -1408,9 +1555,10 @@ function Process.export_builtin (cb) end
 ---@field name string The program's file name once installed, such as `'taplo.exe'`.
 ---@field url string An https address.
 ---@field sha256 string The download's SHA-256 checksum, in hex.
----@field file? string The program's name inside a `.zip`. A `.gz` holds the program alone.
+---@field file? string The program's name inside a `.zip` or a `.tar.gz`. A `.gz` holds the program alone.
 
----The path of a tool downloaded before, or nil when that version is not downloaded yet.
+---The path of a tool downloaded before, or nil when that version is not downloaded yet. The
+---name may hold folders, split by `/`, such as `'bin/taplo'`.
 ---@param spec { id: string, version: string, name: string }
 ---@param cb fun(path: string?, err: string?)
 function Process.cached_tool (spec, cb) end
@@ -1420,3 +1568,9 @@ function Process.cached_tool (spec, cb) end
 ---@param spec Proteus.ToolDownload
 ---@param cb fun(path: string?, err: string?)
 function Process.download_tool (spec, cb) end
+
+---A tool version's folder in the app's cache, made if it is missing, for a tool that npm
+---installs. `proteus.tools.registry` runs npm there.
+---@param spec { id: string, version: string }
+---@param cb fun(path: string?, err: string?)
+function Process.tool_folder (spec, cb) end

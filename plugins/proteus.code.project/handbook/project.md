@@ -2,7 +2,7 @@
 title: Project
 section: Editor and languages
 order: 87
-keywords: project folder open folder root name recent forget files relative absolute excluded trusted ask_trust trust pick close code:disk_changed code:disk_renamed code:search_folder disk changes code editor workspace folder gitignore project.exclude project.reopen
+keywords: project folder open folder root name recent forget files relative absolute excluded excludes glob hide pick close code:disk_changed code:disk_renamed code:search_folder disk changes code editor workspace folder gitignore project.exclude project.reopen trusted ask_trust trust
 ---
 
 # Project
@@ -45,7 +45,7 @@ app.log (root and ('folder: ' .. root) or 'no folder open')
 
 ## `project.files`
 
-`project.files (cb)` lists every file in the folder as paths from the root, sorted, such as `'src/main.rs'`. It skips what `.gitignore` leaves out, and every folder whose name is in the `project.exclude` setting. The list is kept until files come or go, so a second call answers at once. A change that `.gitignore` or `project.exclude` leaves out, such as build output, keeps the list. The list stops at 50,000 files, and then `cb` gets `true` as its third value. With no folder open, `cb` gets nil and an error.
+`project.files (cb)` lists every file in the folder as paths from the root, sorted, such as `'src/main.rs'`. It skips what `.gitignore` leaves out, and what the patterns of the `project.exclude` setting match. The list is kept until files come or go, so a second call answers at once. A change that `.gitignore` or `project.exclude` leaves out, such as build output, keeps the list. The list stops at 50,000 files, and then `cb` gets `true` as its third value. With no folder open, `cb` gets nil and an error.
 
 ```lua
 local project = app.use ('project')
@@ -79,16 +79,19 @@ app.log (project.relative (readme)) -- README.md
 app.use ('editor').open_external (readme)
 ```
 
-## `project.excluded`
+## `project.excluded` and `project.excludes`
 
-`project.excluded ()` returns the folder names that search and **Go to File** leave out, from the `project.exclude` setting.
+The `project.exclude` setting holds glob patterns that the file tree, Search and **Go to File** all leave out. A name alone, such as `node_modules` or `.DS_Store`, matches a file or folder of that name anywhere. `*.min.js` matches any name that fits, and `**` crosses folders. A pattern with folders, such as `docs/build`, matches the end of a path, and one that starts with `/`, such as `/out`, matches from the root. A pattern that ends in `/` matches folders only. Everything inside a folder that matches is left out with it.
+
+`project.excluded ()` returns the patterns, written so that `app.fs.walk_dir` and `app.fs.search_dir` read them the same way, so `docs/build` comes back as `**/docs/build`. A plugin that walks or searches the folder hands them over as `exclude`. `project.excludes (rel, dir)` says whether a path from the root, or a folder above it, fits one. `dir` is true for a folder.
 
 ```lua
-local skip = {}
-for _, name in ipairs (app.use ('project').excluded ()) do
-  skip[name] = true
-end
-app.log (skip.node_modules and 'node_modules is skipped' or 'searching all')
+local project = app.use ('project')
+app.fs.walk_dir (project.root (), { exclude = project.excluded () }, function (result)
+  app.log (#(result and result.files or {}) .. ' files')
+end)
+app.log (project.excludes ('web/node_modules/x/index.js')) -- true
+app.log (project.excludes ('build', true))
 ```
 
 ## `project.trusted` and `project.ask_trust`
@@ -188,7 +191,7 @@ All three events carry full paths on disk, so a restricted plugin hears them onl
 
 | Key | Type | What it does | Default |
 |-----|------|--------------|---------|
-| `project.exclude` | json | Folder names that search and **Go to File** skip wherever they are, on top of `.gitignore`. | `node_modules`, `target`, `dist`, `build`, `out`, `.venv`, `venv`, `__pycache__`, `dist-newstyle`, `.stack-work`, `.next`, `.cache`, `coverage` |
+| `project.exclude` | json | Glob patterns that the file tree, Search and **Go to File** leave out, on top of `.gitignore`. See [`project.excluded`](#project.excluded-and-project.excludes). Before 1.1.0 it held folder names for search alone, and the tree hid the names in `code.explorer.hide`. What the user had set in either is kept. | `.git`, `.DS_Store`, `Thumbs.db`, `desktop.ini`, `node_modules`, `.venv`, `venv`, `__pycache__`, `dist-newstyle`, `.stack-work`, `.next`, `.cache` |
 | `project.reopen` | boolean | Opens the last folder when the Code Editor starts. | true |
 
 ## Commands

@@ -1,6 +1,6 @@
 # Kanban
 
-Boards of cards in columns. Drag cards along as work moves. Install the **Kanban** profile from the marketplace to run it as an app of its own.
+Boards of cards in columns. Drag cards along as work moves. Install the **Kanban** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 This plugin is a Nodal graph built as an app, with no code blocks. The graph ships with Proteus as `graphs/kanban.ndg`. Open it in the Plugin Editor with Nodal on (**Add Nodal** on its home page), or in the **Nodal** profile, to see how it works.
 

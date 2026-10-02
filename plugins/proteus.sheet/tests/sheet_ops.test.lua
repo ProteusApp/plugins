@@ -542,18 +542,80 @@ test ('rules add styles to the cells they match', function ()
   eq (ops.rule_look (s, 5, 1), { style = { italic = true } })
   eq (ops.rule_look (s, 1, 2), { style = { fill = '#ffcccc' } })
   eq (ops.rule_look (s, 2, 2), { style = { fill = '#ccffcc' } })
-  eq (ops.rules_at (s, 2, 1), { 1, 2, 3, 4 })
-  -- A later rule wins on the same field.
+  -- A new rule goes on top of the list.
+  eq (ops.rules_at (s, 2, 1), { 3, 4, 5, 6 })
+  eq (s.rules[1].type, 'unique')
+  -- The rule higher in the list wins on the same field, as in Excel.
   ops.add_rule (s, {
     range = 'A1',
     type = 'not_blank',
     style = { color = '#000000' },
   })
   eq (ops.rule_look (s, 1, 1), { style = { color = '#000000' } })
-  ops.set_rule (s, 7, nil)
+  ops.set_rule (s, 1, nil)
   eq (#s.rules, 6)
+  eq (ops.rule_look (s, 1, 1), { style = { color = '#c62828' } })
   s:undo ()
   eq (#s.rules, 7)
+end)
+
+test ('icon sets mark the top, middle and bottom thirds of a range', function ()
+  local s = sheet_of ({ A1 = '0', A2 = '50', A3 = '100', A4 = '70', A5 = 'x' })
+  ops.add_rule (s, { range = 'A1:A5', type = 'icons', icons = 'arrows' })
+  ---@param row integer
+  ---@return string?
+  local function icon (row)
+    local look = ops.rule_look (s, row, 1)
+    return look and look.icon
+  end
+  eq (
+    { icon (1), icon (2), icon (3), icon (4), icon (5) },
+    { '▼', '▶', '▲', '▲', nil }
+  )
+  eq (ops.look (s, 3, 1).icon_color, '#2b9348')
+  ops.set_rule (
+    s,
+    1,
+    { range = 'A1:A5', type = 'icons', icons = 'lights', reverse = true }
+  )
+  eq ({ icon (1), ops.look (s, 1, 1).icon_color }, { '●', '#2b9348' })
+end)
+
+test ('stop if true keeps the rules below from applying', function ()
+  local s = sheet_of ({ A1 = '5', A2 = '-5' })
+  s:set_field ('rules', {
+    {
+      range = 'A1:A2',
+      type = 'compare',
+      op = '>',
+      value = '0',
+      style = { bold = true },
+      stop = true,
+    },
+    { range = 'A1:A2', type = 'not_blank', style = { italic = true } },
+    { range = 'A1:A2', type = 'bar' },
+  })
+  eq (ops.rule_look (s, 1, 1), { style = { bold = true } })
+  eq (
+    ops.rule_look (s, 2, 1),
+    { style = { italic = true }, bar = 0, bar_color = '#638ec6' }
+  )
+end)
+
+test ('a file from before version 3 turns its rules round', function ()
+  local file = table.concat ({
+    '{ "version": 2, "sheets": [ { "name": "Old", "cells": { "A1": "5" }, "rules": [',
+    '{ "range": "A1", "type": "not_blank", "style": { "color": "#111111" } },',
+    '{ "range": "A1", "type": "not_blank", "style": { "color": "#222222" } }',
+    '] } ] }',
+  })
+  local book = assert (B.decode (file))
+  local s = book.sheets[1]
+  -- In version 2 the later rule won, so it comes first now, and still wins.
+  eq (s.rules[1].style, { color = '#222222' })
+  eq (ops.rule_look (s, 1, 1), { style = { color = '#222222' } })
+  local again = assert (B.decode (B.encode (book)))
+  eq (again.sheets[1].rules[1].style, { color = '#222222' })
 end)
 
 test ('top, bottom and average rules look at the whole range', function ()
@@ -691,6 +753,86 @@ test ('validation checks text before it goes in', function ()
   eq (ops.dropdown (s, 2, 1), { 'OK', 'Over' })
 end)
 
+test (
+  'validation takes a list from cells, dates, text lengths and formulas',
+  function ()
+    local book = B.new ({ clock = clock })
+    local s = book.sheets[1]
+    local lists = assert (book:add_sheet ('Lists'))
+    for i, item in ipairs ({ 'Red', 'Green', '', 'Red', 'Blue' }) do
+      lists:put (i, 1, { text = item })
+    end
+    s:put (1, 5, { text = '10' })
+    ops.add_validation (
+      s,
+      { range = 'A1:A9', type = 'list', formula = '=Lists!$A$1:$A$5' }
+    )
+    ops.add_validation (s, {
+      range = 'B1:B9',
+      type = 'date',
+      op = 'between',
+      value = '1/1/2026',
+      value2 = '12/31/2026',
+    })
+    ops.add_validation (
+      s,
+      { range = 'C1:C9', type = 'length', op = '<=', value = '5' }
+    )
+    -- The formula is written for C... D1, and each cell reads its own row.
+    ops.add_validation (s, {
+      range = 'D1:D9',
+      type = 'formula',
+      formula = '=AND(ISNUMBER(D1), D1<=$E$1)',
+    })
+    eq (ops.dropdown (s, 1, 1), { 'Red', 'Green', 'Blue' })
+    eq ({ ops.check_input (s, 3, 1, 'green') }, { true })
+    eq ({ ops.check_input (s, 3, 1, 'Pink') }, {
+      false,
+      'Pick one of: Red, Green, Blue.',
+      true,
+    })
+    -- The list follows its cells.
+    lists:set (3, 1, 'Pink')
+    eq ({ ops.check_input (s, 3, 1, 'Pink') }, { true })
+    eq ({ ops.check_input (s, 1, 2, '3/15/2026') }, { true })
+    eq ({ ops.check_input (s, 1, 2, '3/15/2027') }, {
+      false,
+      'Enter a date from 1/1/2026 to 12/31/2026.',
+      true,
+    })
+    eq ({ ops.check_input (s, 1, 2, 'soon') }, {
+      false,
+      'Enter a date from 1/1/2026 to 12/31/2026.',
+      true,
+    })
+    eq ({ ops.check_input (s, 1, 3, 'short') }, { true })
+    eq ({ ops.check_input (s, 1, 3, 'é1234') }, { true })
+    eq ({ ops.check_input (s, 1, 3, 'longer') }, {
+      false,
+      'Enter text with a length at most 5.',
+      true,
+    })
+    eq ({ ops.check_input (s, 4, 4, '7') }, { true })
+    eq ({ ops.check_input (s, 4, 4, '12') }, {
+      false,
+      'The value breaks the rule =AND(ISNUMBER(D1), D1<=$E$1).',
+      true,
+    })
+    eq ({ ops.check_input (s, 4, 4, 'x') }, {
+      false,
+      'The value breaks the rule =AND(ISNUMBER(D1), D1<=$E$1).',
+      true,
+    })
+    -- Renaming the sheet of a list keeps the list.
+    ok (book:rename_sheet (2, 'Colours'))
+    eq (s.validation[1].formula, '=Colours!$A$1:$A$5')
+    eq (ops.dropdown (s, 1, 1), { 'Red', 'Green', 'Pink', 'Blue' })
+    -- Inserting a row above the list's cells moves its reference.
+    lists:insert_rows (1, 1)
+    eq (s.validation[1].formula, '=Colours!$A$2:$A$6')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Charts
 ---------------------------------------------------------------------------------------------
@@ -750,6 +892,144 @@ end)
 ---------------------------------------------------------------------------------------------
 -- Excel and CSV
 ---------------------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------
+-- Moving cells
+---------------------------------------------------------------------------------------------
+
+---Cuts a block and pastes it with its top left cell at `to`.
+---@param from_sheet Sheet.Sheet
+---@param block string
+---@param to_sheet Sheet.Sheet
+---@param to string
+local function move (from_sheet, block, to_sheet, to)
+  local clip = from_sheet:copy (r (block))
+  clip.cut = true
+  local row, col = at (to)
+  to_sheet:paste (row, col, clip)
+end
+
+test ('a cut and paste points other formulas where the cells went', function ()
+  local s = sheet_of ({
+    A1 = '5',
+    A2 = '7',
+    B1 = '=A1*2',
+    B2 = '=SUM(A1:A2)',
+    B3 = '=SUM(A1:A3)',
+    B4 = '=$A$1+1',
+    B5 = '=E1',
+    B6 = '=A1:A2',
+  })
+  move (s, 'A1:A2', s, 'E1')
+  -- A reference inside the block moves, $ or not. A range that sticks out stays.
+  eq (text (s, 'B1'), '=E1*2')
+  eq (text (s, 'B2'), '=SUM(E1:E2)')
+  eq (text (s, 'B3'), '=SUM(A1:A3)')
+  eq (text (s, 'B4'), '=$E$1+1')
+  -- A reference to a cell the block lands on is gone.
+  eq (text (s, 'B5'), '=#REF!')
+  eq (shown (s, 'B1'), '10')
+  eq (shown (s, 'B2'), '12')
+  -- The whole move is one undo step.
+  s:undo ()
+  eq (
+    { text (s, 'A1'), text (s, 'E1'), text (s, 'B1'), text (s, 'B5') },
+    { '5', '', '=A1*2', '=E1' }
+  )
+end)
+
+test (
+  'a drag that moves cells inside their own block keeps references right',
+  function ()
+    local s = sheet_of ({ A1 = '1', A2 = '=A1+1', A3 = '=A2+1', C1 = '=A3' })
+    move (s, 'A1:A3', s, 'A2')
+    eq ({ text (s, 'A1'), text (s, 'A2'), text (s, 'A3'), text (s, 'A4') }, {
+      '',
+      '1',
+      '=A2+1',
+      '=A3+1',
+    })
+    eq (text (s, 'C1'), '=A4')
+    eq (shown (s, 'C1'), '3')
+  end
+)
+
+test ('a cut to another sheet follows the cells across the book', function ()
+  local book = B.new ({ clock = clock, name = 'Data' })
+  local data = book.sheets[1]
+  local other = assert (book:add_sheet ('Q1 sales'))
+  data:put (1, 1, { text = '4' })
+  data:put (1, 2, { text = '=A1+C1' })
+  data:put (1, 3, { text = '10' })
+  other:put (1, 1, { text = '=Data!A1*3' })
+  other:put (2, 1, { text = '=C5' })
+  move (data, 'A1:B1', other, 'B5')
+  eq (data:text (1, 1), '')
+  -- A reference on another sheet to the moved cell now names where it went.
+  eq (other:text (1, 1), '=B5*3')
+  eq (other:text (2, 1), '=#REF!')
+  -- The moved formula reads A1 where it went, and C1 on the sheet it came from.
+  eq (other:text (5, 3), '=B5+Data!C1')
+  eq (other:value (5, 3), 14)
+  data:put (2, 1, { text = "='Q1 sales'!B5" })
+  move (other, 'B5', data, 'D4')
+  eq (data:text (2, 1), '=D4')
+  eq (other:text (1, 1), '=Data!D4*3')
+end)
+
+test (
+  'rules, validation, charts and the filter inside a moved block go with it',
+  function ()
+    local s = sheet_of ({
+      A1 = 'Item',
+      B1 = 'Cost',
+      A2 = 'Rent',
+      B2 = '1200',
+      A3 = 'Food',
+      B3 = '450',
+    })
+    s:set_field ('rules', {
+      {
+        range = 'B2:B3',
+        type = 'formula',
+        formula = '=B2>500',
+        style = { bold = true },
+      },
+      { range = 'B2:D3', type = 'compare', op = '>', value = '0' },
+    })
+    s:set_field (
+      'validation',
+      { { range = 'B2:B3', type = 'number', op = '>', value = '0' } }
+    )
+    s:set_field ('charts', { { id = 'c1', type = 'bar', range = 'A1:B3' } })
+    ops.set_filter (s, r ('A1:B3'))
+    ops.filter_column (s, 2, { op = '>', value = '500' })
+    eq (s.filter and s.filter.hidden, { [3] = true })
+    move (s, 'A1:B3', s, 'D11')
+    eq (s.rules[1].range, 'E12:E13')
+    eq (s.rules[1].formula, '=E12>500')
+    -- A rule that only partly lies in the block stays.
+    eq (s.rules[2].range, 'B2:D3')
+    eq (s.validation[1].range, 'E12:E13')
+    eq (s.charts[1].range, 'D11:E13')
+    local filter = assert (s.filter, 'a filter')
+    eq (filter.rect, r ('D11:E13'))
+    eq (filter.columns[5], { op = '>', value = '500' })
+    eq (filter.hidden, { [13] = true })
+    eq (ops.rule_look (s, 12, 5), { style = { bold = true } })
+    s:undo ()
+    eq ({ s.rules[1].range, s.charts[1].range }, { 'B2:B3', 'A1:B3' })
+    eq ((assert (s.filter, 'a filter')).rect, r ('A1:B3'))
+    -- Moved to another sheet, the rules and the validation go along, and the chart stays.
+    local other = assert (s.book:add_sheet ('Other'))
+    move (s, 'A1:B3', other, 'A1')
+    eq ({ #s.rules, #s.validation, #s.charts }, { 1, 0, 1 })
+    eq (other.rules[1].range, 'B2:B3')
+    eq (other.validation[1].range, 'B2:B3')
+    eq (s.filter, nil)
+    eq ((assert (other.filter, 'a filter')).rect, r ('A1:B3'))
+  end
+)
 
 test ('an Excel file round trip keeps cells, formats and values', function ()
   local book = B.example ({ clock = clock })

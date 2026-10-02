@@ -16,6 +16,7 @@ Check that:
 - it sends nothing over the network, and runs no programs, beyond what its purpose needs
 - a web view page loads nothing from elsewhere. Proteus blocks it anyway, but code that tries is a warning sign
 - it holds no secrets, tokens or personal data
+- every PNG is a picture its author may share, such as their own art, and shows nothing personal
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
 - a setting that names a program to run, a path to one, or a place code comes from is defined with `sensitive = true`, so a profile or a folder's `.proteus/settings.json` cannot choose it
 - it runs nothing from the open folder, such as its build scripts, its Git hooks or a program in `node_modules`, until the user trusts the folder (`app.kernel.project ().trusted`)
@@ -33,7 +34,7 @@ Close the pull request to turn a submission down, with a comment that says why. 
 
 To take a plugin or profile down, delete its folder in a pull request, and add its id to `removed.json` with its owner's login and GitHub user id, from its `proteus.json`. The check refuses the pull request without that entry. The id then stays with its owner: nobody else can publish under it, so the marketplace never offers their code as an update to people who installed the old one. The index workflow drops it from `index.json`. Copies already installed stay on users' machines.
 
-Leave `index.json` out of pull requests. The index workflow writes it after each merge, and the check refuses a pull request that changes it. The app installs each entry's files from the commit it names and shows its permissions before the install, so the check also holds every entry to that commit.
+Leave `index.json` out of pull requests. The index workflow writes it after each merge, and the check refuses a pull request that changes it. The app installs each entry's files from the commit it names and shows its permissions before the install, so the check also holds every entry to that commit. The index keeps the earlier versions of each folder's history too, back to where the folder was last gone or someone else published it, and the app installs those the same way, so the check holds each of them to its commit as well. Taking a plugin down drops its earlier versions with it.
 
 Authors take back what they sent from Proteus, with **Withdraw from the Registry**:
 

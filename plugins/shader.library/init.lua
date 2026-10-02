@@ -31,7 +31,7 @@ local CSS = [[
 return {
   name = 'Shader library',
   description = 'Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.',
-  version = '1.0.1',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -62,7 +62,7 @@ return {
 
     ---@param path string
     ---@return string
-    local function tag_of (path)
+    local function kind_tag (path)
       local lower = path:lower ()
       if lower:sub (-#core.file.EXTENSION) == core.file.EXTENSION then
         return 'graph'
@@ -72,6 +72,17 @@ return {
         return 'vertex'
       end
       return lang == 'wgsl' and 'WGSL' or 'GLSL'
+    end
+
+    ---What a file is, such as `GLSL` or `buffer A · graph`.
+    ---@param path string
+    ---@return string
+    local function tag_of (path)
+      local _, pass = core.passes.pass_of (path)
+      if pass ~= 'image' then
+        return 'buffer ' .. pass:upper () .. ' · ' .. kind_tag (path)
+      end
+      return kind_tag (path)
     end
 
     local function draw_files ()
