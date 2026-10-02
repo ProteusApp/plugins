@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.1.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -30,15 +30,28 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "grants",
+          "grants-read",
+          "http-bodies"
         ]
       },
       "files": [
         "README.md",
-        "init.lua"
+        "api_core.lua",
+        "api_css.lua",
+        "api_editor.lua",
+        "api_envs.lua",
+        "api_history.lua",
+        "api_list.lua",
+        "api_response.lua",
+        "init.lua",
+        "tests/api_core.test.lua",
+        "tests/client.test.lua",
+        "tests/css.test.lua"
       ],
-      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
-      "updated": "2026-10-02T16:56:50Z"
+      "commit": "e16ee2e2a9ca1a5b1c5e7bd9bdebf2288a66af5d",
+      "updated": "2026-10-02T17:07:13Z"
     },
     {
       "id": "view.aseprite",
@@ -820,7 +833,7 @@
       "id": "proteus.logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.1.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -852,11 +865,34 @@
       "files": [
         "README.md",
         "init.lua",
+        "log_ansi.lua",
         "log_filter.lua",
-        "tests/logs.test.lua"
+        "log_level.lua",
+        "log_query.lua",
+        "log_regex.lua",
+        "log_ring.lua",
+        "log_sources.lua",
+        "log_text.lua",
+        "log_time.lua",
+        "logs_commands.lua",
+        "logs_css.lua",
+        "logs_detail.lua",
+        "logs_list.lua",
+        "logs_sources.lua",
+        "tests/ansi.test.lua",
+        "tests/css.test.lua",
+        "tests/level.test.lua",
+        "tests/logs.test.lua",
+        "tests/query.test.lua",
+        "tests/regex.test.lua",
+        "tests/ring.test.lua",
+        "tests/sources.test.lua",
+        "tests/text.test.lua",
+        "tests/time.test.lua",
+        "tests/viewer.test.lua"
       ],
-      "commit": "81a87889eff2618ef4fdaf075e60c201328cd5cd",
-      "updated": "2026-10-02T05:09:05Z"
+      "commit": "a3439e55ac119ee8b663b367eac0fe5cf58451c4",
+      "updated": "2026-10-02T07:51:22Z"
     },
     {
       "id": "lang.luau-lsp",
@@ -1135,6 +1171,42 @@
       "updated": "2026-09-30T20:33:10Z"
     },
     {
+      "id": "proteus.template",
+      "name": "Plugin Template",
+      "description": "A start for a plugin of your own: a command, a setting, a panel, a service, a folder, tests and a Handbook page.",
+      "version": "1.0.0",
+      "author": "ProteusApp",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.views",
+        "proteus.core.commands",
+        "proteus.core.settings"
+      ],
+      "optional": [
+        "proteus.ui.notify"
+      ],
+      "permissions": [],
+      "folders": [
+        "template"
+      ],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "handbook/template.md",
+        "init.lua",
+        "lib/greetings.lua",
+        "tests/template.test.lua",
+        "types/template.lua"
+      ],
+      "commit": "055fb04c89e65d2b9953f1515c0017493814b179",
+      "updated": "2026-10-02T06:24:12Z"
+    },
+    {
       "id": "theme.pocket",
       "name": "Pocket theme",
       "description": "The four greens of an early handheld game screen, with square corners, pixel shadows and an LCD dot grid.",
@@ -1200,7 +1272,7 @@
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1226,15 +1298,16 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "file-tree"
         ]
       },
       "files": [
         "README.md",
         "init.lua"
       ],
-      "commit": "fd6a9021d4f8c0cce88a3105eac0628067a23a55",
-      "updated": "2026-10-02T17:00:51Z"
+      "commit": "443f6a3c879adda459c9625dd89673b0b44827f5",
+      "updated": "2026-10-02T17:02:34Z"
     },
     {
       "id": "proteus.code.plugins",
@@ -1414,35 +1487,6 @@
       "updated": "2026-10-02T16:53:40Z"
     },
     {
-      "id": "sample.plugin",
-      "name": "Sample Plugin",
-      "description": "A sample plugin.",
-      "version": "1.0.6",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.notify",
-        "ui.toolbar",
-        "ui.menubar"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
-    },
-    {
       "id": "lang.sass",
       "name": "Sass",
       "description": "Sass and SCSS with Some Sass: completion across @use and @import, hover help, go to definition and problems.",
@@ -1528,7 +1572,7 @@
       "id": "shader.build",
       "name": "Shader build",
       "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "shader.core",
@@ -1553,8 +1597,8 @@
       "files": [
         "init.lua"
       ],
-      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
-      "updated": "2026-10-02T05:08:32Z"
+      "commit": "5ecad48bf414aad4b02d17817c9f4aef37740e73",
+      "updated": "2026-10-02T17:09:20Z"
     },
     {
       "id": "shader.canvas",
@@ -1633,7 +1677,7 @@
       "id": "shader.core",
       "name": "Shader core",
       "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-      "version": "1.2.0",
+      "version": "1.3.1",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -1647,6 +1691,7 @@
       },
       "files": [
         "README.md",
+        "handbook/core.md",
         "init.lua",
         "shader_build.lua",
         "shader_compile.lua",
@@ -1658,22 +1703,26 @@
         "shader_history.lua",
         "shader_layout.lua",
         "shader_nodes.lua",
+        "shader_pages.lua",
+        "shader_passes.lua",
         "shader_source.lua",
         "shader_types.lua",
+        "tests/build.test.lua",
         "tests/core.test.lua",
         "tests/examples.test.lua",
         "tests/format.test.lua",
+        "tests/passes.test.lua",
         "tests/source.test.lua",
         "types/shader.lua"
       ],
-      "commit": "efb0720dcde92189312cb4d1d6f9f1bd65aa9f27",
-      "updated": "2026-10-02T05:08:32Z"
+      "commit": "a7adbd8610c86ea99c33f01c09261195d992a49b",
+      "updated": "2026-10-02T17:10:54Z"
     },
     {
       "id": "shader.docs",
       "name": "Shader documents",
       "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-      "version": "1.2.0",
+      "version": "1.3.1",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -1702,6 +1751,8 @@
       "files": [
         "examples/cells.shader.json",
         "examples/clouds.shader.json",
+        "examples/ink.buffer-a.frag",
+        "examples/ink.frag",
         "examples/plasma.shader.json",
         "examples/raymarch.frag",
         "examples/shadertoy.frag",
@@ -1711,6 +1762,7 @@
         "examples/weather.frag",
         "handbook/colour.md",
         "handbook/debugging.md",
+        "handbook/documents.md",
         "handbook/first-shader.md",
         "handbook/glsl-language.md",
         "handbook/learn-shaders.md",
@@ -1722,20 +1774,21 @@
         "handbook/shapes.md",
         "handbook/shaping.md",
         "handbook/space.md",
+        "handbook/textures.md",
         "handbook/volumes.md",
         "handbook/weather.md",
         "handbook/wgsl.md",
         "init.lua",
         "tests/docs.test.lua"
       ],
-      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
-      "updated": "2026-10-01T22:16:12-06:00"
+      "commit": "237b3977133c6c7325a68131d0d5dd8b28280330",
+      "updated": "2026-10-02T07:50:54Z"
     },
     {
       "id": "shader.library",
       "name": "Shader library",
       "description": "Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -1761,14 +1814,14 @@
       "files": [
         "init.lua"
       ],
-      "commit": "c1230aed51f4794e5441626e5bcdbd9805b15e32",
-      "updated": "2026-10-01T19:01:33-06:00"
+      "commit": "3fe1e7d7736afade0046d70ad2191c78dd0d817d",
+      "updated": "2026-10-02T06:26:50Z"
     },
     {
       "id": "shader.preview",
       "name": "Shader preview",
-      "description": "Runs the shader in front live, on WebGL 2 or WebGPU, with its problems and a control for every uniform.",
-      "version": "1.0.1",
+      "description": "Runs the shader in front live, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -1789,17 +1842,19 @@
         "proteus": ">=0.2.0",
         "features": [
           "permissions",
-          "webview"
+          "webview",
+          "grants"
         ]
       },
       "files": [
         "init.lua",
         "page/preview.css",
         "page/preview.html",
-        "page/preview.js"
+        "page/preview.js",
+        "tests/preview.test.lua"
       ],
-      "commit": "c1230aed51f4794e5441626e5bcdbd9805b15e32",
-      "updated": "2026-10-01T19:01:33-06:00"
+      "commit": "3fe1e7d7736afade0046d70ad2191c78dd0d817d",
+      "updated": "2026-10-02T06:26:50Z"
     },
     {
       "id": "proteus.sheet",

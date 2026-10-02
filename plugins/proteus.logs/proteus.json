@@ -2,7 +2,7 @@
   "id": "proteus.logs",
   "name": "Logs",
   "description": "Follow a log file or a program, filter the lines, and spot errors.",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.shell",
@@ -38,7 +38,30 @@
   "files": [
     "README.md",
     "init.lua",
+    "log_ansi.lua",
     "log_filter.lua",
-    "tests/logs.test.lua"
+    "log_level.lua",
+    "log_query.lua",
+    "log_regex.lua",
+    "log_ring.lua",
+    "log_sources.lua",
+    "log_text.lua",
+    "log_time.lua",
+    "logs_commands.lua",
+    "logs_css.lua",
+    "logs_detail.lua",
+    "logs_list.lua",
+    "logs_sources.lua",
+    "tests/ansi.test.lua",
+    "tests/css.test.lua",
+    "tests/level.test.lua",
+    "tests/logs.test.lua",
+    "tests/query.test.lua",
+    "tests/regex.test.lua",
+    "tests/ring.test.lua",
+    "tests/sources.test.lua",
+    "tests/text.test.lua",
+    "tests/time.test.lua",
+    "tests/viewer.test.lua"
   ]
 }

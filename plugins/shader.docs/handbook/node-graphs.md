@@ -66,6 +66,8 @@ Every function in the 2D chapters has a node:
 | `gl_FragCoord.xy` | **Pixel Position** |
 | `u_time`, `sin(u_time)` | **Time**, with outputs for both |
 | `u_mouse` | **Mouse** |
+| `iDate`, `u_date` | **Date** |
+| `texture(iChannel0, uv)` | **Texture**, from [Textures and buffers](textures.md) |
 | A uniform with a slider | **Parameter** |
 | `mix`, `smoothstep`, `step`, `clamp` | **Mix**, **Smooth Step**, **Step**, **Clamp** |
 | `fract`, `floor`, `abs`, `sin` | **Fraction**, **Floor**, **Absolute**, **Sine** |
@@ -76,6 +78,8 @@ Every function in the 2D chapters has a node:
 | Value noise, gradient noise, fractal noise, cells | **Value Noise**, **Gradient Noise**, **Fractal Noise**, **Voronoi** |
 | `hsv2rgb`, the cosine palette | **HSV to RGB**, **Cosine Palette** |
 | Splitting or building vectors, swizzles | **Split**, **Combine**, **Swizzle** |
+| `a < b`, `x > 0.5 ? a : b` | **Compare**, **Branch** |
+| `dFdx`, `dFdy`, `fwidth` | **Change Across**, **Change Up**, **Change Width** |
 
 A **Parameter** node becomes a uniform. Its value gets a slider in the Preview panel, as a uniform with notes does in code, and its `min` and `max` set the slider's range.
 
