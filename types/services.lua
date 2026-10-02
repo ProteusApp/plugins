@@ -1026,30 +1026,30 @@ function Diagnostics.all () end
 function Diagnostics.counts () end
 
 ---------------------------------------------------------------------------------------------
--- lsp (proteus.lang.luals)
+-- luals (proteus.lang.luals)
 ---------------------------------------------------------------------------------------------
 
 ---The running Lua language server.
----@class Proteus.Lsp
-local Lsp = {}
+---@class Proteus.Luals
+local Luals = {}
 
 ---@return boolean
-function Lsp.running () end
+function Luals.running () end
 
 ---Sends a request and calls `cb(result, err)` with the answer.
 ---@param method string Such as `'textDocument/hover'`.
 ---@param params table
 ---@param cb fun(result: any, err: table?)
-function Lsp.request (method, params, cb) end
+function Luals.request (method, params, cb) end
 
 ---@param method string
 ---@param params table
-function Lsp.notify (method, params) end
+function Luals.notify (method, params) end
 
 ---The `file:///` address the server uses for a workspace path.
 ---@param path string
 ---@return string?
-function Lsp.uri (path) end
+function Luals.uri (path) end
 
 ---------------------------------------------------------------------------------------------
 -- discord (proteus.discord.rpc)

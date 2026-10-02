@@ -252,7 +252,7 @@ function App.provide_scoped (name, make, opts) end
 ---@overload fun(name: 'console'): Proteus.Console
 ---@overload fun(name: 'tools'): Proteus.Tools
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics
----@overload fun(name: 'lsp'): Proteus.Lsp
+---@overload fun(name: 'luals'): Proteus.Luals
 ---@overload fun(name: 'discord'): Proteus.Discord
 ---@overload fun(name: 'project'): Proteus.Project
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace
@@ -288,7 +288,7 @@ function App.use (name) end
 ---@overload fun(name: 'console'): Proteus.Console?
 ---@overload fun(name: 'tools'): Proteus.Tools?
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics?
----@overload fun(name: 'lsp'): Proteus.Lsp?
+---@overload fun(name: 'luals'): Proteus.Luals?
 ---@overload fun(name: 'discord'): Proteus.Discord?
 ---@overload fun(name: 'project'): Proteus.Project?
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace?
