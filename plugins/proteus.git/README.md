@@ -10,6 +10,7 @@ A Git client for any folder that holds a repository. It runs the real `git` prog
 - **No hidden prompts.** Fetch, pull, push and clone never ask for a password or a passphrase on a terminal, since the app has none: Git and ssh fail at once and the error says why. Sign in through a credential helper or an ssh agent instead. A `core.sshCommand` of your own is kept as it is. **Cancel** (or a click on the busy item in the status bar) stops one that is still running.
 - **History.** The History view lists the last 200 commits, and a click shows a commit's diff.
 - **Clone and init.** Clone a repository or start a new one in any folder.
+- **Large repositories.** Each list in the Changes view draws its first 500 files, and **Show all** draws the rest. A diff or a commit reads its first 5,000 lines and leaves out the rest, and a hunk cut short cannot be staged. Coming back to the window reads the status again, but where that takes long it waits ten times as long between reads, up to a minute. A repository whose `status.showUntrackedFiles` setting is `normal` lists a new folder as one row, and `no` leaves new files out.
 
 ## In the Code Editor
 

@@ -41,6 +41,7 @@ local CSS = [[
 .git-name { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;
   color: var(--fg-faint); }
+.git-more { justify-content: center; font-size: 12px; color: var(--accent); }
 .git-tools { flex: none; display: none; gap: 2px; }
 .git-row:hover .git-tools { display: flex; }
 .git-tool { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: none;
@@ -136,7 +137,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
@@ -194,6 +195,13 @@ return {
     -- Each load counts up, so an answer that arrives after a newer request is dropped.
     local diff_seq = 0
     local log_seq = 0
+    -- What the repository's status.showUntrackedFiles says, read when it opens.
+    local untracked_mode = nil ---@type string?
+    -- The lists drawn whole after Show All, by 's' or 'u'.
+    local show_all = {} ---@type table<string, boolean>
+    -- When the last status read ended, and how long it took, in milliseconds.
+    local status_done_at = 0
+    local status_took = 0
 
     local recent = {} ---@type string[]
     local saved = app.store.get ('recent', {})
@@ -509,7 +517,10 @@ return {
         key = (sel.group or '') .. ':' .. (sel.path or '')
       end
       changes_list:html (
-        m.changes_html (status, { selected = key, icons = ICONS })
+        m.changes_html (
+          status,
+          { selected = key, icons = ICONS, all = show_all }
+        )
       )
     end
 
@@ -633,6 +644,13 @@ return {
         empty = 'No changes to show.',
       }
       local prefix = (e.staged and 's:' or 'u:') .. e.path .. '\n'
+      if e.kind == 'untracked' and e.path:sub (-1) == '/' then
+        shown_files, shown_key = {}, nil
+        show_main (
+          m.message_html ('A new folder', 'Stage it to add every file in it.')
+        )
+        return
+      end
       if e.kind == 'untracked' then
         app.fs.read_file (m.join (current, e.path), function (text, err)
           if seq ~= diff_seq then
@@ -659,7 +677,9 @@ return {
           )
           return
         end
-        draw_files (m.parse_diff (res.stdout), opts, prefix .. res.stdout)
+        local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
+        opts.cut = cut
+        draw_files (files, opts, prefix .. res.stdout)
       end)
     end
 
@@ -696,14 +716,14 @@ return {
           )
           return
         end
-        local show = m.parse_show (res.stdout)
+        local show = m.parse_show (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = show.files, false, 'c:' .. hash
         local top = show.commit and m.commit_html (show.commit) or ''
         show_main (
           top
             .. m.diff_html (
               show.files,
-              { empty = 'This commit changes no files.' }
+              { empty = 'This commit changes no files.', cut = show.cut }
             )
         )
       end)
@@ -774,8 +794,11 @@ return {
       end
       refreshing = true
       local at = repo
-      git (m.status_args (), nil, function (res, err)
+      local started = app.util.now ()
+      git (m.status_args (untracked_mode), nil, function (res, err)
         refreshing = false
+        status_done_at = app.util.now ()
+        status_took = status_done_at - started
         if at == repo and (not res or res.code ~= 0) then
           status = nil
           selection = nil
@@ -854,6 +877,7 @@ return {
           repo = top
           not_repo = false
           status, commits, selection, shown_key = nil, {}, nil, nil
+          show_all = {}
           if not embedded then
             recent = m.remember (recent, top, MAX_RECENT)
             app.store.set ('recent', recent)
@@ -864,7 +888,14 @@ return {
           changes_list:html ('')
           history_list:html ('')
           show_placeholder ()
-          refresh ()
+          git (
+            { 'config', '--get', 'status.showUntrackedFiles' },
+            nil,
+            function (cfg)
+              untracked_mode = cfg and cfg.code == 0 and cfg.stdout or nil
+              refresh ()
+            end
+          )
         end
       )
     end
@@ -1245,6 +1276,10 @@ return {
       elseif item == 'unstage-all' then
         commands.run ('git.unstage_all')
         return true
+      elseif item == 'show-all-s' or item == 'show-all-u' then
+        show_all[item:sub (-1)] = true
+        render_changes ()
+        return true
       end
       local action, group, path = m.parse_item (item)
       local e = group and path and m.find_entry (status, group, path)
@@ -1325,8 +1360,22 @@ return {
       return nil
     end)
 
+    -- Coming back to the window reads the status again, in case files changed outside. In a
+    -- large repository, where that takes a while, it waits a little longer between reads.
+    local focus_timer = nil ---@type fun()?
     app.dom.on_global ('focus', function ()
-      refresh ()
+      if focus_timer then
+        return nil
+      end
+      local wait = status_done_at + m.focus_gap (status_took) - app.util.now ()
+      if wait <= 0 then
+        refresh ()
+        return nil
+      end
+      focus_timer = app.timer.after (wait, function ()
+        focus_timer = nil
+        refresh ()
+      end)
       return nil
     end)
 

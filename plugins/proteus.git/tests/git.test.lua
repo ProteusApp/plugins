@@ -1113,3 +1113,60 @@ test ('error_text and summary pick what Git printed', function ()
   eq (m.is_binary_error ('C:/a.txt: The system cannot find the file'), false)
   eq (m.is_binary_error (nil), false)
 end)
+
+---------------------------------------------------------------------------------------------
+-- Large repositories
+---------------------------------------------------------------------------------------------
+
+test (
+  'parse_diff stops at max_lines and marks the hunk it stopped in',
+  function ()
+    local files, cut = m.parse_diff (DIFF_A_STAGED, 8)
+    eq (cut, true)
+    eq (#files, 1)
+    eq (#files[1].hunks, 2)
+    eq (#files[1].hunks[1].lines, 6)
+    eq (#files[1].hunks[2].lines, 2)
+    eq (files[1].hunks[1].partial, nil)
+    eq (files[1].hunks[2].partial, true)
+    -- A hunk read only in part cannot be staged, and draws no button.
+    eq (m.hunk_patch (files[1], files[1].hunks[2]), nil)
+    local html = m.diff_html (files, { buttons = true, cut = cut })
+    eq (count (html, 'Stage Hunk'), 1)
+    has (html, 'Showing the first 8 lines. The rest is left out.')
+    local all, more = m.parse_diff (DIFF_A_STAGED, 13)
+    eq ({ more, #all[1].hunks[2].lines }, { false, 7 })
+    local show = m.parse_show (SHOW_RENAME, 1)
+    eq (show.cut, true)
+    ok (show.commit)
+  end
+)
+
+test ('status_args follows status.showUntrackedFiles', function ()
+  eq (m.status_args ('normal\n')[5], '--untracked-files=normal')
+  eq (m.status_args ('no')[5], '--untracked-files=no')
+  eq (m.status_args ('all')[5], '--untracked-files=all')
+  eq (m.status_args ('true')[5], '--untracked-files=all')
+  eq (m.status_args (nil)[5], '--untracked-files=all')
+end)
+
+test ('focus_gap waits longer after a slow status read', function ()
+  eq (m.focus_gap (20), 1000)
+  eq (m.focus_gap (400), 4000)
+  eq (m.focus_gap (30000), 60000)
+end)
+
+test ('changes_html draws a long list up to its limit', function ()
+  local text = { '## main' }
+  for i = 1, 12 do
+    text[#text + 1] = '?? f' .. i .. '.txt'
+  end
+  local st = m.parse_status (table.concat (text, '\n') .. '\n')
+  local html = m.changes_html (st, { limit = 5 })
+  eq (count (html, 'data-item="open:u:'), 5)
+  has (html, 'data-item="show-all-u">Show all 12 files')
+  local whole = m.changes_html (st, { limit = 5, all = { u = true } })
+  eq (count (whole, 'data-item="open:u:'), 12)
+  lacks (whole, 'show-all-u')
+  eq ({ m.parse_item ('show-all-u') }, { 'show-all-u' })
+end)

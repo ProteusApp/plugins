@@ -66,6 +66,7 @@
 ---@field new_start integer
 ---@field new_count integer
 ---@field lines Git.Line[]
+---@field partial? boolean True when reading stopped inside it, so it cannot be staged.
 
 ---One file in a diff.
 ---@class Git.FileDiff
@@ -99,6 +100,7 @@
 ---@class Git.Show
 ---@field commit? Git.CommitInfo
 ---@field files Git.FileDiff[]
+---@field cut boolean True when reading stopped at the line limit.
 
 ---@class Git.DiffOptions
 ---@field buttons? boolean Adds a Stage Hunk or Unstage Hunk button to each hunk.
@@ -106,10 +108,13 @@
 ---@field max_lines? integer How many diff lines to draw. 5,000 when nil.
 ---@field label? string A tag beside each file path, such as `'Staged'`.
 ---@field empty? string The text to show when there is no file.
+---@field cut? boolean True when `parse_diff` stopped at `max_lines`, so there is more.
 
 ---@class Git.ListOptions
 ---@field selected? string The key of the selected row, such as `'u:src/a.txt'`.
 ---@field icons? table<string, string> SVG for the row buttons: `stage`, `unstage` and `discard`.
+---@field limit? integer How many rows each list draws before a Show All row. `LIST_LIMIT` when nil.
+---@field all? table<string, boolean> Lists to draw whole, by `'s'` or `'u'`.
 
 ---An item in the Switch Branch list.
 ---@class Git.Choice
@@ -129,6 +134,12 @@ local NO_NEWLINE = 'No newline at end of file'
 M.LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ar%x1f%D%x1f%s%x1e'
 M.SHOW_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%P%x1f%B%x1e'
 M.BRANCH_FORMAT = '--format=%(HEAD)%09%(refname)%09%(upstream:short)'
+
+-- How many rows each list in the Changes view draws until Show All is clicked. A repository
+-- with thousands of new files stays quick to draw.
+M.LIST_LIMIT = 500
+-- How many diff lines are read and drawn.
+M.MAX_LINES = 5000
 
 ---@type table<string, Git.Kind>
 local KIND = {
@@ -815,15 +826,31 @@ function M.remote_env (ssh_command)
 end
 
 ---Zero bytes separate the entries, so paths come back exactly as they are, with no quoting.
+---New files are listed one by one, so each can be staged and shown, unless the repository's
+---`status.showUntrackedFiles` setting asks for `normal` (a new folder is one row) or `no`.
+---@param untracked? string What `git config status.showUntrackedFiles` printed.
 ---@return string[]
-function M.status_args ()
+function M.status_args (untracked)
+  local mode = untracked and trim (untracked) or ''
+  if mode ~= 'no' and mode ~= 'normal' then
+    mode = 'all'
+  end
   return {
     'status',
     '--porcelain=v1',
     '-z',
     '--branch',
-    '--untracked-files=all',
+    '--untracked-files=' .. mode,
   }
+end
+
+---How long to wait after a status read before the window's focus reads it again. A read that
+---took long, in a large repository, waits ten times as long, so switching windows does not
+---keep Git busy.
+---@param took number Milliseconds the last read took.
+---@return number
+function M.focus_gap (took)
+  return math.min (60000, math.max (1000, took * 10))
 end
 
 ---@param n integer
@@ -1171,17 +1198,28 @@ local function finish_file (f)
 end
 
 ---Reads `git diff` output, and the diff part of `git show`. Text before the first `diff` line,
----such as a commit header, is skipped.
+---such as a commit header, is skipped. With `max_lines` it stops after that many hunk lines,
+---so a huge diff is never read whole: the hunk it stopped in is marked `partial`, and the
+---second result is true.
 ---@param text string
----@return Git.FileDiff[]
-function M.parse_diff (text)
+---@param max_lines? integer
+---@return Git.FileDiff[] files
+---@return boolean cut
+function M.parse_diff (text, max_lines)
   local files = {} ---@type Git.FileDiff[]
   local f = nil ---@type Git.FileDiff?
   local h = nil ---@type Git.Hunk?
   local cols = 1
   local old_left, new_left = 0, 0
   local old_no, new_no = 0, 0
-  for _, raw in ipairs (lines_of (text)) do
+  local max = max_lines or math.huge
+  local count = 0
+  local cut = false
+  local pos = 1
+  while pos <= #text do
+    local stop = text:find ('\n', pos, true)
+    local raw = text:sub (pos, (stop or #text + 1) - 1)
+    pos = (stop or #text) + 1
     local c = raw:sub (1, 1)
     local plain_line = h
       and cols == 1
@@ -1192,6 +1230,16 @@ function M.parse_diff (text)
       and cols > 1
       and #raw >= cols
       and prefix:find ('^[ +%-]+$') ~= nil
+    if (plain_line or combined_line) and count >= max then
+      cut = true
+      if h then
+        h.partial = true
+      end
+      break
+    end
+    if plain_line or combined_line then
+      count = count + 1
+    end
     if h and c == '\\' then
       h.lines[#h.lines + 1] =
         { kind = 'meta', text = NO_NEWLINE, raw = strip_cr (raw) }
@@ -1249,16 +1297,19 @@ function M.parse_diff (text)
   for _, file in ipairs (files) do
     finish_file (file)
   end
-  return files
+  return files, cut
 end
 
----Reads `git show` output in `SHOW_FORMAT`: the commit, then its diff.
+---Reads `git show` output in `SHOW_FORMAT`: the commit, then its diff, up to `max_lines`
+---lines of it.
 ---@param text string
+---@param max_lines? integer
 ---@return Git.Show
-function M.parse_show (text)
+function M.parse_show (text, max_lines)
   local cut = text:find (RS, 1, true)
   if not cut then
-    return { commit = nil, files = M.parse_diff (text) }
+    local files, more = M.parse_diff (text, max_lines)
+    return { commit = nil, files = files, cut = more }
   end
   local f = split (text:sub (1, cut - 1), US)
   local message = (f[8] or ''):gsub ('%s+$', '')
@@ -1278,7 +1329,8 @@ function M.parse_show (text)
   for p in (f[7] or ''):gmatch ('%S+') do
     commit.parents[#commit.parents + 1] = p
   end
-  return { commit = commit, files = M.parse_diff (text:sub (cut + 1)) }
+  local files, more = M.parse_diff (text:sub (cut + 1), max_lines)
+  return { commit = commit, files = files, cut = more }
 end
 
 ---@param start integer
@@ -1297,7 +1349,7 @@ end
 ---@param hunk Git.Hunk
 ---@return string?
 function M.hunk_patch (file, hunk)
-  if file.binary or file.combined then
+  if file.binary or file.combined or hunk.partial then
     return nil
   end
   local out = {} ---@type string[]
@@ -1506,7 +1558,7 @@ function M.diff_html (files, opts)
       out[#out + 1] = '<div class="git-hunk-head"><span class="git-hunk-text">'
         .. esc (h.header)
         .. '</span>'
-      if opts.buttons and not f.combined and not f.binary then
+      if opts.buttons and not f.combined and not f.binary and not h.partial then
         out[#out + 1] = '<button class="git-hunk-btn" data-item="hunk:'
           .. fi
           .. ':'
@@ -1527,7 +1579,13 @@ function M.diff_html (files, opts)
     end
     out[#out + 1] = '</div>'
   end
-  if cut then
+  if opts.cut then
+    out[#out + 1] = note (
+      'Showing the first '
+        .. M.thousands (shown)
+        .. ' lines. The rest is left out.'
+    )
+  elseif cut then
     out[#out + 1] = note (
       'Showing the first '
         .. M.thousands (max)
@@ -1683,8 +1741,32 @@ local function group_head (title, count, action, label)
     .. '</button></div>'
 end
 
+---Draws the rows of one list, up to the limit, then a Show All row.
+---@param out string[]
+---@param list Git.Entry[]
+---@param group string
+---@param opts Git.ListOptions
+local function rows_html (out, list, group, opts)
+  local limit = opts.limit or M.LIST_LIMIT
+  if opts.all and opts.all[group] then
+    limit = #list
+  end
+  for i, e in ipairs (list) do
+    if i > limit then
+      out[#out + 1] = '<div class="git-row git-more" data-item="show-all-'
+        .. group
+        .. '">Show all '
+        .. M.thousands (#list)
+        .. ' files</div>'
+      return
+    end
+    out[#out + 1] = row_html (e, opts)
+  end
+end
+
 ---The Staged and Changes lists as one HTML string. A row carries
----`data-item="open:<s|u>:<path>"` and its buttons `stage:`, `unstage:` or `discard:`.
+---`data-item="open:<s|u>:<path>"` and its buttons `stage:`, `unstage:` or `discard:`. A list
+---longer than `opts.limit` ends in a `show-all-<s|u>` row.
 ---@param st Git.Status
 ---@param opts? Git.ListOptions
 ---@return string
@@ -1694,16 +1776,12 @@ function M.changes_html (st, opts)
   if #st.staged > 0 then
     out[#out + 1] =
       group_head ('Staged', #st.staged, 'unstage-all', 'Unstage All')
-    for _, e in ipairs (st.staged) do
-      out[#out + 1] = row_html (e, opts)
-    end
+    rows_html (out, st.staged, 's', opts)
   end
   if #st.unstaged > 0 then
     out[#out + 1] =
       group_head ('Changes', #st.unstaged, 'stage-all', 'Stage All')
-    for _, e in ipairs (st.unstaged) do
-      out[#out + 1] = row_html (e, opts)
-    end
+    rows_html (out, st.unstaged, 'u', opts)
   end
   if #out == 0 then
     out[1] = '<div class="ui-empty">No changes</div>'
