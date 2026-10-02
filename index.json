@@ -211,8 +211,8 @@
         "tests/launch.test.lua",
         "tests/router.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "proteus.discord.rpc",
@@ -607,8 +607,8 @@
         "lib/server.lua",
         "tests/markup.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "view.images",
@@ -734,8 +734,8 @@
         "tests/launch.test.lua",
         "tests/schemas.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "proteus.kanban",
@@ -1306,8 +1306,8 @@
         "tests/launch.test.lua",
         "tests/venv.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "lang.react",
@@ -1708,8 +1708,8 @@
         "init.lua",
         "tests/docs.test.lua"
       ],
-      "commit": "2146da06f13601103314e53354d69266803b401f",
-      "updated": "2026-10-01T19:04:06-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "shader.library",
@@ -1899,8 +1899,8 @@
         "tests/dialect.test.lua",
         "tests/launch.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "theme.solarized",
@@ -1976,8 +1976,8 @@
         "tests/languages.test.lua",
         "tests/launch.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "c5e000d174d20548951cfa0810d9da143dacc0af",
+      "updated": "2026-10-01T22:16:12-06:00"
     },
     {
       "id": "proteus.nodal.terminal",
