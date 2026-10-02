@@ -1298,6 +1298,110 @@ function M.other_branches (branches)
 end
 
 ---------------------------------------------------------------------------------------------
+-- Conflicts
+---------------------------------------------------------------------------------------------
+
+---The commands that resolve a conflict with one side's version: `ours` is the current
+---branch's (HEAD), and `theirs` the one coming in. A side that deleted the file deletes it.
+---Each list runs in turn.
+---@param e Git.Entry
+---@param side 'ours'|'theirs'
+---@return string[][]
+function M.resolve_args (e, side)
+  local letter = side == 'ours' and e.code:sub (1, 1) or e.code:sub (2, 2)
+  if letter == 'D' then
+    return { { 'rm', '-q', '--', e.path } }
+  end
+  return {
+    { 'checkout', '--' .. side, '--', e.path },
+    { 'add', '--', e.path },
+  }
+end
+
+---Marks a conflict resolved by staging the file as it is, or its deletion when it is gone.
+---@param e Git.Entry
+---@return string[]
+function M.mark_resolved_args (e)
+  return { 'add', '-A', '--', e.path }
+end
+
+---True when text still holds a conflict marker line Git wrote.
+---@param text string
+---@return boolean
+function M.has_markers (text)
+  local at = 1
+  while true do
+    local i = text:find ('<<<<<<< ', at, true)
+    if not i then
+      return false
+    end
+    if i == 1 or text:sub (i - 1, i - 1) == '\n' then
+      return text:find ('\n=======', i, true) ~= nil
+        and text:find ('\n>>>>>>> ', i, true) ~= nil
+    end
+    at = i + 1
+  end
+end
+
+---What each side of a conflict did, in words, such as `'Both changed it'`.
+---@type table<string, string>
+local CONFLICT_TEXT = {
+  UU = 'Both sides changed this file.',
+  AA = 'Both sides added this file.',
+  DD = 'Both sides deleted this file.',
+  AU = 'The current branch added this file, and the incoming side changed it.',
+  UA = 'The incoming side added this file, and the current branch changed it.',
+  DU = 'The current branch deleted this file, and the incoming side changed it.',
+  UD = 'The incoming side deleted this file, and the current branch changed it.',
+}
+
+---The bar above a conflicted file's diff, with a button for each way to resolve it. Each
+---carries `data-item="conflict:<ours|theirs|resolved|open>"`.
+---@param e Git.Entry
+---@return string
+function M.conflict_html (e)
+  ---@param action string
+  ---@param label string
+  ---@param title string
+  ---@param primary? boolean
+  ---@return string
+  local function button (action, label, title, primary)
+    return '<button class="ui-button'
+      .. (primary and ' primary' or '')
+      .. '" data-item="conflict:'
+      .. action
+      .. '" title="'
+      .. M.escape (title)
+      .. '">'
+      .. M.escape (label)
+      .. '</button>'
+  end
+  local out = {
+    '<div class="git-conflict"><div class="git-conflict-text">',
+    M.escape (CONFLICT_TEXT[e.code] or 'This file has a conflict.'),
+    ' Edit it to keep what you want, then mark it resolved, or take one side whole.</div>',
+    '<div class="git-conflict-btns">',
+    button (
+      'ours',
+      e.code:sub (1, 1) == 'D' and 'Accept Current (delete)' or 'Accept Current',
+      "Keep the current branch's version"
+    ),
+    button (
+      'theirs',
+      e.code:sub (2, 2) == 'D' and 'Accept Incoming (delete)'
+        or 'Accept Incoming',
+      'Take the version coming in'
+    ),
+    button ('resolved', 'Mark Resolved', 'Stage the file as it is now', true),
+  }
+  if e.code ~= 'DD' and e.code:sub (1, 1) ~= 'D' then
+    out[#out + 1] = button ('open', 'Open File', 'Edit the file')
+  end
+  out[#out + 1] = '</div></div>'
+  return table.concat (out)
+end
+
+---------------------------------------------------------------------------------------------
 -- git stash
 ---------------------------------------------------------------------------------------------
 
@@ -2057,6 +2161,8 @@ local function row_html (e, opts)
   end
   if e.staged then
     tool ('unstage', 'Unstage', 'unstage')
+  elseif e.kind == 'conflicted' then
+    tool ('stage', 'Mark Resolved', 'stage')
   else
     if M.discard_args (e) then
       tool ('discard', 'Discard Changes', 'discard')
@@ -2137,10 +2243,24 @@ function M.changes_html (st, opts)
       group_head ('Staged', #st.staged, 'unstage-all', 'Unstage All')
     rows_html (out, st.staged, 's', opts)
   end
-  if #st.unstaged > 0 then
-    out[#out + 1] =
-      group_head ('Changes', #st.unstaged, 'stage-all', 'Stage All')
-    rows_html (out, st.unstaged, 'u', opts)
+  local conflicts, changes = {}, {} ---@type Git.Entry[], Git.Entry[]
+  for _, e in ipairs (st.unstaged) do
+    if e.kind == 'conflicted' then
+      conflicts[#conflicts + 1] = e
+    else
+      changes[#changes + 1] = e
+    end
+  end
+  if #conflicts > 0 then
+    out[#out + 1] = '<div class="git-group"><span class="git-group-title">Merge Changes</span>'
+      .. '<span class="ui-badge">'
+      .. #conflicts
+      .. '</span></div>'
+    rows_html (out, conflicts, 'u', opts)
+  end
+  if #changes > 0 then
+    out[#out + 1] = group_head ('Changes', #changes, 'stage-all', 'Stage All')
+    rows_html (out, changes, 'u', opts)
   end
   if #out == 0 then
     out[1] = '<div class="ui-empty">No changes</div>'

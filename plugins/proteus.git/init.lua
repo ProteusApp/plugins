@@ -57,6 +57,9 @@ local CSS = [[
   border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--warning) 12%, transparent);
   font-size: 12px; }
 .git-op-btns { display: flex; gap: 6px; }
+.git-conflict { position: sticky; left: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.git-conflict-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .git-commit-box { flex: none; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
   border-top: 1px solid var(--border); }
 .git-message { width: 100%; min-height: 64px; max-height: 40vh; resize: vertical; line-height: 1.4; }
@@ -721,7 +724,8 @@ return {
     ---@param files Git.FileDiff[]
     ---@param opts Git.DiffOptions
     ---@param key string
-    local function draw_files (files, opts, key)
+    ---@param top? string HTML above the diff.
+    local function draw_files (files, opts, key, top)
       if key == shown_key then
         return
       end
@@ -730,7 +734,7 @@ return {
       shown_files = files
       shown_staged = opts.staged == true
       shown_key = key
-      show_main (m.diff_html (files, opts), same_file)
+      show_main ((top or '') .. m.diff_html (files, opts), same_file)
     end
 
     ---@param e Git.Entry
@@ -790,7 +794,8 @@ return {
         end
         local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
         opts.cut = cut
-        draw_files (files, opts, prefix .. res.stdout)
+        local top = e.kind == 'conflicted' and m.conflict_html (e) or nil
+        draw_files (files, opts, prefix .. res.stdout, top)
       end)
     end
 
@@ -1099,6 +1104,82 @@ return {
     end
 
     -- Actions -------------------------------------------------------------------------------
+
+    ---Opens a file of the repository in the Code Editor, or else in the system's own app.
+    ---@param full string
+    local function open_file (full)
+      if embedded and editor then
+        editor.open_file (full)
+        return
+      end
+      app.system.open_path (m.native (full, app.os), function (_, err)
+        if err then
+          fail (err)
+        end
+      end)
+    end
+
+    ---Runs git commands one after another, stopping at the first that fails, then refreshes.
+    ---@param list string[][]
+    ---@param after? fun()
+    local function act_all (list, after)
+      local i = 0
+      local function step ()
+        i = i + 1
+        local args = list[i]
+        if not args then
+          if after then
+            after ()
+          end
+          refresh ()
+          return
+        end
+        git (args, nil, function (res, err)
+          if not res or res.code ~= 0 then
+            fail (m.error_text (res, err))
+            refresh ()
+            return
+          end
+          step ()
+        end)
+      end
+      step ()
+    end
+
+    ---Resolves a conflict: `ours` or `theirs` takes that side's version whole, and `resolved`
+    ---stages the file as it is, asking first when it still holds conflict markers.
+    ---@param e Git.Entry
+    ---@param how 'ours'|'theirs'|'resolved'
+    local function resolve (e, how)
+      local name = (m.split_path (e.path))
+      if how ~= 'resolved' then
+        local side = how --[[@as 'ours'|'theirs']]
+        act_all (m.resolve_args (e, side), function ()
+          done ('Resolved ' .. name .. '.')
+        end)
+        return
+      end
+      local current = repo
+      if not current then
+        return
+      end
+      local function mark ()
+        act (m.mark_resolved_args (e), nil, function ()
+          done ('Resolved ' .. name .. '.')
+        end)
+      end
+      app.fs.read_file (m.join (current, e.path), function (text)
+        if text and m.has_markers (text) then
+          confirm (
+            name .. ' still holds conflict markers. Mark it resolved anyway?',
+            'Mark Resolved',
+            mark
+          )
+        else
+          mark ()
+        end
+      end)
+    end
 
     local function pick_repo ()
       app.fs.pick_open (
@@ -1950,6 +2031,22 @@ return {
       if not item then
         return nil
       end
+      local how = item:match ('^conflict:(%a+)$')
+      if how then
+        local sel = selection
+        local e = sel
+          and sel.kind == 'file'
+          and m.find_entry (status, sel.group or '', sel.path or '')
+        local current = repo
+        if e and e.kind == 'conflicted' and current then
+          if how == 'open' then
+            open_file (m.join (current, e.path))
+          elseif how == 'ours' or how == 'theirs' or how == 'resolved' then
+            resolve (e, how)
+          end
+        end
+        return true
+      end
       local fi, hi = item:match ('^hunk:(%d+):(%d+)$')
       if fi then
         apply_hunk (
@@ -2072,21 +2169,38 @@ return {
             end,
           }
         end
+        if e.kind == 'conflicted' then
+          items = {
+            {
+              label = 'Accept Current',
+              icon = 'arrow-left',
+              run = function ()
+                resolve (e, 'ours')
+              end,
+            },
+            {
+              label = 'Accept Incoming',
+              icon = 'arrow-right',
+              run = function ()
+                resolve (e, 'theirs')
+              end,
+            },
+            {
+              label = 'Mark Resolved',
+              icon = 'check',
+              run = function ()
+                resolve (e, 'resolved')
+              end,
+            },
+          }
+        end
         items[#items + 1] = { separator = true }
         items[#items + 1] = {
           label = 'Open File',
           icon = 'file',
           disabled = e.kind == 'deleted',
           run = function ()
-            if embedded and editor then
-              editor.open_file (full)
-              return
-            end
-            app.system.open_path (m.native (full, app.os), function (_, err)
-              if err then
-                fail (err)
-              end
-            end)
+            open_file (full)
           end,
         }
         items[#items + 1] = {

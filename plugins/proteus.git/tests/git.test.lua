@@ -1461,3 +1461,60 @@ test ('other_branches leaves out the current one', function ()
     ok (n ~= 'main', n)
   end
 end)
+
+---------------------------------------------------------------------------------------------
+-- Conflicts
+---------------------------------------------------------------------------------------------
+
+test ('resolve_args takes one side whole, or deletes the file', function ()
+  local both = entry ('both.txt', 'UU', 'conflicted', false)
+  eq (m.resolve_args (both, 'ours'), {
+    { 'checkout', '--ours', '--', 'both.txt' },
+    { 'add', '--', 'both.txt' },
+  })
+  eq (
+    m.resolve_args (both, 'theirs')[1],
+    { 'checkout', '--theirs', '--', 'both.txt' }
+  )
+  local they_deleted = entry ('t.txt', 'UD', 'conflicted', false)
+  eq (m.resolve_args (they_deleted, 'theirs'), { { 'rm', '-q', '--', 't.txt' } })
+  eq (#m.resolve_args (they_deleted, 'ours'), 2)
+  local we_deleted = entry ('w.txt', 'DU', 'conflicted', false)
+  eq (m.resolve_args (we_deleted, 'ours'), { { 'rm', '-q', '--', 'w.txt' } })
+  eq (m.mark_resolved_args (both), { 'add', '-A', '--', 'both.txt' })
+end)
+
+test (
+  'has_markers finds the lines Git writes into a conflicted file',
+  function ()
+    eq (
+      m.has_markers ('a\n<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> side\nb\n'),
+      true
+    )
+    eq (m.has_markers ('<<<<<<< HEAD\nx\n=======\ny\n>>>>>>> side\n'), true)
+    eq (m.has_markers ('a\nb\n'), false)
+    -- A marker inside a line, as in this test, is not one.
+    eq (m.has_markers ('s = "<<<<<<< x"\n=======\n>>>>>>> y\n'), false)
+  end
+)
+
+test ('conflict_html offers each way to resolve the file', function ()
+  local html = m.conflict_html (entry ('both.txt', 'UU', 'conflicted', false))
+  has (html, 'Both sides changed this file.')
+  has (html, 'data-item="conflict:ours"')
+  has (html, 'data-item="conflict:theirs"')
+  has (html, 'data-item="conflict:resolved"')
+  has (html, 'data-item="conflict:open"')
+  local gone = m.conflict_html (entry ('w.txt', 'DU', 'conflicted', false))
+  has (gone, 'Accept Current (delete)')
+  lacks (gone, 'conflict:open')
+end)
+
+test ('changes_html lists conflicts in a group of their own', function ()
+  local st = m.parse_status ('## main\nUU both.txt\n M a.txt\n')
+  local html = m.changes_html (st)
+  has (html, 'Merge Changes</span><span class="ui-badge">1</span>')
+  has (html, 'Changes</span><span class="ui-badge">1</span>')
+  has (html, 'data-item="stage:u:both.txt" title="Mark Resolved"')
+  ok (html:find ('both.txt', 1, true) < html:find ('a.txt', 1, true))
+end)
