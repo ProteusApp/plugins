@@ -41,7 +41,7 @@ local EXCLUDE = {
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.0.0',
+  version = '1.1.0',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
@@ -479,6 +479,7 @@ return {
       id = 'project.recent',
       category = 'File',
       title = 'Open Recent Folder…',
+      menu_title = 'Open Recent',
       key = 'ctrl+r',
       icon = 'history',
       menu = 'File',
@@ -488,6 +489,32 @@ return {
       shared = true,
       when = function ()
         return desktop
+      end,
+      -- The menu bar lists the folders in a submenu. The key and the palette search them.
+      menu_items = function ()
+        local items = {} ---@type Proteus.MenuItem[]
+        for _, path in ipairs (recent) do
+          if not (root and disk.same (path, root, app.os)) then
+            items[#items + 1] = {
+              label = disk.name (path),
+              tooltip = disk.native (path, app.os),
+              icon = 'folder',
+              run = function ()
+                open (path)
+              end,
+            }
+          end
+        end
+        if #items == 0 then
+          items[1] = { label = 'No other folders yet', disabled = true }
+        end
+        items[#items + 1] = { separator = true }
+        items[#items + 1] = {
+          label = 'Search Recent Folders…',
+          icon = 'search',
+          run = open_recent,
+        }
+        return items
       end,
       run = open_recent,
     })
