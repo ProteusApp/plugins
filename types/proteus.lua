@@ -55,6 +55,7 @@
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
+---| 'highlight' # `app.util.highlight`, which colors code as HTML, for restricted plugins too.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -765,6 +766,18 @@ function Util.now () end
 ---Language names the code widget can color.
 ---@return string[]
 function Util.code_languages () end
+
+---Colors code as HTML, the way the code widget colors it, for code shown outside an editor.
+---`lang` is any name `code_languages` lists, a short name such as `js` or `sh`, or a language
+---a plugin added. Each colored piece is a `<span>` with a class named after the theme color
+---it takes, such as `syn-keyword`, `syn-string`, `syn-number`, `syn-constant`, `syn-comment`,
+---`syn-function`, `syn-operator`, `syn-property` and `syn-builtin`. All the text is escaped,
+---and an unknown language comes back escaped only. Every plugin may call it, restricted ones
+---too. Needs the feature `'highlight'`.
+---@param code string
+---@param lang string
+---@return string html
+function Util.highlight (code, lang) end
 
 ---Adds a language to the code widget, described as data. It goes away when the plugin stops.
 ---Returns a function that takes it away sooner. Needs the feature `'languages'`.

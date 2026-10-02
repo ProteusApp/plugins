@@ -138,6 +138,114 @@ function M.summary (res)
   return ''
 end
 
+-- The language `app.util.highlight` colors a file in, by its extension in lower case.
+---@type table<string, string>
+local LANGUAGES = {
+  lua = 'lua',
+  js = 'javascript',
+  mjs = 'javascript',
+  cjs = 'javascript',
+  jsx = 'javascript',
+  ts = 'typescript',
+  mts = 'typescript',
+  cts = 'typescript',
+  tsx = 'typescript',
+  json = 'json',
+  jsonc = 'json',
+  css = 'css',
+  scss = 'scss',
+  less = 'less',
+  sass = 'sass',
+  html = 'html',
+  htm = 'html',
+  vue = 'html',
+  svelte = 'html',
+  xml = 'xml',
+  svg = 'xml',
+  xaml = 'xml',
+  csproj = 'xml',
+  plist = 'xml',
+  md = 'markdown',
+  markdown = 'markdown',
+  yaml = 'yaml',
+  yml = 'yaml',
+  toml = 'toml',
+  ini = 'ini',
+  cfg = 'ini',
+  conf = 'ini',
+  properties = 'ini',
+  sh = 'shell',
+  bash = 'shell',
+  zsh = 'shell',
+  ps1 = 'powershell',
+  psm1 = 'powershell',
+  py = 'python',
+  pyi = 'python',
+  rs = 'rust',
+  go = 'go',
+  hs = 'haskell',
+  c = 'c',
+  h = 'c',
+  cc = 'cpp',
+  cpp = 'cpp',
+  cxx = 'cpp',
+  hpp = 'cpp',
+  hh = 'cpp',
+  cs = 'csharp',
+  java = 'java',
+  kt = 'kotlin',
+  kts = 'kotlin',
+  scala = 'scala',
+  dart = 'dart',
+  sql = 'sql',
+  rb = 'ruby',
+  swift = 'swift',
+  erl = 'erlang',
+  elm = 'elm',
+  clj = 'clojure',
+  cljs = 'clojure',
+  pl = 'perl',
+  pm = 'perl',
+  r = 'r',
+  jl = 'julia',
+  cmake = 'cmake',
+  proto = 'protobuf',
+  groovy = 'groovy',
+  gradle = 'groovy',
+  scm = 'scheme',
+  lisp = 'commonlisp',
+  ml = 'ocaml',
+  fs = 'fsharp',
+  vb = 'vb',
+}
+
+-- Files known by their whole name, in lower case, since they have no extension to go by.
+---@type table<string, string>
+local FILE_LANGUAGES = {
+  dockerfile = 'dockerfile',
+  containerfile = 'dockerfile',
+  ['cmakelists.txt'] = 'cmake',
+  gemfile = 'ruby',
+  rakefile = 'ruby',
+  ['.bashrc'] = 'shell',
+  ['.zshrc'] = 'shell',
+  ['nginx.conf'] = 'nginx',
+  ['cargo.lock'] = 'toml',
+}
+
+---The language `app.util.highlight` colors a file in, by its name or extension, or nil for a
+---file it has no colors for.
+---@param path string
+---@return string?
+function M.code_language (path)
+  local name = (path:match ('([^/\\]*)$') or ''):lower ()
+  if FILE_LANGUAGES[name] then
+    return FILE_LANGUAGES[name]
+  end
+  local ext = name:match ('%.([%w]+)$')
+  return ext and LANGUAGES[ext] or nil
+end
+
 ---True when a file could not be read because it is not text.
 ---@param err string?
 ---@return boolean

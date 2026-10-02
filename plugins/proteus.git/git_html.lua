@@ -20,6 +20,13 @@ local paths = require ('git_paths') --[[@as Git.PathsModule]]
 ---@field empty? string The text to show when there is no file.
 ---@field cut? boolean True when `parse_diff` stopped at `max_lines`, so there is more.
 ---@field split? boolean Draws the old and the new file side by side.
+---@field highlight? fun(code: string, lang: string): string Colors code as HTML, as `app.util.highlight` does. The lines stay plain when nil.
+---@field language? fun(path: string): string? The language to color a file in, or nil to leave it plain.
+
+---A piece of a line's text and the `syn-*` classes that color it, `''` for none.
+---@class Git.SyntaxRun
+---@field text string
+---@field class string
 
 ---@class Git.LogOptions
 ---@field more? boolean Ends the list in a Load More row.
@@ -271,20 +278,201 @@ local function hunk_words (h)
   return out
 end
 
----A line's text as HTML, with the changed words marked when there are any.
+---------------------------------------------------------------------------------------------
+-- Syntax colors
+---------------------------------------------------------------------------------------------
+
+---@type table<string, string>
+local ENTITIES = { amp = '&', lt = '<', gt = '>', quot = '"', apos = "'" }
+
+---Reads the entities `app.util.highlight` writes back into text, or nil for one it does not.
+---@param s string
+---@return string?
+local function unescape (s)
+  local bad = false
+  local out = s:gsub ('&(#?)([xX]?)(%w+);', function (hash, hex, name)
+    if hash == '' then
+      if hex ~= '' or not ENTITIES[name] then
+        bad = true
+        return ''
+      end
+      return ENTITIES[name]
+    end
+    local code = tonumber (name, hex ~= '' and 16 or 10)
+    if not code or code > 127 then
+      bad = true
+      return ''
+    end
+    return string.char (code)
+  end)
+  if bad then
+    return nil
+  end
+  return out
+end
+
+---Keeps the `syn-*` classes of a class list, so nothing else from the colored HTML reaches
+---the page.
+---@param list string
+---@return string
+local function syntax_class (list)
+  local keep = {} ---@type string[]
+  for word in list:gmatch ('%S+') do
+    if word:find ('^syn%-[%w%-]+$') then
+      keep[#keep + 1] = word
+    end
+  end
+  return table.concat (keep, ' ')
+end
+
+---Reads colored HTML back into its lines, each a list of runs of plain text and their
+---classes. Nil when the HTML holds anything but text and flat `<span class>` pieces.
+---@param html string
+---@return Git.SyntaxRun[][]?
+function M.syntax_lines (html)
+  local lines = { {} } ---@type Git.SyntaxRun[][]
+  ---@param class string
+  ---@param text string
+  local function add (class, text)
+    local first = true
+    for piece in (text .. '\n'):gmatch ('([^\n]*)\n') do
+      if not first then
+        lines[#lines + 1] = {}
+      end
+      first = false
+      if piece ~= '' then
+        local line = lines[#lines]
+        line[#line + 1] = { text = piece, class = class }
+      end
+    end
+  end
+  local i = 1
+  while i <= #html do
+    local _, b, class, inner =
+      html:find ('^<span class="([^"<>]*)">([^<]*)</span>', i)
+    if not b then
+      class = ''
+      _, b, inner = html:find ('^([^<]+)', i)
+    end
+    if not b then
+      return nil
+    end
+    local text = unescape (inner)
+    if not text then
+      return nil
+    end
+    add (syntax_class (class), text)
+    i = b + 1
+  end
+  return lines
+end
+
+-- The colors worked out for each hunk, so picking a line does not color it all again.
+local syntax_cache = setmetatable ({}, { __mode = 'k' }) ---@type table<Git.Hunk, { lang: string, runs: table<integer, Git.SyntaxRun[]> }>
+
+---Colors a hunk's lines in `lang`. The old side, its context and removed lines, is colored
+---as one text, and so is the new side, so a string or comment over several lines of a hunk
+---keeps its color. A line whose colored text does not match it stays plain.
+---@param h Git.Hunk
+---@param lang string
+---@param highlight fun(code: string, lang: string): string
+---@return table<integer, Git.SyntaxRun[]> by line position in the hunk
+function M.hunk_syntax (h, lang, highlight)
+  local cached = syntax_cache[h]
+  if cached and cached.lang == lang then
+    return cached.runs
+  end
+  local runs = {} ---@type table<integer, Git.SyntaxRun[]>
+  for _, skip in ipairs ({ 'add', 'del' }) do
+    local at, texts = {}, {} ---@type integer[], string[]
+    for li, l in ipairs (h.lines) do
+      if l.kind ~= skip and l.kind ~= 'meta' then
+        at[#at + 1] = li
+        texts[#texts + 1] = l.text
+      end
+    end
+    local lines = nil ---@type Git.SyntaxRun[][]?
+    if #at > 0 then
+      local ok, html = pcall (highlight, table.concat (texts, '\n'), lang)
+      lines = ok and type (html) == 'string' and M.syntax_lines (html) or nil
+    end
+    if lines then
+      for k, li in ipairs (at) do
+        local line = lines[k] or {}
+        local joined = {} ---@type string[]
+        for _, run in ipairs (line) do
+          joined[#joined + 1] = run.text
+        end
+        if table.concat (joined) == h.lines[li].text then
+          runs[li] = line
+        end
+      end
+    end
+  end
+  syntax_cache[h] = { lang = lang, runs = runs }
+  return runs
+end
+
+---A run of text as HTML, in a span with its classes when it has any.
+---@param class string
+---@param text string
+---@return string
+local function run_html (class, text)
+  if class == '' then
+    return esc (text)
+  end
+  return '<span class="' .. class .. '">' .. esc (text) .. '</span>'
+end
+
+---A line's text as HTML, colored when `runs` is given, with the changed words marked when
+---there are any. A changed word keeps its colors inside its mark.
 ---@param l Git.Line
 ---@param words? Git.Segment[]
+---@param runs? Git.SyntaxRun[]
 ---@return string
-local function code_html (l, words)
-  if not words then
-    return esc (l.text)
-  end
+local function code_html (l, words, runs)
   local out = {} ---@type string[]
+  if not runs then
+    if not words then
+      return esc (l.text)
+    end
+    for _, seg in ipairs (words) do
+      if seg.changed then
+        out[#out + 1] = '<span class="git-w">' .. esc (seg.text) .. '</span>'
+      else
+        out[#out + 1] = esc (seg.text)
+      end
+    end
+    return table.concat (out)
+  end
+  if not words then
+    for _, run in ipairs (runs) do
+      out[#out + 1] = run_html (run.class, run.text)
+    end
+    return table.concat (out)
+  end
+  -- Both lists cover the same text, so walk them together, cutting the runs at the edges of
+  -- the words.
+  local r, used = 1, 0
   for _, seg in ipairs (words) do
+    local need = #seg.text
+    local parts = {} ---@type string[]
+    while need > 0 and runs[r] do
+      local run = runs[r]
+      local take = math.min (need, #run.text - used)
+      parts[#parts + 1] =
+        run_html (run.class, run.text:sub (used + 1, used + take))
+      used, need = used + take, need - take
+      if used >= #run.text then
+        r, used = r + 1, 0
+      end
+    end
     if seg.changed then
-      out[#out + 1] = '<span class="git-w">' .. esc (seg.text) .. '</span>'
+      out[#out + 1] = '<span class="git-w">'
+        .. table.concat (parts)
+        .. '</span>'
     else
-      out[#out + 1] = esc (seg.text)
+      out[#out + 1] = table.concat (parts)
     end
   end
   return table.concat (out)
@@ -296,8 +484,9 @@ end
 ---@param pick? string
 ---@param words? Git.Segment[]
 ---@param on? boolean
+---@param runs? Git.SyntaxRun[]
 ---@return string
-local function line_html (l, pick, words, on)
+local function line_html (l, pick, words, on, runs)
   local gutter = '<span class="git-ln">'
     .. (l.old or '')
     .. '</span><span class="git-ln">'
@@ -318,7 +507,7 @@ local function line_html (l, pick, words, on)
     .. '">'
     .. gutter
     .. '<span class="git-code">'
-    .. code_html (l, words)
+    .. code_html (l, words, runs)
     .. '</span></div>'
 end
 
@@ -328,8 +517,9 @@ end
 ---@param pick? string
 ---@param words? Git.Segment[]
 ---@param on? boolean
+---@param runs? Git.SyntaxRun[]
 ---@return string
-local function half_html (l, side, pick, words, on)
+local function half_html (l, side, pick, words, on, runs)
   if not l then
     return '<div class="git-half git-half-empty"></div>'
   end
@@ -351,7 +541,7 @@ local function half_html (l, side, pick, words, on)
     .. '">'
     .. gutter
     .. '<span class="git-code">'
-    .. code_html (l, words)
+    .. code_html (l, words, runs)
     .. '</span></div>'
 end
 
@@ -425,6 +615,12 @@ function M.diff_html (files, opts)
     end
     out[#out + 1] = '<div class="git-file">'
     out[#out + 1] = file_head (f, opts)
+    local colors = opts.highlight
+    local lang = colors
+        and not f.binary
+        and opts.language
+        and opts.language (f.path)
+      or nil
     if f.binary then
       out[#out + 1] = note ('Binary file')
     elseif #f.hunks == 0 then
@@ -466,6 +662,7 @@ function M.diff_html (files, opts)
       end
       out[#out + 1] = '</div>'
       local words = f.combined and {} or hunk_words (h)
+      local syntax = (lang and colors) and M.hunk_syntax (h, lang, colors) or {}
       ---@param li integer
       ---@return string?
       local function pick_of (li)
@@ -490,14 +687,16 @@ function M.diff_html (files, opts)
               'old',
               a ~= b and a and pick_of (a) or nil,
               a and words[a],
-              a and on[a]
+              a and on[a],
+              a and syntax[a]
             )
             .. half_html (
               right,
               'new',
               a ~= b and b and pick_of (b) or nil,
               b and words[b],
-              b and on[b]
+              b and on[b],
+              b and syntax[b]
             )
             .. '</div>'
           shown = shown + ((a and b and a ~= b) and 2 or 1)
@@ -508,7 +707,8 @@ function M.diff_html (files, opts)
             cut = true
             break
           end
-          out[#out + 1] = line_html (l, pick_of (li), words[li], on[li])
+          out[#out + 1] =
+            line_html (l, pick_of (li), words[li], on[li], syntax[li])
           shown = shown + 1
         end
       end

@@ -159,6 +159,16 @@ local CSS = [[
 .git-blame-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .git-blame-day { flex: none; color: var(--fg-faint); }
 .git-l-meta .git-code { color: var(--fg-faint); font-style: italic; }
+.git-code .syn-keyword { color: var(--syn-keyword); }
+.git-code .syn-string { color: var(--syn-string); }
+.git-code .syn-number { color: var(--syn-number); }
+.git-code .syn-constant { color: var(--syn-constant); }
+.git-code .syn-comment { color: var(--syn-comment); font-style: italic; }
+.git-code .syn-function { color: var(--syn-function); }
+.git-code .syn-operator { color: var(--syn-operator); }
+.git-code .syn-property { color: var(--syn-property); }
+.git-code .syn-builtin { color: var(--syn-builtin); }
+.git-code .syn-invalid { color: var(--danger); }
 .git-note { padding: 12px 16px; color: var(--fg-muted); }
 .git-commit-view { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
 .git-commit-title { font-size: 16px; font-weight: 600; }
@@ -198,8 +208,8 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.2.1',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.3.0',
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'highlight' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
   depends = {
@@ -217,6 +227,7 @@ return {
     'proteus.ui.menus',
     'proteus.ui.tabs',
     'proteus.code.project',
+    'proteus.core.settings',
   },
   activate = function (app)
     -- The status holds full paths in the project folder, which need `files`.
@@ -256,6 +267,17 @@ return {
     local shown_staged = false
     -- Diffs show the old and the new file side by side.
     local split_view = app.store.get ('split', false) == true
+    -- Diff lines take the colors of their file's language while git.highlight is on.
+    local settings = app.try_use ('settings')
+    if settings then
+      settings.define ('git.highlight', {
+        title = 'Color diffs by language',
+        type = 'boolean',
+        default = true,
+        description = 'Colors the lines of a diff the way the code editor colors the file.',
+      })
+    end
+    local colored = not settings or settings.get ('git.highlight') ~= false
     -- The lines picked in the diff, by `'<file>:<hunk>'`, then by line position.
     local picked = {} ---@type table<string, table<integer, boolean>>
     -- How the file diff on show was drawn, to draw it again when a line is picked.
@@ -760,6 +782,25 @@ return {
       end
     end
 
+    ---The language to color a file's diff in: one Git knows by the file's name, or one a
+    ---plugin added for its extension.
+    ---@param path string
+    ---@return string?
+    local function language_of (path)
+      return m.code_language (path) or app.util.language_for (path)
+    end
+
+    ---Adds the syntax colors to a diff's options while git.highlight is on.
+    ---@param opts Git.DiffOptions
+    ---@return Git.DiffOptions
+    local function with_colors (opts)
+      if colored then
+        opts.highlight = app.util.highlight
+        opts.language = language_of
+      end
+      return opts
+    end
+
     ---Draws a diff. `key` is the file's list and path on its first line, then the diff text.
     ---The same key again draws nothing, and a new diff of the same file keeps the scroll
     ---position, so staging one hunk does not jump back to the top.
@@ -796,8 +837,7 @@ return {
       elseif e.kind == 'conflicted' then
         label = 'Conflict'
       end
-      ---@type Git.DiffOptions
-      local opts = {
+      local opts = with_colors ({
         buttons = e.kind ~= 'conflicted',
         -- A new file is staged whole: git apply cannot add part of a file Git does not know.
         lines = e.kind ~= 'conflicted' and e.kind ~= 'untracked',
@@ -805,7 +845,7 @@ return {
         label = label,
         empty = 'No changes to show.',
         split = split_view,
-      }
+      })
       local prefix = (e.staged and 's:' or 'u:')
         .. e.path
         .. (split_view and ':split' or '')
@@ -888,11 +928,14 @@ return {
         shown_files, shown_staged, shown_key = show.files, false, 'c:' .. hash
         shown_opts = nil
         local top = show.commit and m.commit_html (show.commit) or ''
-        show_main (top .. m.diff_html (show.files, {
-          empty = 'This commit changes no files.',
-          cut = show.cut,
-          split = split_view,
-        }))
+        show_main (top .. m.diff_html (
+          show.files,
+          with_colors ({
+            empty = 'This commit changes no files.',
+            cut = show.cut,
+            split = split_view,
+          })
+        ))
       end)
     end
 
@@ -919,11 +962,14 @@ return {
         local files, cut = m.parse_diff (res.stdout, m.MAX_LINES)
         shown_files, shown_staged, shown_key = files, false, 'z:' .. st.ref
         shown_opts = nil
-        show_main (m.stash_html (st) .. m.diff_html (files, {
-          empty = 'This stash holds no changes.',
-          cut = cut,
-          split = split_view,
-        }))
+        show_main (m.stash_html (st) .. m.diff_html (
+          files,
+          with_colors ({
+            empty = 'This stash holds no changes.',
+            cut = cut,
+            split = split_view,
+          })
+        ))
       end)
     end
 
@@ -2969,6 +3015,32 @@ return {
       when = has_repo,
       run = rename_branch,
     })
+    ---Draws the diff on show again, after a change to how diffs look.
+    local function redraw_diff ()
+      local sel = selection
+      if not sel then
+        return
+      end
+      if sel.kind == 'file' then
+        local e = m.find_entry (status, sel.group or '', sel.path or '')
+        if e then
+          shown_key = nil
+          show_entry (e)
+        end
+      elseif sel.kind == 'commit' and sel.hash then
+        select_commit (sel.hash)
+      elseif sel.kind == 'stash' and sel.stash then
+        show_stash (sel.stash)
+      end
+    end
+    if settings then
+      settings.watch ('git.highlight', function (value)
+        if (value ~= false) ~= colored then
+          colored = value ~= false
+          redraw_diff ()
+        end
+      end)
+    end
     commands.register ({
       id = 'git.toggle_split',
       category = 'Git',
@@ -2978,21 +3050,7 @@ return {
       run = function ()
         split_view = not split_view
         app.store.set ('split', split_view)
-        local sel = selection
-        if not sel then
-          return
-        end
-        if sel.kind == 'file' then
-          local e = m.find_entry (status, sel.group or '', sel.path or '')
-          if e then
-            shown_key = nil
-            show_entry (e)
-          end
-        elseif sel.kind == 'commit' and sel.hash then
-          select_commit (sel.hash)
-        elseif sel.kind == 'stash' and sel.stash then
-          show_stash (sel.stash)
-        end
+        redraw_diff ()
       end,
     })
     commands.register ({
