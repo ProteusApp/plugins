@@ -52,13 +52,13 @@ local CSS = [[
 .tree-mark { flex: none; display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--fg-muted); }
 .tree-row.unsaved .tree-mark { display: block; }
 .tree-badge { flex: none; font-size: 10px; font-weight: 700; width: 14px; text-align: center; color: var(--fg-faint); }
-.tree-row.git-modified .tree-name, .tree-row.git-modified .tree-badge { color: var(--warning); }
+.tree-row.git-modified .tree-name, .tree-row.git-modified .tree-badge { color: var(--diff-change, var(--warning)); }
 .tree-row.git-added .tree-name, .tree-row.git-added .tree-badge,
-.tree-row.git-untracked .tree-name, .tree-row.git-untracked .tree-badge { color: var(--success); }
-.tree-row.git-deleted .tree-name, .tree-row.git-deleted .tree-badge,
+.tree-row.git-untracked .tree-name, .tree-row.git-untracked .tree-badge { color: var(--diff-add, var(--success)); }
+.tree-row.git-deleted .tree-name, .tree-row.git-deleted .tree-badge { color: var(--diff-remove, var(--danger)); }
 .tree-row.git-conflicted .tree-name, .tree-row.git-conflicted .tree-badge { color: var(--danger); }
 .tree-row.git-renamed .tree-name, .tree-row.git-renamed .tree-badge { color: var(--accent); }
-.tree-row.git-inside .tree-badge { color: var(--warning); }
+.tree-row.git-inside .tree-badge { color: var(--diff-change, var(--warning)); }
 .tree-row.editing { position: relative; cursor: default; }
 .tree-input { flex: 1; min-width: 0; height: 20px; margin-left: 2px; padding: 0 4px; font: inherit; color: var(--fg);
   background: var(--bg); border: 1px solid var(--accent); border-radius: 3px; outline: none; }
@@ -208,7 +208,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.0.0',
+  version = '1.0.1',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
