@@ -1026,30 +1026,30 @@ function Diagnostics.all () end
 function Diagnostics.counts () end
 
 ---------------------------------------------------------------------------------------------
--- lsp (proteus.lang.luals)
+-- luals (proteus.lang.luals)
 ---------------------------------------------------------------------------------------------
 
 ---The running Lua language server.
----@class Proteus.Lsp
-local Lsp = {}
+---@class Proteus.Luals
+local Luals = {}
 
 ---@return boolean
-function Lsp.running () end
+function Luals.running () end
 
 ---Sends a request and calls `cb(result, err)` with the answer.
 ---@param method string Such as `'textDocument/hover'`.
 ---@param params table
 ---@param cb fun(result: any, err: table?)
-function Lsp.request (method, params, cb) end
+function Luals.request (method, params, cb) end
 
 ---@param method string
 ---@param params table
-function Lsp.notify (method, params) end
+function Luals.notify (method, params) end
 
 ---The `file:///` address the server uses for a workspace path.
 ---@param path string
 ---@return string?
-function Lsp.uri (path) end
+function Luals.uri (path) end
 
 ---------------------------------------------------------------------------------------------
 -- discord (proteus.discord.rpc)
@@ -1290,6 +1290,33 @@ function Project.trusted () end
 ---waits on it reads `trusted` again when it starts.
 ---@param reason? string What waits for it, such as `'Git'`.
 function Project.ask_trust (reason) end
+
+---------------------------------------------------------------------------------------------
+-- terminal (proteus.terminal)
+---------------------------------------------------------------------------------------------
+
+---What a new terminal runs and where.
+---@class Proteus.TerminalOpenOptions
+---@field cwd? string The folder it starts in, a full path. The profile's folder, the open folder or the workspace folder when nil.
+---@field profile? string The name of a profile in the `terminal.profiles` setting. The default profile when nil or unknown.
+---@field name? string The name on its tab. It keeps it, whatever the program calls itself.
+---@field split? boolean Opens it beside the active terminal, in the same tab.
+
+---The terminals in the bottom dock, from `proteus.terminal`. The service needs the `files`
+---permission, as it takes full paths.
+---@class Proteus.Terminal
+local Terminal = {}
+
+---Shows the Terminal panel and opens a terminal in it. Returns false where there are no
+---terminals, as in a browser.
+---@param opts? Proteus.TerminalOpenOptions
+---@return boolean
+function Terminal.open (opts) end
+
+---The names of the profiles a terminal can run: `''` for the default shell, then those of the
+---`terminal.profiles` setting.
+---@return string[]
+function Terminal.profiles () end
 
 ---------------------------------------------------------------------------------------------
 -- app.process (the kernel)

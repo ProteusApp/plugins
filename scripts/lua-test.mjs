@@ -119,6 +119,15 @@ function compare(declared, meta, kind) {
       problems.push(`${key} is ${JSON.stringify(list(declared[key]))} in the Lua file but ${JSON.stringify(list(meta[key]))} in proteus.json.`);
     }
   }
+  // A profile that starts from a base names the feature, so a Proteus without bases does not
+  // install it and run only half its plugins.
+  if (kind === 'profile' && declared.extends !== undefined) {
+    if (typeof declared.extends !== 'string') {
+      problems.push("extends must name a base that ships with Proteus, such as 'shell'.");
+    } else if (!list(declared.requires?.features).includes('profile-extends')) {
+      problems.push("A profile with extends needs requires = { features = { 'profile-extends' } }.");
+    }
+  }
   const req = (r) => ({ proteus: r?.proteus ?? null, features: list(r?.features) });
   if (!same(req(declared.requires), req(meta.requires))) {
     problems.push(`requires is ${JSON.stringify(req(declared.requires))} in the Lua file but ${JSON.stringify(req(meta.requires))} in proteus.json.`);
