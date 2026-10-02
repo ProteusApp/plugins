@@ -900,7 +900,7 @@
       "id": "lang.markdown",
       "name": "Markdown",
       "description": "Markdown with Marksman: completion for links and headings, go to definition and problems, and a live preview beside the code.",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "nanoqoi",
       "depends": [
         "proteus.lib.ui",
@@ -941,8 +941,8 @@
         "tests/links.test.lua",
         "tests/render.test.lua"
       ],
-      "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-      "updated": "2026-10-01T18:59:46-06:00"
+      "commit": "14f3bb2fbd5c78c266c20a2d07562ace0fd7f177",
+      "updated": "2026-10-02T05:23:15Z"
     },
     {
       "id": "code.minimap",
