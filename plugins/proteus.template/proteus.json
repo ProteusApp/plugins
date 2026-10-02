@@ -1,0 +1,38 @@
+{
+  "id": "proteus.template",
+  "name": "Plugin Template",
+  "description": "A start for a plugin of your own: a command, a setting, a panel, a service, a folder, tests and a Handbook page.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.views",
+    "proteus.core.commands",
+    "proteus.core.settings"
+  ],
+  "optional": [
+    "proteus.ui.notify"
+  ],
+  "permissions": [],
+  "folders": [
+    "template"
+  ],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "ProteusApp",
+    "id": 335861301
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "handbook/template.md",
+    "init.lua",
+    "lib/greetings.lua",
+    "tests/template.test.lua",
+    "types/template.lua"
+  ]
+}
