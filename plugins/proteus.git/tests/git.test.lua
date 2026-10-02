@@ -818,7 +818,8 @@ test (
 
 test ('command lines', function ()
   -- Paths are names, never patterns, so a file called *.log stands for itself alone.
-  eq (m.base_args (), { '--literal-pathspecs', '-c', 'core.quotepath=false' })
+  eq (m.base_args (), m.SAFE_ARGS)
+  has (table.concat (m.base_args (), ' '), '--literal-pathspecs')
   eq (m.status_args (), {
     'status',
     '--porcelain=v1',
@@ -1112,4 +1113,32 @@ test ('error_text and summary pick what Git printed', function ()
   eq (m.is_binary_error ('C:/a.png: stream did not contain valid UTF-8'), true)
   eq (m.is_binary_error ('C:/a.txt: The system cannot find the file'), false)
   eq (m.is_binary_error (nil), false)
+end)
+
+test (
+  'every git command turns off the settings that run a program unasked',
+  function ()
+    local full = m.command ({ 'status', '-z' })
+    eq (full[1], '--no-optional-locks', 'the global option comes first')
+    eq (full[#full - 1], 'status')
+    eq (full[#full], '-z')
+    local text = table.concat (full, ' ')
+    has (text, '-c core.fsmonitor=false')
+    has (text, '-c safe.bareRepository=explicit')
+    has (text, '-c protocol.ext.allow=never')
+    has (text, '-c core.quotepath=false')
+    eq (#m.command ({}), #m.SAFE_ARGS)
+  end
+)
+
+test ('a repository is trusted by its own path only', function ()
+  eq (m.folder_key ('C:\\code\\app\\', 'windows'), 'c:/code/app')
+  eq (m.folder_key ('/home/me/app/', 'linux'), '/home/me/app')
+  eq (m.folder_key ('/', 'linux'), '/')
+  local trusted = { m.folder_key ('C:/Code/App', 'windows') }
+  eq (m.is_trusted (trusted, 'c:\\code\\app', 'windows'), true)
+  eq (m.is_trusted (trusted, 'C:/Code/App/sub', 'windows'), false)
+  eq (m.is_trusted (trusted, 'C:/Code', 'windows'), false)
+  eq (m.is_trusted ({ '/home/me/App' }, '/home/me/app', 'linux'), false)
+  eq (m.is_trusted ({}, '/home/me/app', 'linux'), false)
 end)

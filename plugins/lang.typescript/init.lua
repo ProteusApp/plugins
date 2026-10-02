@@ -18,6 +18,7 @@
 --   launch    where the server's script may be
 --   edits     applies the edits the server sends back
 
+local launch = require ('lib.launch') --[[@as LangTypescript.LaunchModule]]
 local server_module = require ('lib.server') --[[@as LangTypescript.ServerModule]]
 
 -- The JSON schema for TypeScript's own settings files, from schemastore.org.
@@ -29,6 +30,7 @@ local TSCONFIG = 'https://www.schemastore.org/tsconfig.json'
 ---@field settings Proteus.Settings
 ---@field editor Proteus.Editor
 ---@field notify fun(level: 'info'|'warn'|'error', text: string) A pop-up, when ui.notify runs.
+---@field untrusted boolean True while the folder open in the Code Editor is not trusted. A program in its node_modules would run, so the server and the TypeScript come from outside it until then.
 
 ---What other plugins get from `app.use ('typescript')`.
 ---@class LangTypescript.Service
@@ -38,7 +40,7 @@ local TSCONFIG = 'https://www.schemastore.org/tsconfig.json'
 return {
   name = 'TypeScript',
   description = 'TypeScript with typescript-language-server: completion, hover help, go to definition, problems and Organize Imports, on one server that JavaScript and React files share.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server is a program it runs, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -71,6 +73,10 @@ return {
       app = app,
       settings = settings,
       editor = app.use ('editor'),
+      untrusted = launch.untrusted (
+        app.try_use ('project'),
+        app.kernel.project ()
+      ),
       notify = function (level, text)
         local n = app.try_use ('notify')
         if n then

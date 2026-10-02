@@ -22,10 +22,11 @@ local SCHEMAS = {
 return {
   name = 'JavaScript',
   description = 'JavaScript on the TypeScript language server: completion, hover help, go to definition and problems, with npm packages completed in package.json.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
-  -- npm package names and versions come from registry.npmjs.org.
-  permissions = { 'net' },
+  -- npm package names and versions come from registry.npmjs.org. Completing them reads the
+  -- package.json being edited, and a `completion` association needs `files` for that.
+  permissions = { 'net', 'files' },
   depends = { 'lang.typescript', 'proteus.core.settings', 'proteus.core.files' },
   activate = function (app)
     local settings = app.use ('settings')

@@ -77,7 +77,7 @@ local CSS = [[
 return {
   name = 'Project Plugins',
   description = "Builds Proteus plugins in the open folder's .proteus folder, for everyone who opens it.",
-  version = '1.0.0',
+  version = '1.0.1',
   -- `files` to write the folder's .proteus files on disk, and for the `project` and `editor`
   -- services. `workspace` to write them through the folder's layer while it is in use, so a new
   -- plugin starts at once. `kernel` to reload the folder's plugins and trust the folder.
@@ -198,12 +198,28 @@ return {
 
     -- Making a plugin -----------------------------------------------------------------------
 
+    ---What a plugin's commands start with: its id when the app leaves it the id's first part,
+    ---and otherwise the one part it may use, such as `zig` for `lang.zig`, since the app's own
+    ---plugins use `lang`.
+    ---@param id string
+    ---@return string
+    local function prefix (id)
+      local spaces = app.kernel.namespaces (id)
+      local first = id:match ('^[^.]+')
+      for _, space in ipairs (spaces) do
+        if space == first then
+          return id
+        end
+      end
+      return spaces[1] or id
+    end
+
     ---@param id string
     local function create (id)
       local name = id:gsub ('^%l', string.upper)
       local base = 'plugins/' .. id
       local files = {
-        [base .. '/init.lua'] = TEMPLATE:format (id, name, id, name),
+        [base .. '/init.lua'] = TEMPLATE:format (id, name, prefix (id), name),
         [base .. '/README.md'] = README:format (name, id, name),
       }
       folder.write_all (app, files, function (ok, err)
@@ -246,6 +262,11 @@ return {
         validate = function (id)
           if not id:match ('^[%a][%w_%-%.]*$') then
             return 'Start with a letter. Use letters, numbers, . _ or -'
+          end
+          if #app.kernel.namespaces (id) == 0 then
+            return 'The app uses every part of '
+              .. id
+              .. ', so the plugin could not name its commands. Start it with something else, such as team.'
           end
           for _, p in ipairs (own ()) do
             if p.id == id then
