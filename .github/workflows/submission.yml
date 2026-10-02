@@ -1,5 +1,6 @@
 # Turns a plugin or profile submission from the Proteus app into a pull request, and merges it
-# when a maintainer comments /approve on the issue.
+# when a maintainer comments /approve on the issue. An author who closes a submission withdraws
+# it, and an author's removal request becomes a pull request that deletes what they published.
 #
 # The app opens an issue holding the plugin's files as code blocks. The submit job runs when
 # that issue opens or changes, or its author comments with more of the files. The scripts
@@ -8,7 +9,7 @@ name: Plugin submission
 
 on:
   issues:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, closed]
   issue_comment:
     types: [created, edited]
 
@@ -41,6 +42,20 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/submit.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The author closed a submission, or asks to take down what they published.
+  withdraw:
+    if: >-
+      ${{ github.event_name == 'issues' && !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/withdraw.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
