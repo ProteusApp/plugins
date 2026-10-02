@@ -4008,10 +4008,13 @@
         "lib/registry.lua",
         "lib/release.lua",
         "lib/rustfmt.lua",
-        "lib/server.lua"
+        "lib/server.lua",
+        "tests/cargo_context.test.lua",
+        "tests/crates.test.lua",
+        "tests/registry.test.lua"
       ],
-      "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
-      "updated": "2026-10-02T16:53:40Z",
+      "commit": "cc191e23da291edf6e692162b89eaedefebbbfea",
+      "updated": "2026-10-02T21:46:40Z",
       "issue": 10,
       "versions": [
         {
@@ -4142,10 +4145,13 @@
             "lib/registry.lua",
             "lib/release.lua",
             "lib/rustfmt.lua",
-            "lib/server.lua"
+            "lib/server.lua",
+            "tests/cargo_context.test.lua",
+            "tests/crates.test.lua",
+            "tests/registry.test.lua"
           ],
-          "commit": "8f17ce206152c06f52eb57504735e135c6c1656b",
-          "updated": "2026-10-01T18:59:46-06:00"
+          "commit": "a3f9559f8b1afe32071dc1992fe8be1c4fceadbc",
+          "updated": "2026-10-02T06:58:05Z"
         },
         {
           "version": "1.0.3",
@@ -4784,10 +4790,11 @@
         ]
       },
       "files": [
-        "init.lua"
+        "init.lua",
+        "tests/code.test.lua"
       ],
-      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
-      "updated": "2026-10-01T17:10:33Z",
+      "commit": "a3f9559f8b1afe32071dc1992fe8be1c4fceadbc",
+      "updated": "2026-10-02T06:58:05Z",
       "versions": [
         {
           "version": "1.0.0",
@@ -6556,10 +6563,11 @@
         "lib/release.lua",
         "lib/schemas.lua",
         "lib/server.lua",
+        "tests/release.test.lua",
         "tests/schemas.test.lua"
       ],
-      "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
-      "updated": "2026-10-02T16:53:40Z",
+      "commit": "7594db1cc33e842b97834962b5c8593908e75962",
+      "updated": "2026-10-02T21:47:22Z",
       "issue": 11,
       "versions": [
         {
@@ -6634,10 +6642,12 @@
             "lib/release.lua",
             "lib/schemas.lua",
             "lib/server.lua",
+            "tests/format.test.lua",
+            "tests/release.test.lua",
             "tests/schemas.test.lua"
           ],
-          "commit": "d0527a423e267b5f11765af3066a49932e852897",
-          "updated": "2026-10-01T22:26:33-06:00"
+          "commit": "a3f9559f8b1afe32071dc1992fe8be1c4fceadbc",
+          "updated": "2026-10-02T06:58:05Z"
         },
         {
           "version": "1.0.2",
