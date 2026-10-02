@@ -1,0 +1,11 @@
+# What the app trusts beyond each plugin's own folder: the index it installs from, the ids it
+# keeps, and the workflows and scripts that write and check them. A ruleset on main that
+# requires review from code owners holds every change to these to a maintainer's review.
+/index.json @nanoqoi
+/removed.json @nanoqoi
+/reserved.json @nanoqoi
+/.github/ @nanoqoi
+/scripts/ @nanoqoi
+/test/ @nanoqoi
+/package.json @nanoqoi
+/package-lock.json @nanoqoi
