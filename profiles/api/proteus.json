@@ -2,26 +2,19 @@
   "id": "api",
   "name": "API Client",
   "description": "Send HTTP requests, save them, and read the answers.",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "kind": "profile",
   "plugins": [
-    "proteus.theme.daylight",
-    "proteus.theme.midnight",
-    "proteus.theme.retro",
-    "proteus.core.keys",
-    "proteus.ui.menus",
     "proteus.ui.toolbar",
-    "proteus.ui.statusbar",
-    "proteus.ui.views",
-    "proteus.ui.palette",
-    "proteus.ui.notify",
-    "proteus.core.profiles",
+    "proteus.marketplace",
     "proteus.api",
     "proteus.discord.rpc"
   ],
   "requires": {
-    "proteus": ">=0.3.0",
-    "features": []
+    "proteus": ">=0.3.1",
+    "features": [
+      "profile-extends"
+    ]
   },
   "author": {
     "login": "ProteusApp",

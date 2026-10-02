@@ -31,3 +31,8 @@ globals:
   load_plugin:
     args:
       - type: string
+  shader_check:
+    args:
+      - type: string
+      - type: string
+      - type: string

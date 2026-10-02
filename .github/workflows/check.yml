@@ -1,6 +1,11 @@
 # Holds every pull request to the registry's rules, including plugins added by hand, and runs
 # the tests of the registry's own scripts and of every plugin.
 #
+# GitHub starts no workflow for a pull request the submission workflow opens with its own
+# token, so submit.mjs starts this one on the submission's branch through workflow_dispatch.
+# /approve merges only once this job, `check`, has passed on the commit it names. A ruleset
+# on main that requires `check` holds a merge by hand to it too.
+#
 # A pull request's code runs here: plugins' tests, and their init.lua to read what it declares.
 # So the job gets a read-only token, keeps no credentials in the checkout, and uses no secrets.
 # The lint tools are pinned releases, checked against their SHA-256 before they run.
@@ -10,6 +15,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,14 +34,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # The whole history, so each entry of index.json can be checked against it.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
       - name: The registry's rules
         run: node scripts/check.mjs
+      - name: A pull request leaves index.json to the index workflow
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --quiet HEAD^1 HEAD -- index.json; then
+            echo "This pull request changes index.json. The index workflow writes it after a merge, so leave it out."
+            exit 1
+          fi
+      - name: Every entry in index.json names an approved commit
+        run: node scripts/index.mjs --verify
       - name: The registry's scripts
-        run: node --test
+        run: node --test "test/*.test.mjs"
       # The app's repository is private and this job has no secrets, so there is no app
       # checkout here: the contracts, and the tests that need the app's lib/, say they skip.
       - name: What each plugin declares, each plugin's tests, and the contracts
@@ -70,3 +87,23 @@ jobs:
           echo "$RUNNER_TEMP/luals/bin" >> "$GITHUB_PATH"
       - name: Lua types, against the app's types in types/
         run: node scripts/luals.mjs
+      # Shader code from the Shader Builder's compiler and examples goes through real compilers:
+      # glslangValidator for GLSL ES and naga for WGSL. Tests reach them through shader_check.
+      - name: Cache naga
+        id: naga
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/naga
+          key: naga-cli-30.0.1-${{ runner.os }}
+      - name: Install glslang and naga
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends glslang-tools
+          if [ ! -x "$HOME/.cargo/bin/naga" ]; then
+            cargo install naga-cli --version 30.0.1 --locked
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Shaders compile
+        env:
+          SHADER_TOOLS: required
+        run: node scripts/lua-test.mjs shader

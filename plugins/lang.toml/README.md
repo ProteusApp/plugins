@@ -27,6 +27,8 @@ app.use ('files').associate ({
 
 List `core.files` in the plugin's `depends`. `lang.rust` does this for `Cargo.toml` and Rust's other TOML files.
 
+Taplo fetches the schema's address, so it takes a schema only from a plugin that ships with Proteus or has the `net` permission. The Taplo log names each schema it left out.
+
 ## Settings
 
 | Setting | Default | What it does |

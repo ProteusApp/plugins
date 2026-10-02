@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import { submit } from '../scripts/submit.mjs';
 import { fakeGitHub } from './fake-github.mjs';
 
@@ -116,6 +117,23 @@ test('a plugin that belongs to someone else is refused before anything is writte
   assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /belongs to @bob/.test(c.body.body)));
 });
 
+test('a taken-down id is refused to anyone but its owner', async () => {
+  const gone = { ...checkout, removed: (id, kind) => (id === 'hello.world' && kind === 'plugin' ? { login: 'bob', id: 2 } : null) };
+  const gh = fakeGitHub(world());
+  assert.equal(await submit({ api: gh.api, event: opened(), repo: REPO, checkout: gone }), 'refused');
+  assert.equal(gh.did('POST', '/git'), false);
+  assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /taken down, and its id stays with @bob/.test(c.body.body)));
+  const mine = { ...checkout, removed: () => ({ login: 'ann', id: 1 }) };
+  assert.equal(await submit({ api: gh.api, event: opened(), repo: REPO, checkout: mine }), 'opened');
+});
+
+test('a new version starts the check on its branch and says which commit to approve', async () => {
+  const gh = fakeGitHub(world());
+  await submit({ api: gh.api, event: opened(), repo: REPO, checkout });
+  assert.deepEqual(gh.find('POST', '/actions/workflows/check.yml/dispatches')[0].body, { ref: 'submission/7' });
+  assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /`\/approve new1`/.test(c.body.body)));
+});
+
 test('an issue still missing a file waits', async () => {
   const event = opened();
   event.issue.body = SAMPLE.replace(/<details><summary><code>lib\/util\.lua[\s\S]*$/, '');
@@ -167,4 +185,59 @@ test('a profile submission writes to profiles/<id>', async () => {
   const paths = gh.find('POST', '/git/trees')[0].body.tree.map((e) => e.path).sort();
   assert.deepEqual(paths, ['profiles/writer/profile.lua', 'profiles/writer/proteus.json']);
   assert.match(gh.find('POST', '/pulls')[0].body.title, /^Add profile Writer \(writer\) 1\.0\.0$/);
+});
+
+/** A whole PNG of one see-through pixel. */
+function png() {
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([head, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0);
+  header.writeUInt32BE(1, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.alloc(5))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('a PNG goes to GitHub as base64 bytes, and text as UTF-8', async () => {
+  const fence = '```';
+  const event = opened();
+  event.issue.body = [
+    '<!-- proteus-manifest -->',
+    `${fence}json`,
+    JSON.stringify({
+      format: 2,
+      id: 'hello.world',
+      name: 'Hello',
+      description: 'Says hello.',
+      version: '1.0.0',
+      files: ['init.lua', 'sheet.png'],
+      requires: { features: ['png'] },
+    }),
+    fence,
+    '<!-- proteus-file path="init.lua" part="1" of="1" -->',
+    `${fence}lua`,
+    'return {}',
+    fence,
+    '<!-- proteus-file path="sheet.png" part="1" of="1" -->',
+    `${fence}base64`,
+    png().toString('base64'),
+    fence,
+  ].join('\n');
+  const gh = fakeGitHub(world());
+  assert.equal(await submit({ api: gh.api, event, repo: REPO, checkout }), 'opened');
+  const blobs = gh.find('POST', '/git/blobs').map((c) => c.body);
+  assert.deepEqual(blobs[0], { content: 'return {}', encoding: 'utf-8' });
+  assert.deepEqual(blobs[1], { content: png().toString('base64'), encoding: 'base64' });
 });

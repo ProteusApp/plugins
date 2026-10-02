@@ -2,23 +2,12 @@
   "id": "code",
   "name": "Code Editor",
   "description": "Open a project folder: edit, search, run a terminal, and commit to Git.",
-  "version": "1.0.1",
+  "version": "1.1.1",
   "kind": "profile",
   "plugins": [
-    "proteus.theme.midnight",
-    "proteus.theme.daylight",
-    "proteus.theme.retro",
-    "proteus.core.keys",
-    "proteus.ui.menus",
     "proteus.ui.menubar",
     "proteus.ui.toolbar",
-    "proteus.ui.statusbar",
-    "proteus.ui.views",
     "proteus.ui.tabs",
-    "proteus.ui.palette",
-    "proteus.ui.notify",
-    "proteus.ui.settings",
-    "proteus.core.profiles",
     "proteus.marketplace",
     "proteus.core.files",
     "proteus.code.project",
@@ -31,11 +20,17 @@
     "proteus.code.plugins",
     "proteus.tools.registry",
     "proteus.lang.prettier",
+    "proteus.tools.diagnostics",
+    "proteus.lang.luals",
+    "proteus.lang.stylua",
+    "proteus.lang.selene",
     "proteus.discord.rpc"
   ],
   "requires": {
-    "proteus": ">=0.3.0",
-    "features": []
+    "proteus": ">=0.3.1",
+    "features": [
+      "profile-extends"
+    ]
   },
   "author": {
     "login": "ProteusApp",

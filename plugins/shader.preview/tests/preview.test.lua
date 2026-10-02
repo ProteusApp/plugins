@@ -1,6 +1,7 @@
--- The live preview: what it sends its page, and how the page's compiler errors come back as
--- lines of the user's text or nodes of a graph, against a fake UI library and shader.docs.
+-- The preview sends the page every pass of the shader in front, with what each channel shows,
+-- sends each image a channel shows once, and names what went wrong by pass.
 
+---Loads a module of shader.core the way its own `require` does.
 ---@type table<string, any>
 local loaded = {}
 ---@param name string
@@ -22,105 +23,127 @@ local function core_require (name)
   return loaded[name]
 end
 
----@class PreviewTest.El
----@field kind string
----@field props table
----@field calls any[][]
----@field widget? fun(self: PreviewTest.El, method: string, message: table)
+---@type Shader.Core
+local core = {
+  types = core_require ('shader_types'),
+  nodes = core_require ('shader_nodes'),
+  helpers = core_require ('shader_helpers'),
+  graph = core_require ('shader_graph'),
+  compile = core_require ('shader_compile'),
+  layout = core_require ('shader_layout'),
+  source = core_require ('shader_source'),
+  passes = core_require ('shader_passes'),
+  file = core_require ('shader_file'),
+  format = core_require ('shader_format'),
+  history = core_require ('shader_history'),
+  examples = core_require ('shader_examples'),
+  build = core_require ('shader_build'),
+}
+
+---@param path string
+---@return Proteus.Plugin
+local function plugin (path)
+  return assert (load (read (path), '@' .. path, 't')) () --[[@as Proteus.Plugin]]
+end
 
 ---@class PreviewTest.Run
----@field els PreviewTest.El[]
----@field posted table[] What the dock's page was sent.
----@field emitted any[][] Each app.emit, as `{ event, ... }`.
----@field status string[] What the status bar item showed.
----@field commands table<string, Proteus.CommandSpec>
----@field page PreviewTest.El The dock's web view.
----@field emit fun(event: string, ...: any)
+---@field files table<string, string>
+---@field docs Shader.Docs
+---@field posts table[] What the page was sent.
+---@field sent table[] Each `send_file`: the grant and its tag.
+---@field picked? table The options of the last image dialog.
+---@field answer fun(grants: Proteus.FileGrant[]?) Answers the image dialog.
+---@field page fun(message: table) A message from the page.
+---@field elements table[] Every element the preview made, with its tag and spec.
 ---@field flush fun()
----@field active? table
----@field programs table<string, table> What docs.program gives by path.
 
----@param kind string
----@param props? table
----@return PreviewTest.El
-local function element (kind, props)
-  local el = { kind = kind, props = props or {}, calls = {} }
-  return setmetatable (el, {
+---A stand-in element: every method does nothing and returns the element.
+---@param tag string
+---@param spec any
+---@param run PreviewTest.Run
+---@param on_widget? fun(method: string, ...: any)
+---@return table
+local function element (tag, spec, run, on_widget)
+  local e = { tag = tag, spec = type (spec) == 'table' and spec or {} }
+  run.elements[#run.elements + 1] = e
+  return setmetatable (e, {
     __index = function (_, method)
       return function (self, ...)
-        self.calls[#self.calls + 1] = { method, ... }
+        if method == 'widget' and on_widget then
+          on_widget (...)
+        end
+        return self
       end
     end,
   })
 end
 
+---Starts shader.docs and shader.preview on an app that keeps its files in a table.
 ---@return PreviewTest.Run
 local function start ()
-  local state = {
-    els = {},
-    posted = {},
-    emitted = {},
-    status = {},
-    commands = {},
-    programs = {},
-  }
-  local run = state --[[@as PreviewTest.Run]]
+  local run = { files = {}, posts = {}, sent = {}, elements = {} } ---@type PreviewTest.Run
   local handlers = {} ---@type table<string, function[]>
   local timers = {} ---@type function[]
-  ---@param kind string
-  ---@return fun(props?: table): PreviewTest.El
-  local function maker (kind)
-    return function (props)
-      local el = element (kind, type (props) == 'table' and props or {})
-      run.els[#run.els + 1] = el
-      if kind == 'webview' and not run.page then
-        run.page = el
-        el.widget = function (_, method, message)
-          if method == 'post' then
-            run.posted[#run.posted + 1] = message
-          end
-        end
-      end
-      return el
+  local store = { examples = true, open = {} } ---@type table<string, any>
+  local services = {} ---@type table<string, any>
+  local answer ---@type fun(grants: Proteus.FileGrant[]?)?
+  run.flush = function ()
+    while #timers > 0 do
+      table.remove (timers, 1) ()
     end
   end
-  local ui = setmetatable ({ css = function () end }, {
-    __index = function (_, name)
-      return maker (name)
+  run.answer = function (grants)
+    assert (answer, 'no dialog is open') (grants)
+  end
+
+  local ui = setmetatable ({
+    css = function () end,
+    h = function (tag, spec)
+      return element (tag, spec, run)
+    end,
+    webview = function (opts)
+      run.page = function (message)
+        opts.on_message (message)
+      end
+      return element ('webview', opts, run, function (method, a, b)
+        if method == 'post' then
+          run.posts[#run.posts + 1] = a
+        elseif method == 'send_file' then
+          run.sent[#run.sent + 1] = { a, b }
+        end
+      end)
+    end,
+  }, {
+    __index = function (_, tag)
+      return function (spec)
+        return element (tag, spec, run)
+      end
     end,
   })
-  local docs = {
-    active = function ()
-      return run.active
+  services.ui = ui
+  services.shader = core
+  services.tabs = {
+    open = function ()
+      return {
+        set_title = function () end,
+        set_dirty = function () end,
+        focus = function () end,
+        close = function () end,
+      }
     end,
-    get = function (path)
-      return run.active and run.active.path == path and run.active or nil
-    end,
-    program = function (path)
-      return run.programs[path], {}
-    end,
-    set_uniform = function () end,
+    get = function () end,
   }
-  local services = {
-    ui = ui,
-    shader = { format = core_require ('shader_format') },
-    ['shader.docs'] = docs,
-    views = { add = function () end, show = function () end },
-    commands = {
-      register = function (spec)
-        run.commands[spec.id] = spec
-      end,
-    },
-    status = {
-      add = function ()
-        return {
-          set = function (text)
-            run.status[#run.status + 1] = text
-          end,
-        }
-      end,
-    },
+  services.commands = {
+    register = function () end,
+    run = function () end,
   }
+  services.views = { add = function () end, show = function () end }
+
+  local function emit (event, ...)
+    for _, fn in ipairs (handlers[event] or {}) do
+      fn (...)
+    end
+  end
   local app = {
     use = function (name)
       return assert (services[name], name)
@@ -128,221 +151,285 @@ local function start ()
     try_use = function (name)
       return services[name]
     end,
+    provide = function (name, value)
+      services[name] = value
+    end,
     on = function (event, fn)
       handlers[event] = handlers[event] or {}
       table.insert (handlers[event], fn)
     end,
-    emit = function (event, ...)
-      run.emitted[#run.emitted + 1] = { event, ... }
-    end,
+    emit = emit,
+    log = function () end,
+    warn = function () end,
+    store = {
+      get = function (key, default)
+        if store[key] == nil then
+          return default
+        end
+        return store[key]
+      end,
+      set = function (key, value)
+        store[key] = value
+      end,
+    },
     timer = {
       after = function (_, fn)
         timers[#timers + 1] = fn
       end,
     },
-    store = {
-      get = function (_, default)
-        return default
-      end,
-      set = function () end,
-    },
     util = {
-      escape = function (s)
-        return tostring (s)
+      now = function ()
+        return 0
+      end,
+    },
+    dom = {
+      focus_info = function ()
+        return { editable = false }
+      end,
+    },
+    plugin = {
+      list = function ()
+        return {}
+      end,
+    },
+    grants = {
+      open = function (opts, cb)
+        run.picked = opts
+        answer = cb
+      end,
+    },
+    fs = {
+      read = function (path)
+        return run.files[path]
+      end,
+      write = function (path, text)
+        run.files[path] = text
+        emit ('fs:changed', path)
+      end,
+      exists = function (path)
+        return run.files[path] ~= nil
+      end,
+      files = function ()
+        local out = {} ---@type string[]
+        for path in pairs (run.files) do
+          out[#out + 1] = path
+        end
+        return out
       end,
     },
   }
-  run.emit = function (event, ...)
-    for _, fn in ipairs (handlers[event] or {}) do
-      fn (...)
-    end
-  end
-  run.flush = function ()
-    while #timers > 0 do
-      table.remove (timers, 1) ()
-    end
-  end
-  local plugin = assert (
-    load (read ('plugins/shader.preview/init.lua'), '@shader.preview', 't')
-  ) () --[[@as Proteus.Plugin]]
-  plugin.activate (app --[[@as Proteus.App]])
+  -- selene: allow(mixed_table)
+  plugin ('plugins/shader.docs/init.lua').activate (app --[[@as any]])
+  run.docs = services['shader.docs']
+  run.docs.register_opener ('graph', function ()
+    return {} --[[@as Proteus.El]]
+  end)
+  run.docs.register_opener ('code', function ()
+    return {} --[[@as Proteus.El]]
+  end)
+  -- selene: allow(mixed_table)
+  plugin ('plugins/shader.preview/init.lua').activate (app --[[@as any]])
+  run.flush ()
   return run
 end
 
----The posts of one type.
+---The last run message the page got.
 ---@param run PreviewTest.Run
----@param kind string
----@return table[]
-local function posts (run, kind)
-  local out = {} ---@type table[]
-  for _, m in ipairs (run.posted) do
-    if m.type == kind then
-      out[#out + 1] = m
+---@return table?
+local function last_run (run)
+  for i = #run.posts, 1, -1 do
+    if run.posts[i].type == 'run' then
+      return run.posts[i]
     end
+  end
+  return nil
+end
+
+---The ids of a run's passes, in order.
+---@param message table
+---@return string[]
+local function ids (message)
+  local out = {} ---@type string[]
+  for i, p in ipairs (message.passes) do
+    out[i] = p.id
   end
   return out
 end
 
----The problems the dock last sent the code editor.
+---The menu of what a channel shows.
 ---@param run PreviewTest.Run
----@return table[]?
-local function last_problems (run)
-  local found ---@type table[]?
-  for _, e in ipairs (run.emitted) do
-    if e[1] == 'shader:problems' then
-      found = e[3]
+---@param index integer
+---@return table?
+local function channel_menu (run, index)
+  for i = #run.elements, 1, -1 do
+    local e = run.elements[i]
+    if
+      e.tag == 'select'
+      and e.spec.title == 'What iChannel' .. index .. ' shows'
+    then
+      return e
     end
   end
-  return found
+  return nil
 end
 
-local CODE = { path = 'shaders/a.frag', kind = 'code', language = 'glsl' }
+local IMAGE = 'shaders/ink.frag'
+local BUFFER = 'shaders/ink.buffer-a.frag'
 
----A code shader of 10 lines, after 3 lines the app adds.
----@return table
-local function code_program ()
-  return {
-    language = 'glsl',
-    source = 'SOURCE',
-    offset = 3,
-    user_lines = 10,
-    uniforms = {
+---@param run PreviewTest.Run
+local function ink (run)
+  run.files[IMAGE] =
+    '// @channel 0 buffer-a\nvoid mainImage(out vec4 c, in vec2 f) {\n  c = texture(iChannel0, f / iResolution.xy) + texture(iChannel1, vec2(0.0));\n}\n'
+  run.files[BUFFER] =
+    core.source.TEMPLATES.buffer:gsub ('{{BUFFER}}', 'buffer-a') --[[@as string]]
+end
+
+test (
+  'the page runs each buffer before the image, with what each channel shows',
+  function ()
+    local run = start ()
+    ink (run)
+    assert (run.docs.open (IMAGE))
+    run.flush ()
+    local message = assert (last_run (run))
+    eq (message.language, 'glsl')
+    eq (message.show, 'image')
+    eq (ids (message), { 'a', 'image' })
+    local image = message.passes[2].program
+    eq (image.channels[1].source, { kind = 'buffer', buffer = 'a' })
+    eq (image.channels[2].source, { kind = 'none' })
+    eq (message.passes[1].program.channels[1].source, {
+      kind = 'buffer',
+      buffer = 'a',
+    })
+
+    -- A buffer in front shows its own picture, and the image does not run.
+    assert (run.docs.open (BUFFER))
+    run.flush ()
+    message = assert (last_run (run))
+    eq (message.show, 'a')
+    eq (ids (message), { 'a' })
+  end
+)
+
+test ('a pick in the Channels menu runs the shader again', function ()
+  local run = start ()
+  ink (run)
+  assert (run.docs.open (IMAGE))
+  run.flush ()
+  local before = #run.posts
+  local menu = assert (channel_menu (run, 1), 'iChannel1 has a menu')
+  menu.spec.onchange ({ value = 'noise' })
+  run.flush ()
+  ok (#run.posts > before)
+  local message = assert (last_run (run))
+  eq (message.passes[2].program.channels[2].source, { kind = 'noise' })
+  eq (run.docs.channels (IMAGE)[1], { kind = 'noise' })
+end)
+
+test (
+  'an image is picked through a dialog and sent to the page once',
+  function ()
+    local run = start ()
+    ink (run)
+    assert (run.docs.open (IMAGE))
+    run.flush ()
+    assert (channel_menu (run, 1)).spec.onchange ({ value = 'image' })
+    run.flush ()
+    local picked = assert (run.picked, 'a dialog opened')
+    eq (picked.filters[1].name, 'Images')
+    run.answer ({ { id = 'f7', name = 'wood.png', mode = 'read' } })
+    run.flush ()
+    eq (
+      run.docs.channels (IMAGE)[1],
+      { kind = 'image', grant = 'f7', name = 'wood.png' }
+    )
+    eq (run.sent, { { 'f7', 'f7' } })
+    -- Another change does not send it again.
+    run.docs.set_uniform (IMAGE, 'x', { 1 })
+    run.docs.set_text (IMAGE, run.files[IMAGE] .. '\n')
+    run.flush ()
+    eq (#run.sent, 1)
+    -- A file the page could not use shows as a problem until it is picked again.
+    run.page ({
+      type = 'file',
+      grant = 'f7',
+      name = 'wood.png',
+      error = 'not allowed',
+    })
+    run.flush ()
+    local found = false
+    for _, e in ipairs (run.elements) do
+      if
+        e.tag == 'span'
+        and type (e.spec[1]) == 'string'
+        and e.spec[1]:find (
+          'wood.png, which did not arrive: not allowed',
+          1,
+          true
+        )
+      then
+        found = true
+      end
+    end
+    ok (found, 'the problem names the file')
+    assert (channel_menu (run, 1)).spec.onchange ({ value = 'image' })
+    run.answer ({ { id = 'f7', name = 'wood.png', mode = 'read' } })
+    run.flush ()
+    eq (#run.sent, 2, 'picking it again sends it again')
+  end
+)
+
+test (
+  'a buffer in another language is a problem, and the rest still runs',
+  function ()
+    local run = start ()
+    ink (run)
+    run.files['shaders/ink.buffer-b.wgsl'] = core.source.TEMPLATES.wgsl
+    assert (run.docs.open (IMAGE))
+    run.flush ()
+    eq (ids (assert (last_run (run))), { 'a', 'image' })
+    -- The problems show once the page has compiled.
+    run.page ({ type = 'status', ok = true, errors = {} })
+    local found = false
+    for _, e in ipairs (run.elements) do
+      if
+        e.tag == 'span'
+        and e.spec[1]
+          == 'Buffer B is WGSL, and this shader runs GLSL. Every pass runs in one language.'
+      then
+        found = true
+      end
+    end
+    ok (found)
+  end
+)
+
+test ('the page names the pass a problem is in', function ()
+  local run = start ()
+  ink (run)
+  assert (run.docs.open (IMAGE))
+  run.flush ()
+  run.page ({
+    type = 'status',
+    ok = false,
+    errors = {
       {
-        key = 'speed',
-        glsl = 'u_speed',
-        type = 'float',
-        value = { 1 },
-        min = 0,
-        max = 4,
-        color = false,
+        pass = 'a',
+        line = 12,
+        message = 'x: undeclared',
+        stage = 'fragment',
+        severity = 'error',
       },
     },
-  }
-end
-
-test (
-  'the page is sent the shader in front, and only again when its code changes',
-  function ()
-    local run = start ()
-    run.active = CODE
-    run.programs[CODE.path] = code_program ()
-    run.flush ()
-    eq (posts (run, 'scale'), { { type = 'scale', scale = 1 } })
-    local runs = posts (run, 'run')
-    eq (#runs, 1)
-    eq (runs[1].program.source, 'SOURCE')
-    eq (
-      runs[1].program.uniforms,
-      { { key = 'speed', glsl = 'u_speed', type = 'float', value = { 1 } } }
-    )
-    run.emit ('shader:changed', CODE.path)
-    run.flush ()
-    eq (#posts (run, 'run'), 1, 'the same code runs on')
-    eq (
-      posts (run, 'uniform'),
-      { { type = 'uniform', key = 'speed', value = { 1 } } }
-    )
-  end
-)
-
-test ("the page's errors come back as lines of the user's text", function ()
-  local run = start ()
-  run.active = CODE
-  run.programs[CODE.path] = code_program ()
-  run.flush ()
-  run.page.props.on_message ({
-    type = 'status',
-    errors = {
-      { message = 'past the end', line = 20 },
-      { message = 'undeclared x', line = 5, column = 2 },
-      { message = 'in the added lines', line = 2 },
-      'not an error',
-    },
   })
-  eq (last_problems (run), {
-    { message = 'undeclared x', line = 2, column = 2, stage = 'fragment' },
-  })
-end)
-
-test ("a graph's errors point at the node that wrote the line", function ()
-  local run = start ()
-  local graph =
-    { path = 'shaders/g.shader.json', kind = 'graph', language = 'glsl' }
-  run.active = graph
-  local p = code_program ()
-  p.lines = { [6] = 'noise1' }
-  run.programs[graph.path] = p
-  run.flush ()
-  run.page.props.on_message ({
-    type = 'status',
-    errors = { { message = 'bad', line = 6 } },
-  })
-  eq (last_problems (run), {}, 'a graph has no lines to mark')
-  local shown = false
-  for _, el in ipairs (run.els) do
-    if
-      el.kind == 'span'
-      and el.props.class == 'where'
-      and el.props[1] == 'node noise1'
-    then
-      shown = true
+  local where = nil ---@type string?
+  for i = #run.elements, 1, -1 do
+    local e = run.elements[i]
+    if e.tag == 'span' and e.spec.class == 'where' and not where then
+      where = e.spec[1]
     end
   end
-  ok (shown, 'the problem names the node')
-end)
-
-test ('a page that stops answering is a problem', function ()
-  local run = start ()
-  run.active = CODE
-  run.programs[CODE.path] = code_program ()
-  run.flush ()
-  run.page.props.on_status ({ responsive = false })
-  local said = false
-  for _, el in ipairs (run.els) do
-    if
-      el.kind == 'span' and el.props[1] == 'The preview stopped answering.'
-    then
-      said = true
-    end
-  end
-  ok (said)
-end)
-
-test ('the frame rate shows in the status bar', function ()
-  local run = start ()
-  run.page.props.on_message ({ type = 'stats', fps = 59.6, time = 1.25 })
-  eq (run.status, { '60 fps' })
-end)
-
-test (
-  'pause and play reach the page, and a control moves only the shader in front',
-  function ()
-    local run = start ()
-    run.active = CODE
-    run.programs[CODE.path] = code_program ()
-    run.flush ()
-    run.commands['shader.toggle_play'].run ()
-    run.commands['shader.toggle_play'].run ()
-    eq (#posts (run, 'pause'), 1)
-    eq (#posts (run, 'play'), 1)
-    run.emit ('shader:uniform', 'shaders/other.frag', 'speed', { 2 })
-    run.emit ('shader:uniform', CODE.path, 'speed', { 3 })
-    eq (
-      posts (run, 'uniform'),
-      { { type = 'uniform', key = 'speed', value = { 3 } } }
-    )
-  end
-)
-
-test ('with no shader in front there is nothing to run', function ()
-  local run = start ()
-  run.flush ()
-  eq (posts (run, 'run'), {})
-  local said = false
-  for _, el in ipairs (run.els) do
-    if el.kind == 'div' and el.props[1] == 'Open a shader to see it run.' then
-      said = true
-    end
-  end
-  ok (said)
+  -- The short buffer gets seven lines above it, so line 12 is its line 5.
+  eq (where, 'Buffer A line 5')
 end)

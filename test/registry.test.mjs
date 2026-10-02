@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import {
   LABEL,
+  approvedCommit,
   branchFor,
   buildIndex,
   canApprove,
@@ -10,6 +12,10 @@ import {
   commandOf,
   compareVersions,
   folderFor,
+  imageProblem,
+  historyOf,
+  indexProblems,
+  MAX_VERSIONS,
   isSubmission,
   kindOf,
   manifestFor,
@@ -18,6 +24,7 @@ import {
   vendorOf,
   sha256,
   pullRequestBody,
+  RESERVED_FOLDERS,
   validate,
 } from '../scripts/registry.mjs';
 
@@ -196,13 +203,23 @@ test('textProblem takes readable text only', () => {
 
 test('validate checks permissions, folders and requires', () => {
   const problems = validate(
-    good({ permissions: ['net', 'root'], folders: ['shaders', 'plugins', '../x'], requires: { proteus: '~>1' } }),
+    good({
+      permissions: ['net', 'root'],
+      folders: ['shaders', 'plugins', '../x'],
+      requires: { proteus: '~>1' },
+      files: { 'init.lua': "return { permissions = { 'net', 'root' } }" },
+    }),
     { reserved },
   );
   assert.equal(problems.length, 4, problems.join('\n'));
   assert.deepEqual(
     validate(
-      good({ permissions: ['net'], folders: ['shaders'], requires: { proteus: '>=0.2.0 <1', features: ['webview'] } }),
+      good({
+        permissions: ['net'],
+        folders: ['shaders'],
+        requires: { proteus: '>=0.2.0 <1', features: ['webview'] },
+        files: { 'init.lua': "return { permissions = { 'net' } }" },
+      }),
       { reserved },
     ),
     [],
@@ -227,10 +244,81 @@ test('manifestFor and buildIndex carry permissions, folders and requires', () =>
   assert.match(pullRequestBody(m, sub, 7, false), /Files on this computer\*\* \(full access\)/);
 });
 
+test('what changed goes into proteus.json, the index and the pull request', () => {
+  const sub = good({ version: '1.1.0', changes: '  Shows the date too.\nFixes the clock at midnight.  ' });
+  assert.deepEqual(validate(sub, { reserved }), []);
+  const m = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.equal(m.changes, 'Shows the date too.\nFixes the clock at midnight.');
+  const [entry] = buildIndex([{ manifest: m, commit: 'abc', updated: '' }]).plugins;
+  assert.equal(entry.changes, m.changes);
+  const body = pullRequestBody(m, sub, 7, true);
+  assert.match(body, /### What changed\n\n> Shows the date too\.\n> Fixes the clock at midnight\./);
+  // None, or only spaces, leaves the field out.
+  assert.equal('changes' in manifestFor(good({ changes: '  ' }), { login: 'ann', id: 1 }, 7), false);
+  assert.equal('changes' in buildIndex([{ manifest: manifestFor(good(), { login: 'ann', id: 1 }, 7), commit: 'a', updated: '' }]).plugins[0], false);
+  assert.match(validate(good({ changes: 'x'.repeat(2001) }), { reserved }).join(' '), /What changed/);
+  assert.match(validate(good({ changes: 5 }), { reserved }).join(' '), /What changed/);
+});
+
 test('compareVersions compares each part as a number', () => {
   assert.equal(compareVersions('1.10.0', '1.9.9'), 1);
   assert.equal(compareVersions('1.0.0', '1.0.0'), 0);
   assert.equal(compareVersions('0.9.0', '1.0.0'), -1);
+});
+
+test('compareVersions follows semver for pre-release tags and build metadata', () => {
+  assert.equal(compareVersions('1.0.0', '1.0.0-beta.1'), 1);
+  assert.equal(compareVersions('1.0.0-2', '1.0.0'), -1);
+  const order = ['1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta', '1.0.0-beta.2', '1.0.0-beta.11', '1.0.0-rc.1', '1.0.0'];
+  for (let i = 1; i < order.length; i++) assert.equal(compareVersions(order[i - 1], order[i]), -1, `${order[i - 1]} < ${order[i]}`);
+  assert.equal(compareVersions('1.0.0+build.5', '1.0.0'), 0);
+  const existing = { id: 'hello.world', version: '1.0.0-beta.1', author: { login: 'ann', id: 1 } };
+  assert.deepEqual(validate(good(), { existing, author: { login: 'ann', id: 1 } }), []);
+});
+
+test('validate reports a manifest without a string id instead of throwing', () => {
+  const sub = good({ id: undefined });
+  assert.match(validate(sub, { reserved: { ids: [], prefixes: ['core.'] } })[0], /id must be lower case/);
+  assert.match(validate(good({ id: 42 }), { reserved: { ids: [], prefixes: ['core.'] } })[0], /id must be lower case/);
+});
+
+test('approvedCommit reads the commit after /approve', () => {
+  assert.equal(approvedCommit('/approve 1A2b3c4 thanks!'), '1a2b3c4');
+  assert.equal(approvedCommit('/approve thanks!'), null);
+  assert.equal(approvedCommit('/approve 12345'), null);
+  assert.equal(approvedCommit('/approve\n1a2b3c4'), null);
+});
+
+test('a name or a description cannot hide the rest of the pull request', () => {
+  for (const [field, value] of [
+    ['description', 'Says hello. <!--'],
+    ['name', 'Hello\n### Permissions'],
+    ['name', 'Hello ```'],
+    ['description', 'Fine -->'],
+  ]) {
+    assert.ok(validate(good({ [field]: value })).some((p) => p.startsWith(`The ${field} `)), `${field}: ${JSON.stringify(value)}`);
+  }
+  const sub = good({ name: 'Hello *World* [x](y)' });
+  assert.deepEqual(validate(sub), []);
+  const body = pullRequestBody(manifestFor(sub, { login: 'ann', id: 1 }, 7), sub, 7, false);
+  assert.match(body, /\*\*Hello \\\*World\\\* \\\[x\\\]\(y\)\*\*/);
+});
+
+test('file paths that differ only in case are refused', () => {
+  const problems = validate(good({ files: { 'init.lua': 'return {}', 'INIT.lua': 'return 1' } }));
+  assert.ok(problems.some((p) => /differ only in case/.test(p)));
+  assert.ok(validate(good({ files: { 'init.lua': 'return {}', 'lib/A.lua': '', 'Lib/a.lua': '' } })).some((p) => /differ only in case/.test(p)));
+});
+
+test('a taken-down id stays with its owner', () => {
+  const removed = { login: 'ann', id: 1 };
+  assert.deepEqual(validate(good(), { removed, author: { login: 'ann', id: 1 } }), []);
+  assert.match(validate(good(), { removed, author: { login: 'eve', id: 9 } })[0], /taken down, and its id stays with @ann/);
+});
+
+test('Proteus keeps its tooling folder', () => {
+  assert.ok(RESERVED_FOLDERS.includes('tooling'));
+  assert.match(validate(good({ folders: ['tooling'] })).join(' '), /belongs to Proteus/);
 });
 
 test('manifestFor records the author and the sorted files', () => {
@@ -368,5 +456,264 @@ test('a vendored file may have long lines, when vendor.json vouches for it', () 
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, license: '' }) }).problems[0], /license/);
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'file:///etc/passwd' }) }).problems[0], /source/);
   assert.match(vendorOf({ 'vendor.json': '{' }).problems[0], /not valid JSON/);
+  assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'https://example.com/lib.js' }) }).problems[0], /source/);
   assert.equal(textProblem('lib/built.js', built.replace('1;', '\u0000;'), { vendored: true }) !== null, true, 'control characters still count');
+});
+
+test('init.lua must write its permissions as a literal list', () => {
+  const withInit = (text, permissions) => good({ permissions, files: { 'init.lua': text } });
+  assert.deepEqual(validate(withInit("return {\n  permissions = { 'net', \"files\" },\n}", ['files', 'net']), { reserved }), []);
+  assert.deepEqual(validate(withInit('return { name = "x" }', []), { reserved }), [], 'no permissions at all');
+  assert.deepEqual(
+    validate(withInit("-- permissions = os.time ()\nreturn { permissions = {}, requires = { features = { 'permissions' } } }", []), { reserved }),
+    [],
+    'comments and other strings do not count',
+  );
+  const bad = [
+    "return { permissions = os.time () > 1793000000 and { 'process' } or {} }",
+    "local p = { 'net' }\nreturn { permissions = p }",
+    "local m = { permissions = {} }\nm.permissions = { 'process' }\nreturn m",
+    "local m = { permissions = {} }\nm.permissions[1] = 'process'\nreturn m",
+    "local m = { permissions = {} }\nm['permissions'] = { 'process' }\nreturn m",
+    "return { permissions = { 'pro' .. 'cess' } }",
+    "return { permissions = { 'net\\0' } }",
+  ];
+  for (const text of bad) {
+    assert.match(validate(withInit(text, []), { reserved }).join('\n'), /literal|list of plain names/, text);
+  }
+  assert.match(
+    validate(withInit("return { permissions = { 'net' } }", ['net', 'process']), { reserved }).join('\n'),
+    /not the ones the plugin declares/,
+  );
+  assert.match(validate(withInit("return { name = 'x' } --[[ open", []), { reserved }).join('\n'), /does not end/);
+});
+
+test('only built JavaScript or CSS from a package the registry takes can be vendored', () => {
+  const lua = 'return {}\n';
+  const entry = (path, text, source = 'npm:@webaudiomodules/sdk@0.0.12/dist/index.js') => ({
+    [path]: text,
+    'vendor.json': JSON.stringify({ files: { [path]: { source, license: 'MIT', sha256: sha256(text) } } }),
+  });
+  for (const path of ['init.lua', 'lib/util.lua', 'page/index.html']) {
+    const got = vendorOf(entry(path, lua));
+    assert.equal(got.vendored.size, 0, path);
+    assert.match(got.problems[0], /only for built JavaScript or CSS/);
+  }
+  const stranger = vendorOf(entry('lib/x.js', 'x', 'npm:left-pad@1.3.0/index.js'));
+  assert.equal(stranger.vendored.size, 0);
+  assert.match(stranger.problems[0], /left-pad is not a package/);
+  for (const source of ['npm:@webaudiomodules/sdk@^0.0.12/dist/index.js', 'npm:@webaudiomodules/sdk@0.0.12/../x.js']) {
+    assert.match(vendorOf(entry('lib/x.js', 'x', source)).problems[0], /exact version/, source);
+  }
+  assert.equal(vendorOf(entry('lib/x.css', 'x')).vendored.size, 1);
+});
+
+test('buildIndex carries what a plugin exports', () => {
+  const m = manifestFor(good({ exports: ['wam'], files: { 'init.lua': '', 'wam/a.js': '' } }), { login: 'ann', id: 1 }, 1);
+  assert.deepEqual(buildIndex([{ manifest: m, commit: 'aaa', updated: '' }]).plugins[0].exports, ['wam']);
+  const plain = manifestFor(good(), { login: 'ann', id: 1 }, 1);
+  assert.equal('exports' in buildIndex([{ manifest: plain, commit: 'aaa', updated: '' }]).plugins[0], false);
+});
+
+test('indexProblems holds each entry to the commit it names', () => {
+  const commit = 'a'.repeat(40);
+  const manifest = manifestFor(good({ permissions: ['net'] }), { login: 'ann', id: 1 }, 1);
+  const history = { manifest, files: ['README.md', 'init.lua', 'lib/util.lua'], last: commit, updated: '2026-01-01T00:00:00+00:00' };
+  const at = (kind, id, c) => (kind === 'plugin' && id === 'hello.world' && c === commit ? history : null);
+  const index = buildIndex([{ manifest, commit, updated: '2026-01-01T00:00:00Z' }]);
+  assert.deepEqual(indexProblems(index, at), []);
+
+  const wider = structuredClone(index);
+  wider.plugins[0].permissions = [];
+  assert.match(indexProblems(wider, at)[0], /permissions of plugins\/hello\.world is \[\]/);
+
+  const forked = structuredClone(index);
+  forked.plugins[0].commit = 'b'.repeat(40);
+  assert.match(indexProblems(forked, at)[0], /not in the history of main/);
+
+  const untouched = (kind, id, c) => ({ ...history, last: 'c'.repeat(40), c });
+  assert.match(indexProblems(index, untouched)[0], /did not change that folder/);
+
+  const extra = structuredClone(index);
+  extra.plugins[0].files.push('evil.lua');
+  assert.ok(indexProblems(extra, at).some((p) => /files of plugins\/hello\.world/.test(p)));
+
+  const older = structuredClone(index);
+  delete older.plugins[0].optional;
+  assert.deepEqual(indexProblems(older, at), [], 'an index from before a field was added still holds');
+  delete older.plugins[0].permissions;
+  assert.match(indexProblems(older, at)[0], /no permissions/);
+});
+
+/** One step of a folder's log, the way index.mjs reads it: a commit, its date, proteus.json and files. */
+function step(commit, version, { author = { login: 'ann', id: 1 }, issue = null, permissions = [], files } = {}) {
+  const manifest = manifestFor(good({ version, permissions }), author, issue);
+  return { commit: commit.repeat(40), updated: '2026-01-01T00:00:00Z', manifest, files: files ?? [...manifest.files] };
+}
+
+test('historyOf keeps each past version at the last commit that had it', () => {
+  const log = [step('d', '1.2.0', { issue: 9 }), step('c', '1.1.0', { permissions: ['net'] }), step('b', '1.1.0'), step('a', '1.0.0', { issue: 4 })];
+  const past = historyOf(log);
+  assert.deepEqual(
+    past.versions.map((v) => [v.version, v.commit[0]]),
+    [
+      ['1.1.0', 'c'],
+      ['1.0.0', 'a'],
+    ],
+  );
+  assert.deepEqual(past.versions[0].permissions, ['net'], 'each version says what it asked for then');
+  assert.deepEqual(past.versions[0].files, ['README.md', 'init.lua', 'lib/util.lua']);
+  assert.equal('id' in past.versions[0], false);
+  assert.equal(past.issue, 4, 'the issue that first submitted it');
+  assert.deepEqual(past.issues, [9, 4]);
+});
+
+test('historyOf stops where the folder was gone or someone else published it', () => {
+  const gone = [step('c', '2.0.0'), { commit: 'b'.repeat(40), updated: '', manifest: null, files: [] }, step('a', '1.0.0', { issue: 3 })];
+  assert.deepEqual(historyOf(gone), { versions: [], issue: null, issues: [] });
+  const taken = [step('c', '2.0.0'), step('b', '1.0.0', { author: { login: 'eve', id: 2 } })];
+  assert.deepEqual(historyOf(taken).versions, []);
+  const mismatched = [step('c', '2.0.0'), step('b', '1.5.0', { files: ['init.lua'] }), step('a', '1.0.0')];
+  assert.deepEqual(
+    historyOf(mismatched).versions.map((v) => v.version),
+    ['1.0.0'],
+    'a commit whose files do not match its proteus.json is skipped',
+  );
+  const higher = [step('c', '1.0.0'), step('b', '1.5.0')];
+  assert.deepEqual(historyOf(higher).versions, [], 'only versions below the current one count');
+  assert.deepEqual(historyOf([]), { versions: [], issue: null, issues: [] });
+});
+
+test('buildIndex carries past versions and the submission issue', () => {
+  const log = [step('c', '1.2.0', { issue: 9 }), step('b', '1.1.0'), step('a', '1.0.0', { issue: 4 })];
+  const { versions, issue } = historyOf(log);
+  const [entry] = buildIndex([{ manifest: log[0].manifest, commit: log[0].commit, updated: log[0].updated, versions, issue }]).plugins;
+  assert.equal(entry.issue, 4);
+  assert.deepEqual(
+    entry.versions.map((v) => v.version),
+    ['1.1.0', '1.0.0'],
+  );
+  const [plain] = buildIndex([{ manifest: log[0].manifest, commit: log[0].commit, updated: '', versions: [], issue: null }]).plugins;
+  assert.equal('versions' in plain, false);
+  assert.equal('issue' in plain, false);
+  const many = Array.from({ length: MAX_VERSIONS + 5 }, (_, i) => ({ version: `0.${i}.0` }));
+  assert.equal(buildIndex([{ manifest: log[0].manifest, commit: 'c', updated: '', versions: many }]).plugins[0].versions.length, MAX_VERSIONS);
+});
+
+test('indexProblems holds each past version to its commit', () => {
+  const log = [step('c', '1.2.0', { issue: 9 }), step('b', '1.1.0', { permissions: ['net'] }), step('a', '1.0.0', { issue: 4 })];
+  const { versions, issue } = historyOf(log);
+  const top = log[0];
+  const at = (kind, id, c) => (c === top.commit ? { manifest: top.manifest, files: top.files, last: top.commit, updated: top.updated, history: log } : null);
+  const index = buildIndex([{ manifest: top.manifest, commit: top.commit, updated: top.updated, versions, issue }]);
+  assert.deepEqual(indexProblems(index, at), []);
+
+  const fewer = structuredClone(index);
+  fewer.plugins[0].versions.pop();
+  assert.deepEqual(indexProblems(fewer, at), [], 'an index may keep fewer versions than the history has');
+
+  const wider = structuredClone(index);
+  wider.plugins[0].versions[0].permissions = [];
+  assert.match(indexProblems(wider, at)[0], /permissions of plugins\/hello\.world "1\.1\.0" is \[\], but the history says \["net"\]/);
+
+  const moved = structuredClone(index);
+  moved.plugins[0].versions[1].commit = 'b'.repeat(40);
+  assert.match(indexProblems(moved, at)[0], /commit of plugins\/hello\.world "1\.0\.0"/);
+
+  const invented = structuredClone(index);
+  invented.plugins[0].versions.push({ ...invented.plugins[0].versions[1], version: '0.9.0' });
+  assert.match(indexProblems(invented, at)[0], /"0\.9\.0" as a past version, but no commit/);
+
+  const twice = structuredClone(index);
+  twice.plugins[0].versions.push(twice.plugins[0].versions[1]);
+  assert.ok(indexProblems(twice, at).some((p) => /twice/.test(p)));
+
+  const shuffled = structuredClone(index);
+  shuffled.plugins[0].versions.reverse();
+  assert.ok(indexProblems(shuffled, at).some((p) => /out of order/.test(p)));
+
+  const otherIssue = structuredClone(index);
+  otherIssue.plugins[0].issue = 12;
+  assert.match(indexProblems(otherIssue, at)[0], /the issue 12/);
+  otherIssue.plugins[0].issue = 9;
+  assert.deepEqual(indexProblems(otherIssue, at), [], 'any submission issue of the span holds');
+
+  const notList = structuredClone(index);
+  notList.plugins[0].versions = 'all';
+  assert.match(indexProblems(notList, at)[0], /not a list/);
+
+  // Someone else's code at the same id is never a past version.
+  const taken = [top, step('b', '1.1.0', { author: { login: 'eve', id: 2 } }), log[2]];
+  const atTaken = (kind, id, c) => ({ ...at(kind, id, c), history: taken });
+  assert.ok(indexProblems(index, atTaken).some((p) => /"1\.1\.0" as a past version/.test(p)));
+});
+
+/** A whole PNG of one see-through pixel, or of the size given. */
+function png(width = 1, height = 1) {
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([head, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.alloc(5))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+test('imageProblem takes one whole PNG', () => {
+  assert.equal(imageProblem('a.png', png()), null);
+});
+
+test('imageProblem refuses what is not exactly one whole PNG', () => {
+  const whole = png();
+  assert.match(imageProblem('a.png', 'not bytes'), /not a PNG/);
+  assert.match(imageProblem('a.png', Buffer.from('hello, world')), /not a PNG/);
+  assert.match(imageProblem('a.png', Buffer.concat([whole, Buffer.from('more')])), /more after the end/);
+  assert.match(imageProblem('a.png', whole.subarray(0, whole.length - 6)), /cut off/);
+  const damaged = Buffer.from(whole);
+  damaged[40] ^= 0xff;
+  assert.match(imageProblem('a.png', damaged), /damaged/);
+  assert.match(imageProblem('a.png', png(5000, 10)), /at most 4096/);
+});
+
+test('a PNG in an issue reads back to its bytes from base64 across lines and parts', () => {
+  const text = png().toString('base64');
+  const half = Math.floor(text.length / 8) * 4;
+  const texts = [
+    manifestBlock(['sheet.png']),
+    block('sheet.png', 1, 2, text.slice(0, half).replace(/(.{20})/g, '$1\n')),
+    block('sheet.png', 2, 2, text.slice(half)),
+  ];
+  const got = collectSubmission(texts);
+  assert.equal(got.complete, true);
+  assert.deepEqual(Buffer.from(got.sub.files['sheet.png']), png());
+});
+
+test('a plugin with a PNG needs the png feature', () => {
+  const files = { 'init.lua': 'return {}', 'page/sheet.png': png() };
+  assert.deepEqual(validate(good({ files, requires: { features: ['png'] } }), { reserved }), []);
+  assert.match(validate(good({ files }), { reserved }).join('\n'), /'png' in requires\.features/);
+});
+
+test('a PNG that is not one is refused by name', () => {
+  const files = { 'init.lua': 'return {}', 'sheet.png': 'iVBORw0KGgo but not really' };
+  assert.match(validate(good({ files, requires: { features: ['png'] } }), { reserved }).join('\n'), /sheet\.png is not a PNG/i);
+});
+
+test('the pull request asks the reviewer to look at the pictures', () => {
+  const sub = good({ files: { 'init.lua': 'return {}', 'sheet.png': png() } });
+  const manifest = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.match(pullRequestBody(manifest, sub, 7, false), /Every picture is one its author may share/);
+  assert.doesNotMatch(pullRequestBody(manifestFor(good(), { login: 'ann', id: 1 }, 7), good(), 7, false), /picture/);
 });

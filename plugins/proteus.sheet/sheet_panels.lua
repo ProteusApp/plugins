@@ -854,6 +854,17 @@ local M = {
       end,
     })
     command ({
+      id = 'sheet.names',
+      title = 'Defined names…',
+      menu = 'Data',
+      group = 'check',
+      order = 31,
+      icon = 'tag',
+      run = function ()
+        panels.open ('names')
+      end,
+    })
+    command ({
       id = 'sheet.find',
       title = 'Find…',
       icon = 'search',

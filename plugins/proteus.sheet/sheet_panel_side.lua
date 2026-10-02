@@ -7,12 +7,14 @@
 -- so a box being typed in keeps its focus.
 
 local chart = require ('sheet_chart') --[[@as Sheet.ChartModule]]
+local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
+local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 local pop = require ('sheet_panel_pop') --[[@as Sheet.PanelPopModule]]
 local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 
----@alias Sheet.PanelName 'chart'|'rules'|'validation'|'sort'
+---@alias Sheet.PanelName 'chart'|'rules'|'validation'|'sort'|'names'
 
 ---The side panels, as sheet_panels drives them.
 ---@class Sheet.SidePanels
@@ -31,13 +33,23 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@field mid_color? string
 ---@field max_color string
 ---@field bar_color string
+---@field icons string The icon set of an icon set rule.
+---@field reverse boolean True to give the lowest values the first icon.
+---@field stop boolean Stop if true.
+
+---A defined name being edited.
+---@class Sheet.NameDraft
+---@field old? string The name as it was, or nil for a new one.
+---@field name string
+---@field formula string
 
 ---A validation rule being edited.
 ---@class Sheet.ValidationDraft
 ---@field index? integer
 ---@field range string
----@field type 'list'|'number'
----@field items string
+---@field type 'list'|'number'|'date'|'length'|'formula'
+---@field items string The items one per line, or a reference to cells such as `=$A$1:$A$9`.
+---@field formula string The formula of a formula rule.
 ---@field op string
 ---@field a string
 ---@field b string
@@ -428,6 +440,12 @@ local VIEWS = {
     title = 'Sort',
     heading = 'Sort range',
     order = 13,
+  },
+  names = {
+    id = 'sheet.panel.names',
+    title = 'Names',
+    heading = 'Defined names',
+    order = 14,
   },
 }
 
@@ -1005,6 +1023,9 @@ function M.install (env)
         mid_color = rule.mid_color,
         max_color = rule.max_color or text.SCALE_MAX,
         bar_color = rule.color or text.BAR_COLOR,
+        icons = rule.icons or 'arrows',
+        reverse = rule.reverse == true,
+        stop = rule.stop == true,
       }
     end
     return {
@@ -1017,6 +1038,9 @@ function M.install (env)
       mid_color = text.SCALE_MID,
       max_color = text.SCALE_MAX,
       bar_color = text.BAR_COLOR,
+      icons = 'arrows',
+      reverse = false,
+      stop = false,
     }
   end
 
@@ -1031,6 +1055,9 @@ function M.install (env)
       rule.max_color = draft.max_color
     elseif rule.type == 'bar' then
       rule.color = draft.bar_color
+    elseif rule.type == 'icons' then
+      rule.icons = draft.icons
+      rule.reverse = draft.reverse or nil
     else
       local style = {} ---@type table<string, any>
       for k, v in
@@ -1042,6 +1069,7 @@ function M.install (env)
       end
       rule.style = style --[[@as Sheet.Style]]
     end
+    rule.stop = draft.stop or nil
     return rule
   end
 
@@ -1096,7 +1124,7 @@ function M.install (env)
             class = 'sheet-panel-tools',
             icon_button (
               'arrow-up',
-              'Move up, so later rules win over it',
+              'Move up, so it wins over the rules below it',
               function ()
                 ctl.change ('Move rule', function (_, s)
                   local a, b = s.rules[index - 1], s.rules[index]
@@ -1108,7 +1136,7 @@ function M.install (env)
             ),
             icon_button (
               'arrow-down',
-              'Move down, so it wins over earlier rules',
+              'Move down, so the rules above it win over it',
               function ()
                 ctl.change ('Move rule', function (_, s)
                   local a, b = s.rules[index], s.rules[index + 1]
@@ -1155,7 +1183,7 @@ function M.install (env)
       }),
       ui.div ({
         class = 'sheet-panel-hint',
-        'Rules apply in order, and a later rule wins where two set the same thing.',
+        'A rule higher in the list wins where two set the same thing, and a rule set to stop keeps the rules below it from applying.',
       })
     )
   end
@@ -1300,6 +1328,20 @@ function M.install (env)
       })
     )
 
+    local icons_part = field (
+      'Icon set',
+      select (text.ICON_SETS, draft.icons, function (value)
+        draft.icons = value
+      end),
+      check ('Lowest values get the first icon', draft.reverse, function (on)
+        draft.reverse = on
+      end),
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'The top third of the range from the lowest value to the highest gets the first icon, the middle third the second, and the rest the last.',
+      })
+    )
+
     local function show_condition ()
       local c = text.condition (draft.cond) or text.CONDITIONS[1]
       local kind = c.input
@@ -1324,9 +1366,12 @@ function M.install (env)
             or 'How many values to mark.'
         )
       end
-      style_part:show (c.type ~= 'scale' and c.type ~= 'bar')
+      style_part:show (
+        c.type ~= 'scale' and c.type ~= 'bar' and c.type ~= 'icons'
+      )
       scale_part:show (c.type == 'scale')
       bar_part:show (c.type == 'bar')
+      icons_part:show (c.type == 'icons')
     end
 
     local options = {} ---@type { value: string, label: string }[]
@@ -1368,12 +1413,21 @@ function M.install (env)
       return good
     end
 
+    local stop = check (
+      'Stop if true: the rules below do not apply where this one holds',
+      draft.stop,
+      function (on)
+        draft.stop = on
+      end
+    )
     body:append (
       field ('Apply to range', range),
       field ('Format cells if', cond, values, values_hint),
       style_part,
       scale_part,
       bar_part,
+      icons_part,
+      stop,
       ui.div ({
         class = 'sheet-panel-actions',
         draft.index and ui.button ({
@@ -1449,11 +1503,16 @@ function M.install (env)
   ---@return Sheet.ValidationDraft
   local function new_check_draft (v, index)
     if v then
+      local items = table.concat (v.values or {}, '\n')
+      if v.type == 'list' and type (v.formula) == 'string' then
+        items = v.formula
+      end
       return {
         index = index,
         range = v.range,
-        type = v.type == 'number' and 'number' or 'list',
-        items = table.concat (v.values or {}, '\n'),
+        type = v.type or 'list',
+        items = items,
+        formula = v.type == 'formula' and v.formula or '',
         op = v.op or 'between',
         a = v.value or '',
         b = v.value2 or '',
@@ -1466,6 +1525,7 @@ function M.install (env)
       range = selection_text (),
       type = 'list',
       items = '',
+      formula = '',
       op = 'between',
       a = '',
       b = '',
@@ -1500,7 +1560,14 @@ function M.install (env)
         local card = ui.div ({
           class = 'sheet-panel-card',
           title = 'Edit this rule',
-          ui.icon (v.type == 'list' and 'list' or 'hash', 16),
+          ui.icon (
+            v.type == 'list' and 'list'
+              or v.type == 'date' and 'calendar'
+              or v.type == 'length' and 'type'
+              or v.type == 'formula' and 'sigma'
+              or 'hash',
+            16
+          ),
           ui.div ({
             class = 'sheet-panel-card-main',
             ui.span ({
@@ -1582,7 +1649,7 @@ function M.install (env)
       items,
       ui.div ({
         class = 'sheet-panel-hint',
-        'One item per line, or split by commas on one line. The cell gets a dropdown of them.',
+        'One item per line, or split by commas on one line, or cells such as =$A$1:$A$9. The cell gets a dropdown of them.',
       })
     )
     local a_box = input (draft.a, function (value)
@@ -1591,6 +1658,17 @@ function M.install (env)
     local b_box = input (draft.b, function (value)
       draft.b = value
     end, { placeholder = 'Number' })
+    local formula_box = input (draft.formula, function (value)
+      draft.formula = value
+    end, { placeholder = '=AND(A1>0, A1<=$B$1)', mono = true })
+    local formula_part = field (
+      'Formula',
+      formula_box,
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'Write the formula for the top left cell of the range. A value goes in when it gives TRUE.',
+      })
+    )
     local and_word = ui.span ({ class = 'sheet-panel-hint', 'and' })
     local function show_op ()
       local two = draft.op == 'between' or draft.op == 'not_between'
@@ -1606,17 +1684,26 @@ function M.install (env)
       show_op ()
     end)
     show_op ()
+    local whole = check ('Whole numbers only', draft.integer, function (on)
+      draft.integer = on
+    end)
     local number_part = field (
-      'Number',
+      'Value',
       op,
       ui.div ({ class = 'sheet-panel-row', a_box, and_word, b_box }),
-      check ('Whole numbers only', draft.integer, function (on)
-        draft.integer = on
-      end)
+      whole
     )
     local function show_type ()
-      list_part:show (draft.type == 'list')
-      number_part:show (draft.type == 'number')
+      local kind = draft.type
+      list_part:show (kind == 'list')
+      number_part:show (kind == 'number' or kind == 'date' or kind == 'length')
+      formula_part:show (kind == 'formula')
+      whole:show (kind == 'number')
+      local hint = kind == 'date' and '1/1/2026'
+        or kind == 'length' and 'Characters'
+        or 'Number'
+      a_box:set ('placeholder', hint)
+      b_box:set ('placeholder', hint)
     end
     show_type ()
     local message = input (draft.message, function (value)
@@ -1633,15 +1720,33 @@ function M.install (env)
       draft.items = items:value ()
       draft.a = a_box:value ()
       draft.b = b_box:value ()
+      draft.formula = formula_box:value ()
       draft.message = message:value ()
       if draft.type == 'list' then
+        local source = string.match (draft.items, '^%s*(=.-)%s*$')
         local good = #text.list_values (draft.items) > 0
+        if source then
+          good = formula.parse (source) ~= nil
+        end
         items:class ('sheet-panel-bad', not good)
         return good
+      elseif draft.type == 'formula' then
+        local good = formula.is_formula (draft.formula)
+          and formula.parse (draft.formula) ~= nil
+        formula_box:class ('sheet-panel-bad', not good)
+        return good
+      end
+      ---@param s string
+      ---@return boolean
+      local function readable (s)
+        if draft.type == 'date' then
+          return type (format.parse_input (s)) == 'number'
+        end
+        return tonumber (s) ~= nil
       end
       local two = draft.op == 'between' or draft.op == 'not_between'
-      local good_a = tonumber (draft.a) ~= nil
-      local good_b = not two or tonumber (draft.b) ~= nil
+      local good_a = readable (draft.a)
+      local good_b = not two or readable (draft.b)
       a_box:class ('sheet-panel-bad', not good_a)
       b_box:class ('sheet-panel-bad', not good_b)
       return good_a and good_b
@@ -1650,15 +1755,20 @@ function M.install (env)
     ---@return Sheet.Validation
     local function rule_of_draft ()
       local rule = { range = draft.range, type = draft.type } ---@type Sheet.Validation
-      if draft.type == 'list' then
+      local source = string.match (draft.items, '^%s*(=.-)%s*$')
+      if draft.type == 'list' and source then
+        rule.formula = formula.normalize (source)
+      elseif draft.type == 'list' then
         rule.values = text.list_values (draft.items)
+      elseif draft.type == 'formula' then
+        rule.formula = formula.normalize (draft.formula)
       else
         rule.op = draft.op
         rule.value = draft.a
         if draft.op == 'between' or draft.op == 'not_between' then
           rule.value2 = draft.b
         end
-        rule.integer = draft.integer or nil
+        rule.integer = draft.type == 'number' and draft.integer or nil
       end
       if draft.message ~= '' then
         rule.message = draft.message
@@ -1673,20 +1783,33 @@ function M.install (env)
       field ('Apply to range', range),
       field (
         'Criteria',
-        segmented (
+        select (
           {
             { value = 'list', label = 'List of items' },
             { value = 'number', label = 'Number' },
+            { value = 'date', label = 'Date' },
+            { value = 'length', label = 'Text length' },
+            { value = 'formula', label = 'Formula' },
           },
           draft.type,
           function (value)
-            draft.type = value == 'number' and 'number' or 'list'
+            if
+              value == 'number'
+              or value == 'date'
+              or value == 'length'
+              or value == 'formula'
+            then
+              draft.type = value
+            else
+              draft.type = 'list'
+            end
             show_type ()
           end
         )
       ),
       list_part,
       number_part,
+      formula_part,
       field ('Message for data that breaks the rule', message),
       field (
         'When data breaks the rule',
@@ -1766,6 +1889,176 @@ function M.install (env)
       checks_form (body, check_draft)
     else
       checks_list (body, sheet)
+    end
+  end
+
+  -- Defined names ----------------------------------------------------------------------
+
+  local name_draft = nil ---@type Sheet.NameDraft?
+
+  ---A new name's formula: the selection on the sheet that shows, such as
+  ---`=Sheet1!$B$2:$B$9`.
+  ---@return string
+  local function selection_formula ()
+    local rect = ctl.selection ()
+    local sheet = ctl.sheet ()
+    ---@param row integer
+    ---@param col integer
+    ---@return string
+    local function fixed (row, col)
+      return '$' .. model.col_name (col) .. '$' .. row
+    end
+    local text_now = fixed (rect.r1, rect.c1)
+    if rect.r1 ~= rect.r2 or rect.c1 ~= rect.c2 then
+      text_now = text_now .. ':' .. fixed (rect.r2, rect.c2)
+    end
+    return '='
+      .. formula.quote_sheet (sheet and sheet.name or 'Sheet1')
+      .. '!'
+      .. text_now
+  end
+
+  ---@param body Proteus.El
+  ---@param book Sheet.Book
+  local function names_list (body, book)
+    local list = ui.div ({ class = 'sheet-panel-list' })
+    for _, n in ipairs (book.defined_names) do
+      local item = n
+      local card = ui.div ({
+        class = 'sheet-panel-card',
+        title = 'Edit this name',
+        ui.icon ('tag', 16),
+        ui.div ({
+          class = 'sheet-panel-card-main',
+          ui.span ({ class = 'sheet-panel-desc', item.name }),
+          ui.span ({ class = 'sheet-panel-range', item.formula }),
+        }),
+        ui.div ({
+          class = 'sheet-panel-tools',
+          icon_button ('trash-2', 'Delete the name', function ()
+            ctl.change ('Delete name', function (b)
+              b:delete_name (item.name)
+            end)
+          end),
+        }),
+      })
+      card:on ('click', function ()
+        name_draft =
+          { old = item.name, name = item.name, formula = item.formula }
+        renders.names ()
+        return nil
+      end)
+      list:append (card)
+    end
+    if #book.defined_names == 0 then
+      list:append (empty ('This workbook has no names yet.'))
+    end
+    body:append (
+      list,
+      ui.button ({
+        'Define name',
+        icon = 'plus',
+        class = 'sheet-panel-wide',
+        onclick = function ()
+          name_draft = { name = '', formula = selection_formula () }
+          renders.names ()
+          return nil
+        end,
+      }),
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'A formula anywhere in the workbook can use a name in place of what it stands for, such as =SUM(Sales).',
+      })
+    )
+  end
+
+  ---@param body Proteus.El
+  ---@param draft Sheet.NameDraft
+  local function names_form (body, draft)
+    local name_box = input (draft.name, function (value)
+      draft.name = value
+    end, { placeholder = 'Sales' })
+    local formula_box = input (draft.formula, function (value)
+      draft.formula = value
+    end, { placeholder = '=Sheet1!$B$2:$B$9', mono = true })
+    body:append (
+      field ('Name', name_box),
+      field (
+        'Stands for',
+        formula_box,
+        ui.div ({
+          class = 'sheet-panel-hint',
+          'A reference such as =Sheet1!$B$2:$B$9, a value such as =0.2, or a function such as =LAMBDA(x, x*2).',
+        })
+      ),
+      ui.div ({
+        class = 'sheet-panel-actions',
+        draft.old and ui.button ({
+          'Delete',
+          variant = 'danger',
+          onclick = function ()
+            local old = draft.old --[[@as string]]
+            ctl.change ('Delete name', function (b)
+              b:delete_name (old)
+            end)
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }) or nil,
+        ui.span ({ class = 'sheet-panel-spacer' }),
+        ui.button ({
+          'Cancel',
+          onclick = function ()
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }),
+        ui.button ({
+          'Done',
+          variant = 'primary',
+          onclick = function ()
+            draft.name = string.match (name_box:value (), '^%s*(.-)%s*$')
+            draft.formula = string.match (formula_box:value (), '^%s*(.-)%s*$')
+            local problem = ctl.change (
+              draft.old and 'Change name' or 'Define name',
+              function (b)
+                local done, why =
+                  b:set_name (draft.name, draft.formula, draft.old)
+                if not done then
+                  return why or 'The name could not be defined.'
+                end
+                return nil
+              end
+            )
+            if type (problem) == 'string' then
+              ctl.say ('warn', problem)
+              return nil
+            end
+            name_draft = nil
+            renders.names ()
+            return nil
+          end,
+        }),
+      })
+    )
+    name_box:focus ()
+  end
+
+  renders.names = function ()
+    local body = bodies.names
+    body:clear ()
+    local book = ctl.book ()
+    if not book then
+      name_draft = nil
+      body:append (empty ('Open a workbook to define names.'))
+      return
+    end
+    if name_draft then
+      names_form (body, name_draft)
+    else
+      names_list (body, book)
     end
   end
 
@@ -1935,7 +2228,7 @@ function M.install (env)
   -- The views --------------------------------------------------------------------------
 
   ---@type Sheet.PanelName[]
-  local NAMES = { 'chart', 'rules', 'validation', 'sort' }
+  local NAMES = { 'chart', 'rules', 'validation', 'sort', 'names' }
   local has_views = views ~= nil
   if views then
     for _, name in ipairs (NAMES) do
@@ -1973,6 +2266,8 @@ function M.install (env)
       check_draft = nil
     elseif which == 'sort' then
       sort_reset ()
+    elseif which == 'names' then
+      name_draft = nil
     end
     -- Showing the view runs its on_show, which draws it.
     views.show (VIEWS[which].id)
@@ -1981,7 +2276,7 @@ function M.install (env)
   -- Following the grid ------------------------------------------------------------------
 
   ctl.on ('book', function ()
-    chart_id, rule_draft, check_draft = nil, nil, nil
+    chart_id, rule_draft, check_draft, name_draft = nil, nil, nil, nil
     sort_reset ()
     if current then
       render (current)
@@ -2012,6 +2307,8 @@ function M.install (env)
       renders.rules ()
     elseif visible ('validation') and not check_draft then
       renders.validation ()
+    elseif visible ('names') and not name_draft then
+      renders.names ()
     end
   end)
 
