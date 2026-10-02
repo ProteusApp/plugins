@@ -17,16 +17,28 @@ function M.attach (ctx)
 
   do
     local stored = app.store.get ('history', {}) ---@type table<string, any>[]
+    local scrubbed = false
     for _, e in ipairs (type (stored) == 'table' and stored or {}) do
       if type (e) == 'table' and type (e.url) == 'string' then
+        local request = http.normalize (e.request)
+        -- An older history kept the address with the environment's values filled in. The
+        -- request it came from has the {{variables}} instead.
+        local url = e.url
+        if type (e.request) == 'table' then
+          url = http.build (request).url
+          scrubbed = scrubbed or url ~= e.url
+        end
         ctx.history[#ctx.history + 1] = {
           method = http.normalize ({ method = e.method }).method,
-          url = e.url,
+          url = url,
           status = math.floor (tonumber (e.status) or 0),
           time = tonumber (e.time) or 0,
-          request = http.normalize (e.request),
+          request = request,
         }
       end
+    end
+    if scrubbed then
+      app.store.set ('history', ctx.history)
     end
   end
 
