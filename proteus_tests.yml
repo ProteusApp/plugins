@@ -26,3 +26,8 @@ globals:
       - type: string
   update:
     property: read-only
+  shader_check:
+    args:
+      - type: string
+      - type: string
+      - type: string

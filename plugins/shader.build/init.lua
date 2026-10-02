@@ -12,7 +12,7 @@ local BUILD_FOLDER = 'shaders/build'
 return {
   name = 'Shader build',
   description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
   folders = { 'shaders' },
   depends = { 'shader.core', 'shader.docs', 'core.commands' },
@@ -42,42 +42,105 @@ return {
       end
     end
 
-    ---What the shader in front builds into, or why it cannot build.
-    ---@return Shader.BuildInput?, string?
-    local function input_of_front ()
-      local d = docs.active ()
-      if not d then
-        return nil, 'Open a shader to build it.'
+    ---The name of a shader's file, without its folder and ending.
+    ---@param path string
+    ---@return string
+    local function stem_of (path)
+      local name = path:match ('([^/]+)$') or path
+      if name:lower ():sub (-#core.file.EXTENSION) == core.file.EXTENSION then
+        return name:sub (1, -#core.file.EXTENSION - 1)
       end
-      if d.kind == 'graph' then
-        local result = docs.compiled (d.path) --[[@as Shader.CompileResult]]
+      return (name:gsub ('%.[%w]+$', ''))
+    end
+
+    ---A pass's code in each language it has, or why it cannot build.
+    ---@param path string
+    ---@param label string
+    ---@return { glsl?: Shader.Program, wgsl?: Shader.Program }?, string?
+    local function code_of (path, label)
+      if docs.kind_of (path) == 'graph' then
+        local result = docs.compiled (path)
+        if not result then
+          return nil, 'There is no file at ' .. path .. '.'
+        end
         if not result.ok then
           return nil,
-            'The graph has problems: '
+            label
+              .. ' has problems: '
               .. result.errors[1].message
               .. ' Fix them to build it.'
         end
-        return {
-          name = d.history.doc.name ~= '' and d.history.doc.name or d.title,
-          glsl = result.glsl,
-          wgsl = result.wgsl,
-        }
+        return { glsl = result.glsl, wgsl = result.wgsl }
       end
-      local program, errors = docs.program (d.path)
+      local program, errors = docs.program (path)
       if not program then
         return nil,
           errors and errors[1] and errors[1].message or 'Nothing to build.'
       end
       for _, e in ipairs (errors or {}) do
         if e.severity ~= 'warning' then
-          return nil, e.message
+          return nil, label .. ': ' .. e.message
         end
       end
-      local stem = d.title:gsub ('%.[%w]+$', '')
-      if program.language == 'wgsl' then
-        return { name = stem, wgsl = program }
+      return { [program.language] = program }
+    end
+
+    ---What the shader in front builds into, or why it cannot build. A buffer in front builds
+    ---the whole shader it belongs to.
+    ---@return Shader.BuildInput?, string?
+    local function input_of_front ()
+      local d = docs.active ()
+      if not d then
+        return nil, 'Open a shader to build it.'
       end
-      return { name = stem, glsl = program }
+      local set = docs.passes (d.path)
+      local image = set.image
+      if not image then
+        return nil,
+          'This shader has buffers but no image, such as '
+            .. set.base
+            .. '.frag. Add one to build it.'
+      end
+      local code, err = code_of (image, 'The shader')
+      if not code then
+        return nil, err
+      end
+      local open_doc = docs.get (image)
+      local name = stem_of (image)
+      if open_doc and open_doc.history and open_doc.history.doc.name ~= '' then
+        name = open_doc.history.doc.name
+      end
+      ---@type Shader.BuildInput
+      local input = {
+        name = name,
+        glsl = code.glsl,
+        wgsl = code.wgsl,
+        channels = docs.channels (image),
+        buffers = {},
+      }
+      local any = { glsl = code.glsl ~= nil, wgsl = code.wgsl ~= nil }
+      for _, b in ipairs (core.passes.BUFFERS) do
+        local path = set.buffers[b]
+        if path then
+          local label = core.passes.pass_label (b)
+          local pass, why = code_of (path, label)
+          if not pass then
+            return nil, why
+          end
+          any.glsl = any.glsl and pass.glsl ~= nil
+          any.wgsl = any.wgsl and pass.wgsl ~= nil
+          input.buffers[#input.buffers + 1] = {
+            id = b,
+            glsl = pass.glsl,
+            wgsl = pass.wgsl,
+            channels = docs.channels (path),
+          }
+        end
+      end
+      if not any.glsl and not any.wgsl then
+        return nil, 'Every pass needs its code in one language to build.'
+      end
+      return input
     end
 
     ---@return table<string, string>?, string?

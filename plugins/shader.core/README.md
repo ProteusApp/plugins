@@ -8,7 +8,7 @@ Builds GLSL and WGSL shaders from a node graph or as code, with a live preview. 
 | `shader.docs` | The open shaders and their undo. It copies the examples into `shaders/`, and its `handbook/` folder holds Learning shaders, a course in the Handbook from a first shader to a weather system. | none, writes in `shaders/` |
 | `shader.canvas` | The node editor: frames, reroute points, copy and paste, and a minimap. It uses the node canvas in Proteus's own `lib/`, so it needs Proteus 0.3.1. | none |
 | `shader.code` | Code shaders, with GLSL and WGSL added to the code editor as data languages. | none |
-| `shader.preview` | Runs the shader live: GLSL on WebGL 2 and WGSL on WebGPU, in a sandboxed web view, `page/`. | none |
+| `shader.preview` | Runs the shader live: GLSL on WebGL 2 and WGSL on WebGPU, in a sandboxed web view, `page/`, with its buffers and what each channel shows. An image for a channel comes through `app.grants`, so the plugin never sees its path. | none |
 | `shader.library` | The list of shaders and nodes. | none |
 | `shader.build` | Writes a build to `shaders/build` in the workspace. | none, writes in `shaders/` |
 
