@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "settings": {
     "locale": "en-US",
     "currency": "USD"
@@ -42,7 +42,10 @@
         "x": 330,
         "y": 458
       },
-      "config": {},
+      "config": {
+        "drop_ending": false,
+        "ending": ""
+      },
       "literals": {}
     },
     {
@@ -163,7 +166,10 @@
         "x": 3630,
         "y": 0
       },
-      "config": {},
+      "config": {
+        "drop_ending": false,
+        "ending": ""
+      },
       "literals": {}
     },
     {

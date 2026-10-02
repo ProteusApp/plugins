@@ -21,7 +21,7 @@ local GRAPH_FILE = 'notes.ndg'
 return {
   name = NAME,
   description = 'Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.',
-  version = '1.2.0',
+  version = '1.2.1',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
@@ -71,8 +71,8 @@ test (
 
 test ('the graph file is a Nodal graph', function ()
   ok (
-    graph:find ('^{\n  "version": 3,'),
-    GRAPH_FILE .. ' is not a version 3 graph'
+    graph:find ('^{\n  "version": 4,'),
+    GRAPH_FILE .. ' is not a version 4 graph'
   )
   ok (graph:find ('"nodes": [', 1, true), GRAPH_FILE .. ' has no nodes')
 end)
