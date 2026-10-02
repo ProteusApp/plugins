@@ -299,8 +299,7 @@ function M.install (env)
       grid.copy (false)
     end,
   })
-  -- Ctrl+V and Ctrl+Shift+V paste through the waiting cell editor, which needs no clipboard
-  -- permission, so the paste commands carry no key.
+  -- The grid's own keys take Ctrl+V and Ctrl+Shift+V, so the paste commands carry no key.
   command ({
     id = 'sheet.paste',
     title = 'Paste',

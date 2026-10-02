@@ -103,6 +103,7 @@ local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 ---@field texts string[][] Rows of cell text.
 ---@field bold? boolean[][]
 ---@field styles? Sheet.Style[][] The full style of each cell, for pasting formats.
+---@field patches? Sheet.StylePatch[][] Changes to each cell's style, for HTML from another program.
 ---@field literals? string[][] Each value as text that types back to it, for pasting values.
 ---@field merges? Sheet.Rect[] Merged blocks, counting rows and columns from 1 in the clip.
 ---@field notes? table<integer, string> Notes by `i * KEY + j` in the clip.

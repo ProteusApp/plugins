@@ -464,7 +464,10 @@ return function (K)
         end
         if with_style then
           local full = clip.styles and clip.styles[i] and clip.styles[i][j]
-          if full then
+          local patch = clip.patches and clip.patches[i] and clip.patches[i][j]
+          if patch then
+            state.style = cell_patch (state.style, patch, self:inherited (r, c))
+          elseif full then
             state.style =
               cell_patch (nil, full_patch (full), self:inherited (r, c))
           elseif clip.bold and clip.bold[i] and clip.bold[i][j] ~= nil then
