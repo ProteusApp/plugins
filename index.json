@@ -1641,7 +1641,7 @@
       "id": "proteus.kanban",
       "name": "Kanban",
       "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1654,16 +1654,18 @@
         "proteus.core.commands",
         "proteus.core.settings",
         "proteus.core.themes",
-        "proteus.ui.menus"
+        "proteus.ui.menus",
+        "proteus.ui.views"
       ],
       "permissions": [
         "workspace"
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "nodal-docks"
         ]
       },
       "files": [
@@ -1672,9 +1674,43 @@
         "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
-      "updated": "2026-10-02T17:01:40Z",
+      "commit": "c902a96390972d8757e10cdad41cb2ee957dba01",
+      "updated": "2026-10-02T21:41:17Z",
       "versions": [
+        {
+          "version": "1.3.0",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.nodal.app"
+          ],
+          "optional": [
+            "proteus.ui.notify",
+            "proteus.ui.statusbar",
+            "proteus.ui.shell",
+            "proteus.core.commands",
+            "proteus.core.settings",
+            "proteus.core.themes",
+            "proteus.ui.menus"
+          ],
+          "permissions": [
+            "workspace"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "kanban.ndg",
+            "tests/graph.test.lua"
+          ],
+          "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
+          "updated": "2026-10-02T17:01:40Z"
+        },
         {
           "version": "1.2.0",
           "depends": [
@@ -2450,7 +2486,7 @@
       "id": "proteus.notes",
       "name": "Notes",
       "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2463,14 +2499,15 @@
         "proteus.core.commands",
         "proteus.core.settings",
         "proteus.core.themes",
-        "proteus.ui.menus"
+        "proteus.ui.menus",
+        "proteus.ui.views"
       ],
       "permissions": [
         "workspace"
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -2481,9 +2518,43 @@
         "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
-      "updated": "2026-10-02T17:01:40Z",
+      "commit": "c902a96390972d8757e10cdad41cb2ee957dba01",
+      "updated": "2026-10-02T21:41:17Z",
       "versions": [
+        {
+          "version": "1.3.0",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.nodal.app"
+          ],
+          "optional": [
+            "proteus.ui.notify",
+            "proteus.ui.statusbar",
+            "proteus.ui.shell",
+            "proteus.core.commands",
+            "proteus.core.settings",
+            "proteus.core.themes",
+            "proteus.ui.menus"
+          ],
+          "permissions": [
+            "workspace"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "notes.ndg",
+            "tests/graph.test.lua"
+          ],
+          "commit": "0164f0a357258307e40530efaa3073f37f3cd94e",
+          "updated": "2026-10-02T17:01:40Z"
+        },
         {
           "version": "1.2.1",
           "depends": [
