@@ -51,7 +51,7 @@ local select_module = require ('lib.select') --[[@as LangPython.SelectModule]]
 return {
   name = 'Python',
   description = "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
-  version = '1.1.0',
+  version = '1.1.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- basedpyright, Ruff and Python are programs it runs, on files anywhere on disk. The
   -- tools registry downloads Ruff for it.
@@ -81,6 +81,7 @@ return {
       type = 'string',
       default = '',
       description = "The full path of the Python to check code against, for every folder. Leave empty to use the folder's pick in Select Interpreter, then a .venv or venv folder, then the PATH.",
+      sensitive = true,
     })
     settings.define ('python.type_checking', {
       title = 'Type checking',

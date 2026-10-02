@@ -42,3 +42,5 @@ Godot's language server has no formatter, so this plugin adds none.
 | `gdscript.port` | `6005` | The port Godot's language server listens on. Godot's own setting is **Network > Language Server > Remote Port**. |
 | `gdscript.start_godot` | `false` | Starts Godot with no window when it is not running. |
 | `gdscript.godot_path` | empty | The full path of the Godot program. When empty, `godot` or `godot4` on the PATH. |
+
+`gdscript.start_godot` and `gdscript.godot_path` decide what program runs, so only your own choice sets them. A profile or a folder's `.proteus/settings.json` cannot.

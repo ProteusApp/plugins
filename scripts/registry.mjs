@@ -546,6 +546,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] The profile does what the description says, and nothing else.',
           '- [ ] Every plugin it names ships with Proteus or is listed in this registry.',
           '- [ ] Its settings hold no secrets, tokens or personal data.',
+          '- [ ] Its settings name no program to run, no path to one, and no place code comes from, such as `marketplace.repository`.',
         ]
       : [
           '- [ ] The code does what the description says, and nothing else.',
@@ -553,6 +554,7 @@ export function pullRequestBody(manifest, sub, issue, updating) {
           '- [ ] It reads and writes only the files its purpose needs.',
           '- [ ] It sends nothing over the network, and runs no programs, beyond what its purpose needs.',
           '- [ ] It holds no secrets, tokens or personal data.',
+          '- [ ] A setting that names a program to run, or where code comes from, is defined with `sensitive = true`.',
           '- [ ] Every vendored file comes from the source vendor.json names, under a license that lets it be shared, and `node scripts/vendor.mjs verify` agrees.',
         ];
   lines.push('', '### Review', '', ...review, '', `Merging lists the ${kind} in the Proteus marketplace. Closes #${issue}.`);

@@ -2,7 +2,7 @@
   "id": "proteus.terminal",
   "name": "Terminal",
   "description": "Terminals in the bottom dock, which start in the folder open in the Code Editor.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",

@@ -60,6 +60,8 @@ The **Tools** panel shows each server's state, version and log, with buttons to 
 | `python.ruff` | `true` | Runs Ruff for lint problems. |
 | `python.format` | `true` | Formats Python files with Ruff. |
 
+`python.interpreter` names the program that runs, so only your own choice sets it. A profile or a folder's `.proteus/settings.json` cannot.
+
 ## How it is built
 
 The editor keeps one source of completion and hover help per language, and basedpyright is it, through the app's `lsp.client`. `lib/ruff.lua` builds Ruff's client from the app's `lsp` modules instead. It keeps the open files in step and lists the problems, and gives the editor no help of its own. `lib/edits.lua` applies Ruff's fixes to a file's text.

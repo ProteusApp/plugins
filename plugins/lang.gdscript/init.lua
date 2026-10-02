@@ -35,7 +35,7 @@ local server_module = require ('lib.server') --[[@as LangGdscript.ServerModule]]
 return {
   name = 'GDScript',
   description = "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
-  version = '1.0.1',
+  version = '1.0.2',
   requires = {
     proteus = '>=0.3.0',
     features = { 'permissions', 'languages', 'tcp' },
@@ -72,12 +72,14 @@ return {
       type = 'boolean',
       default = false,
       description = 'Starts the Godot editor with no window on the project, for its language server, and stops it with Proteus. Needs Godot 4.2 or newer.',
+      sensitive = true,
     })
     settings.define ('gdscript.godot_path', {
       title = 'Godot program',
       type = 'string',
       default = '',
       description = 'The full path of the Godot program. When empty, godot or godot4 on the PATH.',
+      sensitive = true,
     })
 
     local workspace = disk.normalize (app.kernel.launch.workspace or '')

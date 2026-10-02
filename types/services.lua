@@ -114,12 +114,13 @@ function Keys.list () end
 ---@field default? any
 ---@field description? string
 ---@field options? string[]|fun(): string[] The choices for a `'select'` setting.
+---@field sensitive? boolean True for a setting that names a program to run, or where code comes from. Only the user's choice and the default count for it, never a profile's or a folder's value.
 ---@field key? string Set by the service.
 ---@field owner? string Set by the service.
 
 ---Options with defaults, saved per profile. A value comes from the open folder's
 ---`.proteus/settings.json`, then the user's choice, then the profile's `settings`, then the
----default.
+---default. A `sensitive` setting skips the folder and the profile.
 ---@class Proteus.Settings
 local Settings = {}
 
