@@ -1,225 +1,176 @@
 -- icons.vivid: an icon pack with a Lucide icon for each kind of file, in the colors each
 -- language is known by, and icons for the folders most projects have.
 --
--- It registers the pack with core.icons, then ties every kind of file to its icon as a file
--- association of the kind `icon`, through core.files. Pick it with View > Choose File Icons,
--- or set `icon_pack` to `vivid`.
+-- It registers the pack with core.icons, with a look for every kind of file and folder in the
+-- app's lib/file_kinds.lua. Each color is a pair, one for light themes and one for dark ones,
+-- so the icons read on both. Pick it with View > Choose File Icons, or set `icon_pack` to
+-- `vivid`.
 
 local PACK = 'vivid'
 
----Kinds of files by extension: the extensions, the Lucide icon, and its color. A longer
----extension, such as `test.ts`, wins over a shorter one.
----@type { [1]: string[], [2]: string, [3]: string }[]
-local EXTENSIONS = {
-  { { 'lua', 'luau' }, 'moon', '#51a0cf' },
-  { { 'rs' }, 'cog', '#dea584' },
-  { { 'ts', 'mts', 'cts' }, 'file-type', '#3178c6' },
-  { { 'd.ts' }, 'file-type', '#6a9fd8' },
-  { { 'js', 'mjs', 'cjs' }, 'file-code', '#f1e05a' },
-  { { 'jsx', 'tsx' }, 'atom', '#61dafb' },
-  { { 'py', 'pyi' }, 'file-code', '#4b8bbe' },
-  { { 'go' }, 'file-code', '#00add8' },
-  { { 'c', 'h' }, 'file-code', '#599eff' },
-  { { 'cpp', 'cc', 'cxx', 'hpp', 'hh' }, 'file-code', '#f34b7d' },
-  { { 'cs' }, 'hash', '#9b4f96' },
-  { { 'java' }, 'coffee', '#b07219' },
-  { { 'kt', 'kts' }, 'file-code', '#a97bff' },
-  { { 'rb' }, 'gem', '#cc342d' },
-  { { 'php' }, 'file-code', '#8892bf' },
-  { { 'swift' }, 'bird', '#f05138' },
-  { { 'dart' }, 'file-code', '#40c4ff' },
-  { { 'zig' }, 'zap', '#f7a41d' },
-  { { 'ex', 'exs' }, 'droplet', '#a074c4' },
-  { { 'hs' }, 'sigma', '#8f4e8b' },
-  { { 'json', 'jsonc', 'json5' }, 'braces', '#cbcb41' },
-  { { 'yaml', 'yml' }, 'list-tree', '#e56b6f' },
-  { { 'toml' }, 'settings', '#b76b3e' },
-  { { 'ini', 'cfg', 'conf' }, 'sliders-horizontal', '#9aa1ad' },
-  { { 'xml', 'plist' }, 'code-xml', '#f1662a' },
-  { { 'html', 'htm' }, 'code-xml', '#e34c26' },
-  { { 'css' }, 'palette', '#42a5f5' },
-  { { 'scss', 'sass', 'less' }, 'palette', '#cd6799' },
-  { { 'vue' }, 'triangle', '#41b883' },
-  { { 'svelte' }, 'flame', '#ff3e00' },
-  { { 'md', 'markdown', 'mdx' }, 'book-open', '#519aba' },
-  { { 'txt', 'rst' }, 'file-text', '#a0a8b8' },
-  { { 'pdf' }, 'file-text', '#e53935' },
-  { { 'csv', 'tsv', 'xlsx', 'xls', 'ods' }, 'sheet', '#43a047' },
-  { { 'sql', 'db', 'sqlite', 'sqlite3' }, 'database', '#e38c00' },
-  { { 'graphql', 'gql' }, 'share-2', '#e10098' },
-  {
-    { 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd' },
-    'terminal',
-    '#89e051',
-  },
-  { { 'wgsl', 'glsl', 'frag', 'vert', 'hlsl' }, 'sparkles', '#b388ff' },
-  { { 'svg' }, 'pen-tool', '#ffb13b' },
-  {
-    { 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif' },
-    'image',
-    '#a074c4',
-  },
-  { { 'mp3', 'wav', 'ogg', 'flac', 'm4a' }, 'music', '#ef6c00' },
-  { { 'mp4', 'mov', 'webm', 'mkv', 'avi' }, 'video', '#fd971f' },
-  { { 'ttf', 'otf', 'woff', 'woff2' }, 'type', '#ec5f67' },
-  { { 'zip', 'tar', 'gz', 'tgz', '7z', 'rar', 'xz' }, 'archive', '#afb42b' },
-  { { 'lock' }, 'lock', '#9aa1ad' },
-  { { 'log' }, 'scroll-text', '#8d9ab0' },
-  { { 'diff', 'patch' }, 'file-diff', '#41b883' },
-  { { 'wasm' }, 'binary', '#654ff0' },
-  { { 'env' }, 'key-round', '#ecd53f' },
-  -- Proteus's own files.
-  { { 'ndg' }, 'workflow', '#7c6cff' },
-  { { 'ndb.lua' }, 'blocks', '#7c6cff' },
-  -- Tests, whatever the language.
-  {
-    {
-      'test.ts',
-      'test.tsx',
-      'test.js',
-      'test.jsx',
-      'test.lua',
-      'spec.ts',
-      'spec.tsx',
-      'spec.js',
-      'spec.jsx',
-      'spec.lua',
-    },
-    'flask-conical',
-    '#8bc34a',
-  },
-}
+---An icon in two colors: the first while a light theme shows, the second while a dark one does.
+---@param icon string A Lucide icon name.
+---@param light string
+---@param dark string
+---@return Proteus.FileIcon
+local function look (icon, light, dark)
+  return { icon = icon, color = 'light-dark(' .. light .. ', ' .. dark .. ')' }
+end
 
----Files known by their whole name.
----@type { [1]: string[], [2]: string, [3]: string }[]
-local NAMES = {
-  { { 'package.json' }, 'package', '#e05d44' },
-  { { 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml' }, 'lock', '#e05d44' },
-  { { 'tsconfig.json', 'jsconfig.json' }, 'settings', '#3178c6' },
-  { { 'Cargo.toml' }, 'package', '#dea584' },
-  { { 'Cargo.lock' }, 'lock', '#dea584' },
-  { { 'go.mod', 'go.sum' }, 'package', '#00add8' },
-  { { 'pyproject.toml', 'requirements.txt', 'Pipfile' }, 'package', '#ffd43b' },
-  { { 'Gemfile', 'Gemfile.lock' }, 'gem', '#cc342d' },
-  { { 'Makefile', 'CMakeLists.txt', 'justfile' }, 'hammer', '#e37933' },
-  {
-    { 'Dockerfile', 'docker-compose.yml', 'compose.yaml', '.dockerignore' },
-    'container',
-    '#2496ed',
-  },
-  {
-    { '.gitignore', '.gitattributes', '.gitmodules', '.gitkeep' },
-    'git-branch',
-    '#f14e32',
-  },
-  { { 'README.md', 'README.txt', 'README' }, 'info', '#42a5f5' },
-  {
-    { 'LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING' },
-    'scale',
-    '#d4b106',
-  },
-  { { 'CHANGELOG.md' }, 'history', '#8bc34a' },
-  { { '.editorconfig' }, 'sliders-horizontal', '#9aa1ad' },
-  {
-    { '.prettierrc', '.prettierrc.json', 'prettier.config.js' },
-    'paintbrush',
-    '#56b3b4',
-  },
-  { { 'eslint.config.js', '.eslintrc.json' }, 'shield-check', '#8080f2' },
-  { { 'vite.config.ts', 'vite.config.js' }, 'zap', '#bd34fe' },
-  { { 'stylua.toml', '.stylua.toml' }, 'paintbrush', '#51a0cf' },
-  { { 'selene.toml' }, 'shield-check', '#51a0cf' },
-  { { '.luarc.json' }, 'settings', '#51a0cf' },
-  { { 'proteus.json' }, 'puzzle', '#7c6cff' },
-  { { '.env', '.env.local', '.env.example' }, 'key-round', '#ecd53f' },
-}
+---A folder's icon, which shows `folder-open` while the folder is open.
+---@param icon string
+---@param light string
+---@param dark string
+---@return Proteus.FileIcon
+local function folder (icon, light, dark)
+  local out = look (icon, light, dark)
+  out.open = 'folder-open'
+  return out
+end
 
----Folders known by name: the names, the icon while closed, the icon while open, the color.
----@type { [1]: string[], [2]: string, [3]: string, [4]: string }[]
-local FOLDERS = {
-  { { 'src', 'lib', 'source' }, 'folder-code', 'folder-open', '#4fc3f7' },
-  {
-    { 'test', 'tests', '__tests__', 'spec' },
-    'folder-check',
-    'folder-open',
-    '#8bc34a',
-  },
-  { { 'node_modules', 'vendor' }, 'folder-archive', 'folder-open', '#6d8086' },
-  { { '.git' }, 'folder-git', 'folder-open', '#f14e32' },
-  { { '.github', '.gitlab' }, 'folder-git-2', 'folder-open', '#9aa1ad' },
-  { { 'docs', 'doc' }, 'folder-pen', 'folder-open', '#42a5f5' },
-  {
-    { 'assets', 'images', 'img', 'public', 'static' },
-    'folder-heart',
-    'folder-open',
-    '#ffb13b',
-  },
-  {
-    { 'dist', 'build', 'out', 'target' },
-    'folder-output',
-    'folder-open',
-    '#e57373',
-  },
-  { { 'scripts', 'bin' }, 'folder-cog', 'folder-open', '#ffb74d' },
-  {
-    { 'config', '.config', '.vscode', '.cargo' },
-    'folder-cog',
-    'folder-open',
-    '#9aa1ad',
-  },
-  {
-    { '.proteus', 'plugins', 'profiles' },
-    'folder-kanban',
-    'folder-open',
-    '#7c6cff',
-  },
-  { { 'graphs' }, 'folder-tree', 'folder-open', '#7c6cff' },
-  { { 'data' }, 'folder-archive', 'folder-open', '#e38c00' },
-  { { 'src-tauri' }, 'folder-code', 'folder-open', '#ffc131' },
+---How each kind of file and folder looks, by its id in lib/file_kinds.lua.
+---@type table<string, Proteus.FileIcon>
+local KINDS = {
+  lua = look ('moon', '#2a536c', '#51a0cf'),
+  rust = look ('cog', '#644a3b', '#dea584'),
+  typescript = look ('file-type', '#215287', '#4e8bce'),
+  ['typescript-types'] = look ('file-type', '#36516e', '#6a9fd8'),
+  tsx = look ('atom', '#265562', '#61dafb'),
+  javascript = look ('file-code', '#575120', '#f1e05a'),
+  jsx = look ('atom', '#265562', '#61dafb'),
+  python = look ('file-code', '#2d5372', '#4f8dbf'),
+  go = look ('file-code', '#00586e', '#00add8'),
+  c = look ('file-code', '#2d5182', '#599eff'),
+  header = look ('file-code', '#5e4474', '#a277c5'),
+  cpp = look ('file-code', '#8d2b48', '#f34b7d'),
+  csharp = look ('hash', '#743b71', '#b074ac'),
+  fsharp = look ('hash', '#225571', '#3f90bd'),
+  java = look ('coffee', '#6f4810', '#b67c29'),
+  kotlin = look ('file-code', '#5b428a', '#a97bff'),
+  scala = look ('file-code', '#982220', '#e35b59'),
+  groovy = look ('file-code', '#255567', '#4298b8'),
+  clojure = look ('file-code', '#325a19', '#63b132'),
+  ruby = look ('gem', '#972621', '#d8655f'),
+  php = look ('file-code', '#494f67', '#8892bf'),
+  perl = look ('file-code', '#39457e', '#7e86ab'),
+  swift = look ('bird', '#8e3021', '#f05138'),
+  dart = look ('file-code', '#1c5670', '#40c4ff'),
+  zig = look ('zap', '#6d480d', '#f7a41d'),
+  nim = look ('crown', '#574f1c', '#ffe953'),
+  elixir = look ('droplet', '#5e4474', '#a277c5'),
+  erlang = look ('file-code', '#882a70', '#c865af'),
+  haskell = look ('sigma', '#713e6e', '#aa78a7'),
+  elm = look ('tangent', '#2d5560', '#60b5cc'),
+  ocaml = look ('file-code', '#7c3f04', '#ef7a08'),
+  r = look ('chart-line', '#1c508e', '#528acf'),
+  julia = look ('circle-dot', '#634471', '#a676bd'),
+  nix = look ('snowflake', '#484891', '#7e7eff'),
+  terraform = look ('layers', '#67379e', '#9f75ce'),
+  protobuf = look ('file-code', '#2d5372', '#4f8dbf'),
+  notebook = look ('notebook-pen', '#7e3d14', '#f37626'),
+  tex = look ('sigma', '#385915', '#77905d'),
+  json = look ('braces', '#53531b', '#cbcb41'),
+  ['json-lines'] = look ('braces', '#53531b', '#cbcb41'),
+  yaml = look ('list-tree', '#7e3b3d', '#e56b6f'),
+  toml = look ('settings', '#754428', '#bd774d'),
+  config = look ('sliders-horizontal', '#4d5056', '#9aa1ad'),
+  xml = look ('code-xml', '#853817', '#f1662a'),
+  env = look ('key-round', '#574f17', '#ecd53f'),
+  html = look ('code-xml', '#8f3018', '#e65c3a'),
+  css = look ('palette', '#21527a', '#42a5f5'),
+  sass = look ('palette', '#773c59', '#cd6799'),
+  less = look ('palette', '#1d365d', '#7c8aa1'),
+  vue = look ('triangle', '#205a40', '#41b883'),
+  svelte = look ('flame', '#992500', '#ff3e00'),
+  astro = look ('rocket', '#8c3301', '#ff5d01'),
+  graphql = look ('share-2', '#9b0069', '#e942b3'),
+  wasm = look ('binary', '#4c3bb4', '#8776f3'),
+  markdown = look ('book-open', '#2d5566', '#519aba'),
+  mdx = look ('book-open', '#674912', '#fcb32c'),
+  text = look ('file-text', '#4b4f56', '#a0a8b8'),
+  pdf = look ('file-text', '#972623', '#e95551'),
+  table = look ('sheet', '#265b28', '#43a047'),
+  spreadsheet = look ('sheet', '#265b28', '#43a047'),
+  database = look ('database', '#714600', '#e38c00'),
+  log = look ('scroll-text', '#49505c', '#8d9ab0'),
+  diff = look ('file-diff', '#205a40', '#41b883'),
+  shell = look ('terminal', '#355720', '#89e051'),
+  ['windows-shell'] = look ('terminal', '#2d4e89', '#5391fe'),
+  wgsl = look ('sparkles', '#5b4582', '#b388ff'),
+  glsl = look ('sparkles', '#5b4582', '#b388ff'),
+  svg = look ('pen-tool', '#6b4a19', '#ffb13b'),
+  image = look ('image', '#5e4474', '#a277c5'),
+  audio = look ('music', '#833b00', '#ef6c00'),
+  midi = look ('piano', '#833b00', '#ef6c00'),
+  ['audio-plugin'] = look ('audio-waveform', '#833b00', '#ef6c00'),
+  video = look ('video', '#74450e', '#fd971f'),
+  font = look ('type', '#87363b', '#ec5f67'),
+  archive = look ('archive', '#505314', '#afb42b'),
+  binary = look ('cpu', '#4d5056', '#9aa1ad'),
+  key = look ('key-round', '#5f4e1a', '#e2b93d'),
+  lock = look ('lock', '#4d5056', '#9aa1ad'),
+  graph = look ('workflow', '#4d439e', '#8475ff'),
+  ['code-block'] = look ('blocks', '#4d439e', '#8475ff'),
+  ['proteus-manifest'] = look ('puzzle', '#4d439e', '#8475ff'),
+  test = look ('flask-conical', '#3d5621', '#8bc34a'),
+  npm = look ('package', '#863829', '#e05f46'),
+  ['npm-lock'] = look ('lock', '#863829', '#e05f46'),
+  npmrc = look ('settings', '#863829', '#e05f46'),
+  tsconfig = look ('settings', '#215287', '#4e8bce'),
+  cargo = look ('package', '#644a3b', '#dea584'),
+  ['cargo-lock'] = look ('lock', '#644a3b', '#dea584'),
+  ['go-module'] = look ('package', '#00586e', '#00add8'),
+  ['python-project'] = look ('package', '#5e4e16', '#ffd43b'),
+  gem = look ('gem', '#972621', '#d8655f'),
+  build = look ('hammer', '#7b411c', '#e37933'),
+  docker = look ('container', '#145282', '#2496ed'),
+  git = look ('git-branch', '#8e2e1d', '#f15034'),
+  ci = look ('git-branch', '#833914', '#fc6d26'),
+  readme = look ('info', '#21527a', '#42a5f5'),
+  license = look ('scale', '#5d4e03', '#d4b106'),
+  changelog = look ('history', '#3d5621', '#8bc34a'),
+  editorconfig = look ('sliders-horizontal', '#4d5056', '#9aa1ad'),
+  prettier = look ('paintbrush', '#295656', '#56b3b4'),
+  eslint = look ('shield-check', '#49498a', '#8080f2'),
+  vite = look ('zap', '#7b22a5', '#c64efe'),
+  stylua = look ('paintbrush', '#2a536c', '#51a0cf'),
+  selene = look ('shield-check', '#2a536c', '#51a0cf'),
+  luarc = look ('settings', '#2a536c', '#51a0cf'),
+  source = folder ('folder-code', '#23566d', '#4fc3f7'),
+  tests = folder ('folder-check', '#3d5621', '#8bc34a'),
+  dependencies = folder ('folder-archive', '#465256', '#7a8b91'),
+  ['git-folder'] = folder ('folder-git', '#8e2e1d', '#f15034'),
+  ['ci-folder'] = folder ('folder-git-2', '#4d5056', '#9aa1ad'),
+  docs = folder ('folder-pen', '#21527a', '#42a5f5'),
+  assets = folder ('folder-heart', '#6b4a19', '#ffb13b'),
+  output = folder ('folder-output', '#7c3e3e', '#e57373'),
+  scripts = folder ('folder-cog', '#66491f', '#ffb74d'),
+  ['config-folder'] = folder ('folder-cog', '#4d5056', '#9aa1ad'),
+  proteus = folder ('folder-kanban', '#4d439e', '#8475ff'),
+  graphs = folder ('folder-tree', '#4d439e', '#8475ff'),
+  data = folder ('folder-archive', '#714600', '#e38c00'),
+  tauri = folder ('folder-code', '#634b13', '#ffc131'),
 }
 
 ---@type Proteus.Plugin
 return {
   name = 'Vivid Icons',
   description = 'A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.',
-  version = '1.1.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions', 'icons' } },
+  version = '2.0.0',
+  requires = {
+    proteus = '>=0.2.0',
+    features = { 'permissions', 'icons', 'file-kinds' },
+  },
   permissions = {},
-  depends = { 'core.icons', 'core.files' },
+  depends = { 'core.icons' },
   activate = function (app)
-    local files = app.use ('files')
     app.use ('icons').register ({
       id = PACK,
       name = 'Vivid',
       description = 'Colored icons for each language',
       file = { icon = 'file' },
-      folder = { icon = 'folder', open = 'folder-open', color = '#90a4ae' },
+      folder = folder ('folder', '#485257', '#90a4ae'),
+      kinds = KINDS,
     })
-
-    ---@param pattern string
-    ---@param value Proteus.IconAssociation
-    local function associate (pattern, value)
-      value.pack = PACK
-      files.associate ({ kind = 'icon', pattern = pattern, value = value })
-    end
-
-    for _, row in ipairs (EXTENSIONS) do
-      for _, ext in ipairs (row[1]) do
-        associate ('*.' .. ext, { icon = row[2], color = row[3] })
-      end
-    end
-    for _, row in ipairs (NAMES) do
-      for _, name in ipairs (row[1]) do
-        associate (name, { icon = row[2], color = row[3] })
-      end
-    end
-    for _, row in ipairs (FOLDERS) do
-      for _, name in ipairs (row[1]) do
-        associate (
-          name,
-          { folder = true, icon = row[2], open = row[3], color = row[4] }
-        )
-      end
-    end
   end,
 }

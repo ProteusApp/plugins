@@ -17,7 +17,15 @@
 //   read(path)                 reads a file of a plugin or profile, from the top of the
 //                              registry, such as read('plugins/my.plugin/init.lua')
 //   update, write(path, text)  true with --update, and then writes a file
-// `require('name')` loads name.lua from the plugin's own folder.
+// `require('name')` loads name.lua from the plugin's own folder, then from the app's lua/lib.
+//
+// Last it runs contracts/*.test.lua, which hold every plugin of one kind to the app's rules,
+// such as every theme to the theme contract. They get two more globals:
+//   plugin_ids()               every plugin id, sorted
+//   load_plugin(id)            the table a plugin's init.lua returns, loaded as Proteus does
+//
+// The app's lua/lib comes from a ProteusApp/app checkout: PROTEUS_APP names it, or else it sits
+// beside the registry at ../app. Without one the contracts are skipped, and say why.
 
 import { declaredOf, engine, reader } from './lua.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
@@ -27,6 +35,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const ROOT = resolve(import.meta.dirname, '..');
+// PROTEUS_APP, when set, is the only place looked at, so PROTEUS_APP=/nonexistent runs without.
+const APP = [process.env.PROTEUS_APP ?? resolve(ROOT, '..', 'app')].find((d) => d && existsSync(join(d, 'lua', 'lib')));
+const APP_LIB = APP ? resolve(APP, 'lua', 'lib') : null;
+
+/** Reads a file of a plugin's own folder, then of the app's lua/lib, as Proteus's require does. */
+function ownThenLib(dir) {
+  const own = reader(dir);
+  const lib = APP_LIB ? reader(APP_LIB) : () => undefined;
+  return (rel) => own(rel) ?? lib(rel);
+}
 const args = process.argv.slice(2);
 const update = args.includes('--update');
 const filter = args.find((a) => !a.startsWith('--')) ?? '';
@@ -222,7 +240,7 @@ for (const [root, kind, main] of [
         if (!target.startsWith(dir + sep)) throw new Error(`a test may only write inside ${root}/${id}`);
         writeFileSync(target, body);
       });
-      t.global.set('__read_own', reader(dir));
+      t.global.set('__read_own', ownThenLib(dir));
       t.global.set('__shader_check', shaderCheck);
       // Tests run with the whole standard library, and require from the plugin's own folder.
       t.doStringSync(`
@@ -246,6 +264,63 @@ for (const [root, kind, main] of [
       t.global.close();
     }
   }
+}
+
+// The contracts: every plugin of one kind held to the app's rules.
+const contractDir = join(ROOT, 'contracts');
+const contracts = existsSync(contractDir) ? readdirSync(contractDir).filter((n) => n.endsWith('.test.lua') && n.includes(filter)).sort() : [];
+if (contracts.length > 0 && !APP_LIB) {
+  const where = process.env.PROTEUS_APP ? `PROTEUS_APP (${process.env.PROTEUS_APP})` : resolve(ROOT, '..', 'app');
+  console.log(
+    `skip ${contracts.map((n) => `contracts/${n}`).join(', ')}: no app checkout with lua/lib at ${where}. ` +
+      'They need the app: put ProteusApp/app beside the registry at ../app, or set PROTEUS_APP.',
+  );
+}
+const pluginIds = existsSync(join(ROOT, 'plugins'))
+  ? readdirSync(join(ROOT, 'plugins'))
+      .filter((id) => existsSync(join(ROOT, 'plugins', id, 'init.lua')))
+      .sort()
+  : [];
+for (const name of APP_LIB ? contracts : []) {
+  const file = join(contractDir, name);
+  const t = await engine();
+  t.global.set('read', (path) => readFileSync(join(ROOT, path), 'utf8'));
+  t.global.set('__plugin_ids', () => pluginIds.join('\n'));
+  t.global.set('__read_plugin', (id, path) => {
+    if (!pluginIds.includes(String(id))) return undefined;
+    return ownThenLib(join(ROOT, 'plugins', String(id)))(path);
+  });
+  t.global.set('__read_own', reader(APP_LIB));
+  t.doStringSync(`
+    local lib = __sandbox (__read_own).require
+    function require (name) return lib (name) end
+    function plugin_ids ()
+      local out = {}
+      for id in (__plugin_ids () .. '\\n'):gmatch ('([^\\n]+)\\n') do out[#out + 1] = id end
+      return out
+    end
+    function load_plugin (id)
+      local function read_own (path) return __read_plugin (id, path) end
+      local src = read_own ('init.lua')
+      if not src then error ('plugins/' .. tostring (id) .. ' has no init.lua', 2) end
+      local env = __sandbox (read_own)
+      return assert (load (src, '@plugins/' .. id .. '/init.lua', 't', env)) ()
+    end
+  `);
+  t.doStringSync(PRELUDE);
+  const shown = relative(ROOT, file);
+  try {
+    await t.doString(readFileSync(file, 'utf8'));
+    const [p, f, r] = t.doStringSync('local p, f, r = __run_tests () return { p, f, r }');
+    passed += p;
+    failed += f;
+    console.log(`${f === 0 ? 'ok  ' : 'FAIL'} ${shown}  (${p} passed, ${f} failed)`);
+    if (r) console.log(r);
+  } catch (err) {
+    failed += 1;
+    console.log(`FAIL ${shown}: ${err.message}`);
+  }
+  t.global.close();
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

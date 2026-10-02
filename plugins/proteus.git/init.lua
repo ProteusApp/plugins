@@ -38,9 +38,10 @@ local CSS = [[
 .git-row:hover { background: var(--bg-hover); }
 .git-row.active { background: var(--bg-active); }
 .git-letter { flex: none; width: 14px; text-align: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
-.git-k-modified { color: var(--warning); }
-.git-k-added, .git-k-untracked { color: var(--success); }
-.git-k-deleted, .git-k-conflicted { color: var(--danger); }
+.git-k-modified { color: var(--diff-change, var(--warning)); }
+.git-k-added, .git-k-untracked { color: var(--diff-add, var(--success)); }
+.git-k-deleted { color: var(--diff-remove, var(--danger)); }
+.git-k-conflicted { color: var(--danger); }
 .git-k-renamed, .git-k-copied, .git-k-typechange { color: var(--accent); }
 .git-name { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px;
@@ -113,8 +114,8 @@ local CSS = [[
 .git-file-tag { padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 17px; background: var(--bg-active);
   color: var(--fg-muted); }
 .git-file-stat { display: flex; gap: 8px; margin-left: auto; font-family: var(--font-mono); font-size: 12px; }
-.git-stat-add { color: var(--success); }
-.git-stat-del { color: var(--danger); }
+.git-stat-add { color: var(--diff-add, var(--success)); }
+.git-stat-del { color: var(--diff-remove, var(--danger)); }
 .git-hunk-head { display: flex; align-items: center; gap: 8px; padding: 2px 12px; line-height: 22px;
   font-family: var(--font-mono); color: var(--fg-muted); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .git-hunk-text { white-space: pre; }
@@ -133,21 +134,21 @@ local CSS = [[
 .git-ln { flex: none; width: 48px; padding-right: 8px; text-align: right; color: var(--fg-faint); user-select: none; }
 .git-sign { flex: none; width: 16px; text-align: center; color: var(--fg-faint); user-select: none; }
 .git-code { flex: 1; padding-right: 16px; tab-size: 4; }
-.git-l-add { background: color-mix(in srgb, var(--success) 15%, transparent); }
-.git-l-add .git-sign { color: var(--success); }
-.git-l-del { background: color-mix(in srgb, var(--danger) 15%, transparent); }
-.git-l-del .git-sign { color: var(--danger); }
-.git-l-add .git-w { background: color-mix(in srgb, var(--success) 35%, transparent); border-radius: 2px; }
-.git-l-del .git-w { background: color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 2px; }
+.git-l-add { background: color-mix(in srgb, var(--diff-add, var(--success)) 15%, transparent); }
+.git-l-add .git-sign { color: var(--diff-add, var(--success)); }
+.git-l-del { background: color-mix(in srgb, var(--diff-remove, var(--danger)) 15%, transparent); }
+.git-l-del .git-sign { color: var(--diff-remove, var(--danger)); }
+.git-l-add .git-w { background: color-mix(in srgb, var(--diff-add, var(--success)) 35%, transparent); border-radius: 2px; }
+.git-l-del .git-w { background: color-mix(in srgb, var(--diff-remove, var(--danger)) 35%, transparent); border-radius: 2px; }
 .git-diff-split { display: block; }
 .git-split { display: grid; grid-template-columns: 1fr 1fr; font-family: var(--font-mono); line-height: 19px; }
 .git-half { display: flex; min-width: 0; }
 .git-half + .git-half { border-left: 1px solid var(--border); }
 .git-half .git-code { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 8px; tab-size: 4; }
-.git-half.git-l-add { background: color-mix(in srgb, var(--success) 15%, transparent); }
-.git-half.git-l-del { background: color-mix(in srgb, var(--danger) 15%, transparent); }
-.git-half.git-l-add .git-sign { color: var(--success); }
-.git-half.git-l-del .git-sign { color: var(--danger); }
+.git-half.git-l-add { background: color-mix(in srgb, var(--diff-add, var(--success)) 15%, transparent); }
+.git-half.git-l-del { background: color-mix(in srgb, var(--diff-remove, var(--danger)) 15%, transparent); }
+.git-half.git-l-add .git-sign { color: var(--diff-add, var(--success)); }
+.git-half.git-l-del .git-sign { color: var(--diff-remove, var(--danger)); }
 .git-half-empty { background: var(--bg-alt); }
 .git-blame { display: inline-block; min-width: 100%; padding-bottom: 24px; font-size: 12px; }
 .git-blame-line { display: flex; font-family: var(--font-mono); line-height: 19px; white-space: pre; }
@@ -208,7 +209,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.4.0',
+  version = '1.4.1',
   requires = { proteus = '>=0.3.1', features = { 'permissions', 'highlight' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },

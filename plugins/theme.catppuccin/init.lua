@@ -1,8 +1,9 @@
 -- theme.catppuccin: Soothing pastel color themes from the Catppuccin palette (MIT): Mocha,
 -- which is dark, and Latte, which is light.
 --
--- It registers its themes with core.themes. Pick one with View > Choose Color Theme, or the
--- `theme` setting. Every color is a CSS variable, so the whole app changes at once.
+-- It lists its themes as data, and core.themes registers them. Pick one with View > Choose
+-- Color Theme, or the `theme` setting. Every color is a CSS variable, so the whole app changes
+-- at once.
 
 ---Every theme this plugin adds.
 ---@type Proteus.ThemeSpec[]
@@ -35,7 +36,7 @@ local THEMES = {
       ['syn-string'] = '#a6e3a1',
       ['syn-number'] = '#fab387',
       ['syn-constant'] = '#fab387',
-      ['syn-comment'] = '#7f849c',
+      ['syn-comment'] = '#82869e',
       ['syn-function'] = '#89b4fa',
       ['syn-operator'] = '#89dceb',
       ['syn-property'] = '#b4befe',
@@ -54,28 +55,28 @@ local THEMES = {
       ['bg-hover'] = '#dce0e8',
       ['bg-active'] = '#ccd0da',
       ['fg'] = '#4c4f69',
-      ['fg-muted'] = '#6c6f85',
-      ['fg-faint'] = '#9ca0b0',
+      ['fg-muted'] = '#696c81',
+      ['fg-faint'] = '#858896',
       ['border'] = '#dce0e8',
       ['accent'] = '#8839ef',
       ['accent-fg'] = '#eff1f5',
       ['danger'] = '#d20f39',
-      ['warning'] = '#df8e1d',
-      ['success'] = '#40a02b',
+      ['warning'] = '#c07a19',
+      ['success'] = '#3f9d2a',
       ['selection'] = 'rgba(124,127,147,.20)',
       ['scrollbar'] = 'rgba(124,127,147,.30)',
       ['shadow'] = '0 8px 30px rgba(76,79,105,.18)',
       ['editor-bg'] = '#eff1f5',
       ['editor-line'] = 'rgba(76,79,105,.05)',
       ['syn-keyword'] = '#8839ef',
-      ['syn-string'] = '#40a02b',
-      ['syn-number'] = '#fe640b',
-      ['syn-constant'] = '#fe640b',
-      ['syn-comment'] = '#8c8fa1',
-      ['syn-function'] = '#1e66f5',
-      ['syn-operator'] = '#04a5e5',
-      ['syn-property'] = '#7287fd',
-      ['syn-builtin'] = '#df8e1d',
+      ['syn-string'] = '#317b21',
+      ['syn-number'] = '#b94908',
+      ['syn-constant'] = '#b94908',
+      ['syn-comment'] = '#6a6d7a',
+      ['syn-function'] = '#1d63ee',
+      ['syn-operator'] = '#0375a3',
+      ['syn-property'] = '#5665be',
+      ['syn-builtin'] = '#986114',
       ['radius'] = '8px',
     },
   },
@@ -85,14 +86,9 @@ local THEMES = {
 return {
   name = 'Catppuccin themes',
   description = 'Soothing pastel themes: Mocha, which is dark, and Latte, which is light.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    local themes = app.use ('themes')
-    for _, theme in ipairs (THEMES) do
-      themes.register (theme)
-    end
-  end,
+  themes = THEMES,
 }

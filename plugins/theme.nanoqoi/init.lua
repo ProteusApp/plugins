@@ -1,8 +1,9 @@
 -- theme.nanoqoi: A near-black theme in amethyst purples, from nanoqoi's Neovim colors. Those
 -- are tokyonight's moon style with the Midnight Amethyst palette laid over it.
 --
--- It registers its theme with core.themes. Pick it with View > Choose Color Theme, or the
--- `theme` setting. Every color is a CSS variable, so the whole app changes at once.
+-- It lists its theme as data, and core.themes registers it. Pick it with View > Choose Color
+-- Theme, or the `theme` setting. Every color is a CSS variable, so the whole app changes at
+-- once.
 
 ---Every theme this plugin adds.
 ---@type Proteus.ThemeSpec[]
@@ -48,14 +49,9 @@ local THEMES = {
 return {
   name = 'nanoqoi theme',
   description = "A near-black theme in amethyst purples, from nanoqoi's Neovim colors.",
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    local themes = app.use ('themes')
-    for _, theme in ipairs (THEMES) do
-      themes.register (theme)
-    end
-  end,
+  themes = THEMES,
 }

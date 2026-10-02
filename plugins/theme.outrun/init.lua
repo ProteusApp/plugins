@@ -2,20 +2,20 @@
 -- sky, a sunset stripe runs under the menu bar, and a neon grid runs to the horizon under the
 -- code.
 --
--- It registers one theme with core.themes, with its colors as CSS variables and a little CSS
--- of its own for what colors alone cannot do. Pick it with View > Choose Color Theme, or set
--- `theme` to `outrun`.
+-- It lists one theme as data, which core.themes registers: its colors as CSS variables, and a
+-- little CSS of its own for what colors alone cannot do. Pick it with View > Choose Color
+-- Theme, or set `theme` to `outrun`.
 
 ---@type Proteus.Plugin
 return {
   name = 'Outrun theme',
   description = 'Synthwave neon on a midnight purple sky, with a glowing grid running to the horizon under the code.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    app.use ('themes').register ({
+  themes = {
+    {
       id = 'outrun',
       name = 'Outrun',
       dark = true,
@@ -43,7 +43,7 @@ return {
         ['syn-string'] = '#ffd319',
         ['syn-number'] = '#ff8b39',
         ['syn-constant'] = '#ff8b39',
-        ['syn-comment'] = '#7c63a8',
+        ['syn-comment'] = '#8973b1',
         ['syn-function'] = '#36f9f6',
         ['syn-operator'] = '#fe4450',
         ['syn-property'] = '#72f1b8',
@@ -89,6 +89,6 @@ body .cm-editor::before {
 body .cm-editor { overflow: hidden; }
 body .cm-editor > .cm-scroller { position: relative; z-index: 1; }
       ]],
-    })
-  end,
+    },
+  },
 }

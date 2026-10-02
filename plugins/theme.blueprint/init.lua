@@ -3,20 +3,20 @@
 -- 40, headings are lettered in capitals like a title block, and the accent is a yellow
 -- highlighter.
 --
--- It registers one theme with core.themes, with its colors as CSS variables and a little CSS
--- of its own for what colors alone cannot do. Pick it with View > Choose Color Theme, or set
--- `theme` to `blueprint`.
+-- It lists one theme as data, which core.themes registers: its colors as CSS variables, and a
+-- little CSS of its own for what colors alone cannot do. Pick it with View > Choose Color
+-- Theme, or set `theme` to `blueprint`.
 
 ---@type Proteus.Plugin
 return {
   name = 'Blueprint theme',
   description = 'White lines on Prussian blue drafting paper, with a measured grid behind the code.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    app.use ('themes').register ({
+  themes = {
+    {
       id = 'blueprint',
       name = 'Blueprint',
       dark = true,
@@ -82,6 +82,6 @@ body .status-item {
 }
 body .views-head { color: var(--fg); }
       ]],
-    })
-  end,
+    },
+  },
 }

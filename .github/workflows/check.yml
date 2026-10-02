@@ -51,6 +51,8 @@ jobs:
         run: node scripts/index.mjs --verify
       - name: The registry's scripts
         run: node --test "test/*.test.mjs"
+      # The contracts in contracts/ need a checkout of the app, which this job does not have,
+      # so they are skipped here and run where the app sits beside the registry.
       - name: What each plugin declares, and each plugin's tests
         run: node scripts/lua-test.mjs
       - name: Vendored files match their published sources
@@ -68,11 +70,11 @@ jobs:
           chmod +x bin/stylua bin/selene
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Lua style
-        run: stylua --check plugins profiles
+        run: stylua --check plugins profiles contracts
       - name: Lua lint
         run: |
           selene plugins profiles
-          selene --config tests.selene.toml plugins/*/tests
+          selene --config tests.selene.toml plugins/*/tests contracts
       # Shader code from the Shader Builder's compiler and examples goes through real compilers:
       # glslangValidator for GLSL ES and naga for WGSL. Tests reach them through shader_check.
       - name: Cache naga

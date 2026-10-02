@@ -2,7 +2,7 @@
   "id": "proteus.git",
   "name": "Git",
   "description": "Stage, commit, branch and browse the history of a Git repository.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.shell",

@@ -2,20 +2,20 @@
 -- headings in book type and small capitals, rubric red for keywords, and a red margin rule
 -- beside the line numbers, as in a ruled notebook.
 --
--- It registers one theme with core.themes, with its colors as CSS variables and a little CSS
--- of its own for what colors alone cannot do. Pick it with View > Choose Color Theme, or set
--- `theme` to `parchment`.
+-- It lists one theme as data, which core.themes registers: its colors as CSS variables, and a
+-- little CSS of its own for what colors alone cannot do. Pick it with View > Choose Color
+-- Theme, or set `theme` to `parchment`.
 
 ---@type Proteus.Plugin
 return {
   name = 'Parchment theme',
   description = 'Iron-gall ink on warm paper, with book type, rubric red and a ruled margin beside the code.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    app.use ('themes').register ({
+  themes = {
+    {
       id = 'parchment',
       name = 'Parchment',
       dark = false,
@@ -27,7 +27,7 @@ return {
         ['bg-active'] = '#dccba1',
         ['fg'] = '#3a2d20',
         ['fg-muted'] = '#6b5a45',
-        ['fg-faint'] = '#a08c6c',
+        ['fg-faint'] = '#958264',
         ['border'] = '#d9c9a3',
         ['accent'] = '#8b2e1f',
         ['accent-fg'] = '#fbf6ea',
@@ -43,7 +43,7 @@ return {
         ['syn-string'] = '#4a6b2f',
         ['syn-number'] = '#9a5b13',
         ['syn-constant'] = '#9a5b13',
-        ['syn-comment'] = '#9a8466',
+        ['syn-comment'] = '#7b6a52',
         ['syn-function'] = '#2f4d6b',
         ['syn-operator'] = '#6b5a45',
         ['syn-property'] = '#6d3f63',
@@ -79,6 +79,6 @@ body .tab.active .tab-title { font-style: italic; }
 body .tab.active::before { height: 1px; }
 body .menubar-item { font-variant: small-caps; letter-spacing: 0.03em; }
       ]],
-    })
-  end,
+    },
+  },
 }
