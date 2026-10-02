@@ -1,9 +1,20 @@
--- git_parse: reads what the git program prints, and builds the command lines, patches and
--- HTML the Git client needs. It calls no host function and draws nothing, so the tests reach
--- all of it.
+-- git_parse: reads what the git program prints, and builds the patches that stage part of a
+-- file. It calls no host function and draws nothing, so the tests reach all of it.
+--
+-- The command lines are in git_args, the HTML in git_html, and the paths and messages in
+-- git_paths. This module hands out their functions as well, so the client and the tests
+-- reach all of them through it.
 --
 -- Status comes from `git status -z`. `parse_status` also reads the output without `-z`, where
 -- Git quotes a path that holds a space or an unusual character, and `unquote` reads it back.
+
+local A = require ('git_args') --[[@as Git.ArgsModule]]
+local T = require ('git_text') --[[@as Git.TextModule]]
+local html = require ('git_html') --[[@as Git.HtmlModule]]
+local paths = require ('git_paths') --[[@as Git.PathsModule]]
+
+local int, lines_of, split, strip_cr, trim =
+  T.int, T.lines_of, T.split, T.strip_cr, T.trim
 
 ---@alias Git.Kind 'modified'|'added'|'deleted'|'renamed'|'copied'|'typechange'|'untracked'|'conflicted'
 
@@ -41,6 +52,7 @@
 ---@field author string
 ---@field date string Relative, such as `'3 days ago'`.
 ---@field refs Git.Ref[]
+---@field parents string[] Full hashes. Empty for the first commit.
 ---@field subject string
 
 ---@class Git.Branch
@@ -66,6 +78,7 @@
 ---@field new_start integer
 ---@field new_count integer
 ---@field lines Git.Line[]
+---@field partial? boolean True when reading stopped inside it, so it cannot be staged.
 
 ---One file in a diff.
 ---@class Git.FileDiff
@@ -99,17 +112,16 @@
 ---@class Git.Show
 ---@field commit? Git.CommitInfo
 ---@field files Git.FileDiff[]
+---@field cut boolean True when reading stopped at the line limit.
 
----@class Git.DiffOptions
----@field buttons? boolean Adds a Stage Hunk or Unstage Hunk button to each hunk.
----@field staged? boolean The buttons unstage instead of stage.
----@field max_lines? integer How many diff lines to draw. 5,000 when nil.
----@field label? string A tag beside each file path, such as `'Staged'`.
----@field empty? string The text to show when there is no file.
+---One entry of `git stash list`.
+---@class Git.Stash
+---@field ref string Such as `'stash@{0}'`.
+---@field message string Such as `'On main: try the new parser'`.
+---@field date string Relative, such as `'2 hours ago'`.
 
----@class Git.ListOptions
----@field selected? string The key of the selected row, such as `'u:src/a.txt'`.
----@field icons? table<string, string> SVG for the row buttons: `stage`, `unstage` and `discard`.
+---A merge, rebase, cherry-pick or revert that stopped part way, for conflicts.
+---@alias Git.Operation 'merge'|'rebase'|'cherry-pick'|'revert'
 
 ---An item in the Switch Branch list.
 ---@class Git.Choice
@@ -119,16 +131,15 @@
 ---@field action 'create'|'switch'|'track'
 ---@field name? string The branch to switch to.
 
----@class Git.ParseModule
+---@class Git.ParseModule : Git.PathsModule, Git.ArgsModule, Git.HtmlModule
 local M = {}
 
 local US = '\31'
 local RS = '\30'
 local NO_NEWLINE = 'No newline at end of file'
 
-M.LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ar%x1f%D%x1f%s%x1e'
-M.SHOW_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%P%x1f%B%x1e'
-M.BRANCH_FORMAT = '--format=%(HEAD)%09%(refname)%09%(upstream:short)'
+-- How many diff lines are read and drawn.
+M.MAX_LINES = 5000
 
 ---@type table<string, Git.Kind>
 local KIND = {
@@ -150,18 +161,6 @@ local LETTER = {
   typechange = 'T',
   untracked = 'U',
   conflicted = '!',
-}
-
----@type table<Git.Kind, string>
-local KIND_TITLE = {
-  modified = 'Modified',
-  added = 'Added',
-  deleted = 'Deleted',
-  renamed = 'Renamed',
-  copied = 'Copied',
-  typechange = 'Type changed',
-  untracked = 'Untracked',
-  conflicted = 'Conflict',
 }
 
 -- Both sides of a merge touched these files. Git lists each one once.
@@ -188,87 +187,6 @@ local C_ESCAPES = {
   ['\\'] = '\\',
   ['"'] = '"',
 }
-
----@type table<string, string>
-local HTML_ESCAPES = {
-  ['&'] = '&amp;',
-  ['<'] = '&lt;',
-  ['>'] = '&gt;',
-  ['"'] = '&quot;',
-  ["'"] = '&#39;',
-}
-
----------------------------------------------------------------------------------------------
--- Small text helpers
----------------------------------------------------------------------------------------------
-
----Splits on one plain character and keeps empty fields.
----@param s string
----@param sep string
----@return string[]
-local function split (s, sep)
-  local out = {} ---@type string[]
-  local start = 1
-  while true do
-    local i = s:find (sep, start, true)
-    if not i then
-      out[#out + 1] = s:sub (start)
-      return out
-    end
-    out[#out + 1] = s:sub (start, i - 1)
-    start = i + 1
-  end
-end
-
----Splits text into lines. A newline at the very end does not start another line.
----@param text string
----@return string[]
-local function lines_of (text)
-  local out = split (text, '\n')
-  if out[#out] == '' then
-    out[#out] = nil
-  end
-  return out
-end
-
----@param s string
----@return string
-local function trim (s)
-  local out = s:gsub ('^%s+', ''):gsub ('%s+$', '')
-  return out
-end
-
----@param s string
----@return string
-local function strip_cr (s)
-  if s:sub (-1) == '\r' then
-    return s:sub (1, -2)
-  end
-  return s
-end
-
----@param s string?
----@return integer
-local function int (s)
-  return math.floor (tonumber (s) or 0)
-end
-
----Escapes text for HTML, attribute values included.
----@param s any
----@return string
-function M.escape (s)
-  local out = tostring (s):gsub ('[&<>"\']', HTML_ESCAPES)
-  return out
-end
-
----Writes 5000 as `'5,000'`.
----@param n integer
----@return string
-function M.thousands (n)
-  local s = tostring (n):reverse ():gsub ('(%d%d%d)', '%1,'):reverse ()
-  local out = s:gsub ('^,', '')
-  return out
-end
 
 ---------------------------------------------------------------------------------------------
 -- Quoted paths
@@ -641,7 +559,8 @@ local function read_refs (text)
   return refs
 end
 
----Reads `git log` output in `LOG_FORMAT`.
+---Reads `git log` output in `LOG_FORMAT`. Output without the parents field, as before 1.2.0,
+---reads too, with no parents.
 ---@param text string
 ---@return Git.Commit[]
 function M.parse_log (text)
@@ -650,13 +569,22 @@ function M.parse_log (text)
     local rec = chunk:gsub ('^%s+', '')
     local f = split (rec, US)
     if #f >= 6 then
+      local parents = {} ---@type string[]
+      local first = 6
+      if #f >= 7 then
+        for p in f[6]:gmatch ('%x+') do
+          parents[#parents + 1] = p
+        end
+        first = 7
+      end
       out[#out + 1] = {
         hash = f[1],
         short = f[2],
         author = f[3],
         date = f[4],
         refs = read_refs (f[5]),
-        subject = table.concat (f, US, 6),
+        parents = parents,
+        subject = table.concat (f, US, first),
       }
     end
   end
@@ -735,27 +663,33 @@ function M.branch_choices (branches)
   return out
 end
 
----The command that switches to a picked branch. A remote branch with a local branch of the
----same name switches to the local one, since `--track` would refuse to make it again.
----@param choice Git.Choice
----@param branches Git.Branch[]
----@return string[]?
-function M.switch_args (choice, branches)
-  local name = choice.name
-  if not name then
-    return nil
+---A reason a new branch, tag or remote name is not allowed, or nil when it is fine.
+---@param name string
+---@param what string Such as `'branch'`.
+---@return string?
+local function check_ref_name (name, what)
+  local a = 'A ' .. what .. ' name'
+  if name == '' then
+    return 'Type a name for the ' .. what .. '.'
   end
-  if choice.action == 'switch' then
-    return { 'switch', name }
+  if name:find ('[%s~^:?*%[\\%c]') then
+    return a .. ' cannot hold spaces or any of ~ ^ : ? * [ \\'
   end
-  if choice.action == 'track' then
-    local short = name:match ('^[^/]+/(.+)$')
-    for _, b in ipairs (branches) do
-      if not b.remote and b.name == short then
-        return { 'switch', short }
-      end
-    end
-    return { 'switch', '--track', name }
+  if
+    name:find ('%.%.')
+    or name:find ('//')
+    or name:find ('@{', 1, true)
+    or name == '@'
+  then
+    return a .. ' cannot hold .., // or @{'
+  end
+  if
+    name:find ('^[%-/.]')
+    or name:find ('[/.]$')
+    or name:find ('%.lock$')
+    or name:find ('/%.')
+  then
+    return a .. ' cannot start with - / or . or end with / . or .lock'
   end
   return nil
 end
@@ -764,167 +698,196 @@ end
 ---@param name string
 ---@return string?
 function M.check_branch_name (name)
-  if name == '' then
-    return 'Type a name for the branch.'
+  return check_ref_name (name, 'branch')
+end
+
+---@param name string
+---@return string?
+function M.check_tag_name (name)
+  return check_ref_name (name, 'tag')
+end
+
+---A remote's name becomes part of its branches' names, such as `origin/main`, so it holds
+---no `/` either.
+---@param name string
+---@return string?
+function M.check_remote_name (name)
+  if name:find ('/', 1, true) then
+    return 'A remote name cannot hold /'
   end
-  if name:find ('[%s~^:?*%[\\%c]') then
-    return 'A branch name cannot hold spaces or any of ~ ^ : ? * [ \\'
+  return check_ref_name (name, 'remote')
+end
+
+---------------------------------------------------------------------------------------------
+-- Merge, rebase, cherry-pick, revert and reset
+---------------------------------------------------------------------------------------------
+
+---@type table<Git.Operation, string>
+local OPERATION_TEXT = {
+  merge = 'Merging',
+  rebase = 'Rebasing',
+  ['cherry-pick'] = 'Cherry-picking',
+  revert = 'Reverting',
+}
+
+---The operation that stopped part way, read from the names in the `.git` folder, as
+---`app.fs.list_dir` gives them: folders end in `/`.
+---@param names string[]
+---@return Git.Operation?
+function M.operation (names)
+  local has = {} ---@type table<string, boolean>
+  for _, n in ipairs (names) do
+    has[(n:gsub ('/$', ''))] = true
   end
-  if
-    name:find ('%.%.')
-    or name:find ('//')
-    or name:find ('@{', 1, true)
-    or name == '@'
-  then
-    return 'A branch name cannot hold .., // or @{'
-  end
-  if
-    name:find ('^[%-/.]')
-    or name:find ('[/.]$')
-    or name:find ('%.lock$')
-    or name:find ('/%.')
-  then
-    return 'A branch name cannot start with - / or . or end with / . or .lock'
+  if has['rebase-merge'] or has['rebase-apply'] then
+    return 'rebase'
+  elseif has.MERGE_HEAD then
+    return 'merge'
+  elseif has.CHERRY_PICK_HEAD then
+    return 'cherry-pick'
+  elseif has.REVERT_HEAD then
+    return 'revert'
   end
   return nil
 end
 
----------------------------------------------------------------------------------------------
--- Command lines
----------------------------------------------------------------------------------------------
-
----Zero bytes separate the entries, so paths come back exactly as they are, with no quoting.
----@return string[]
-function M.status_args ()
-  return {
-    'status',
-    '--porcelain=v1',
-    '-z',
-    '--branch',
-    '--untracked-files=all',
-  }
-end
-
----@param n integer
----@return string[]
-function M.log_args (n)
-  return { 'log', '-n', tostring (n), '--decorate=full', M.LOG_FORMAT }
-end
-
----@return string[]
-function M.branch_args ()
-  return { 'branch', '-a', M.BRANCH_FORMAT }
-end
-
----The diff of one changed file. The fixed prefixes keep a user's `diff.noprefix` setting from
----changing the output, since `git apply` needs `a/` and `b/`.
----@param e Git.Entry
----@return string[]
-function M.diff_args (e)
-  local args = {
-    'diff',
-    '--no-color',
-    '--no-ext-diff',
-    '--src-prefix=a/',
-    '--dst-prefix=b/',
-  }
-  if e.staged then
-    args[#args + 1] = '--cached'
+---Such as `'Merging. Resolve the 2 conflicts and stage them, then continue.'`.
+---@param op Git.Operation
+---@param conflicts integer
+---@return string
+function M.operation_text (op, conflicts)
+  local text = OPERATION_TEXT[op] or op
+  if conflicts > 0 then
+    return text
+      .. '. Resolve '
+      .. (conflicts == 1 and 'the conflict and stage it' or ('the ' .. conflicts .. ' conflicts and stage them'))
+      .. ', then continue.'
   end
-  args[#args + 1] = '--'
-  args[#args + 1] = e.path
-  if e.old_path then
-    args[#args + 1] = e.old_path
-  end
-  return args
+  return text .. '. Continue to finish it.'
 end
 
----A commit's header and diff. A merge shows its changes against the first parent.
----@param hash string
----@return string[]
-function M.show_args (hash)
-  return {
-    'show',
-    '--no-color',
-    '--no-ext-diff',
-    '--src-prefix=a/',
-    '--dst-prefix=b/',
-    '-m',
-    '--first-parent',
-    '--date=format-local:%Y-%m-%d %H:%M',
-    M.SHOW_FORMAT,
-    '--patch',
-    hash,
-  }
-end
-
----@param e Git.Entry
----@return string[]
-function M.stage_args (e)
-  return { 'add', '-A', '--', e.path }
-end
-
----Unstages a file. `git reset` also works in a repository with no commits yet.
----@param e Git.Entry
----@return string[]
-function M.unstage_args (e)
-  local args = { 'reset', '-q', '--', e.path }
-  if e.old_path then
-    args[#args + 1] = e.old_path
-  end
-  return args
-end
-
----Throws away a file's unstaged changes. An untracked file, or one added with `git add -N`,
----is deleted. A conflict has no clean version to go back to, so it gives nil.
----@param e Git.Entry
----@return string[]?
-function M.discard_args (e)
-  if e.staged or e.kind == 'conflicted' then
-    return nil
-  end
-  if e.kind == 'untracked' then
-    return { 'clean', '-f', '-q', '--', e.path }
-  end
-  if e.kind == 'added' then
-    return { 'rm', '-f', '-q', '--', e.path }
-  end
-  return { 'restore', '--worktree', '--', e.path }
-end
-
----@param reverse boolean True to unstage the patch.
----@return string[]
-function M.apply_args (reverse)
-  local args = { 'apply', '--cached' }
-  if reverse then
-    args[#args + 1] = '--reverse'
-  end
-  args[#args + 1] = '-'
-  return args
-end
-
----@param amend boolean
----@return string[]
-function M.commit_args (amend)
-  local args = { 'commit', '-F', '-' }
-  if amend then
-    args[#args + 1] = '--amend'
-  end
-  return args
-end
-
----Pushes the current branch, and sets its upstream on `origin` when it has none yet.
+---How many files have conflicts.
 ---@param st Git.Status
----@return string[]? args
----@return string? why A message when it cannot push.
-function M.push_args (st)
-  if st.detached or not st.branch then
-    return nil, 'Switch to a branch before pushing.'
+---@return integer
+function M.conflict_count (st)
+  local n = 0
+  for _, e in ipairs (st.unstaged) do
+    if e.kind == 'conflicted' then
+      n = n + 1
+    end
   end
-  if st.upstream and not st.gone then
-    return { 'push' }, nil
+  return n
+end
+
+---True when a merge, rebase, cherry-pick or revert stopped at conflicts, rather than failing.
+---@param res Proteus.RunResult?
+---@return boolean
+function M.stopped_at_conflict (res)
+  if not res then
+    return false
   end
-  return { 'push', '-u', 'origin', st.branch }, nil
+  local text = (res.stdout or '') .. '\n' .. (res.stderr or '')
+  return text:find ('CONFLICT', 1, true) ~= nil
+    or text:find ('could not apply', 1, true) ~= nil
+end
+
+---True when Git refused to delete a branch because its commits are merged nowhere.
+---@param res Proteus.RunResult?
+---@return boolean
+function M.not_merged (res)
+  return res ~= nil
+    and (res.stderr or ''):find ('not fully merged', 1, true) ~= nil
+end
+
+---Branches to merge or rebase onto: every branch but the current one, local ones first.
+---@param branches Git.Branch[]
+---@return Git.Branch[]
+function M.other_branches (branches)
+  local out = {} ---@type Git.Branch[]
+  for _, b in ipairs (branches) do
+    if not b.current then
+      out[#out + 1] = b
+    end
+  end
+  return out
+end
+
+---------------------------------------------------------------------------------------------
+-- Conflicts
+---------------------------------------------------------------------------------------------
+
+---True when text still holds a conflict marker line Git wrote.
+---@param text string
+---@return boolean
+function M.has_markers (text)
+  local at = 1
+  while true do
+    local i = text:find ('<<<<<<< ', at, true)
+    if not i then
+      return false
+    end
+    if i == 1 or text:sub (i - 1, i - 1) == '\n' then
+      return text:find ('\n=======', i, true) ~= nil
+        and text:find ('\n>>>>>>> ', i, true) ~= nil
+    end
+    at = i + 1
+  end
+end
+
+---------------------------------------------------------------------------------------------
+-- Tags and remotes
+---------------------------------------------------------------------------------------------
+
+---@class Git.Remote
+---@field name string
+---@field url string The address it fetches from.
+
+---Reads `git tag --list`, one name a line.
+---@param text string
+---@return string[]
+function M.parse_tags (text)
+  local out = {} ---@type string[]
+  for _, raw in ipairs (lines_of (text)) do
+    local name = trim (strip_cr (raw))
+    if name ~= '' then
+      out[#out + 1] = name
+    end
+  end
+  return out
+end
+
+---Reads `git remote -v`: each remote once, with the address it fetches from.
+---@param text string
+---@return Git.Remote[]
+function M.parse_remotes (text)
+  local out = {} ---@type Git.Remote[]
+  local seen = {} ---@type table<string, boolean>
+  for _, raw in ipairs (lines_of (text)) do
+    local name, url = strip_cr (raw):match ('^(%S+)%s+(.-)%s+%((%a+)%)$')
+    if name and not seen[name] then
+      seen[name] = true
+      out[#out + 1] = { name = name, url = url }
+    end
+  end
+  return out
+end
+
+---------------------------------------------------------------------------------------------
+-- git stash
+---------------------------------------------------------------------------------------------
+
+---Reads `git stash list` output in `STASH_FORMAT`, newest first.
+---@param text string
+---@return Git.Stash[]
+function M.parse_stashes (text)
+  local out = {} ---@type Git.Stash[]
+  for _, raw in ipairs (lines_of (text)) do
+    local f = split (strip_cr (raw), US)
+    if #f >= 3 and f[1]:find ('^stash@{%d+}$') then
+      out[#out + 1] = { ref = f[1], message = f[2], date = f[3] }
+    end
+  end
+  return out
 end
 
 ---------------------------------------------------------------------------------------------
@@ -1105,17 +1068,28 @@ local function finish_file (f)
 end
 
 ---Reads `git diff` output, and the diff part of `git show`. Text before the first `diff` line,
----such as a commit header, is skipped.
+---such as a commit header, is skipped. With `max_lines` it stops after that many hunk lines,
+---so a huge diff is never read whole: the hunk it stopped in is marked `partial`, and the
+---second result is true.
 ---@param text string
----@return Git.FileDiff[]
-function M.parse_diff (text)
+---@param max_lines? integer
+---@return Git.FileDiff[] files
+---@return boolean cut
+function M.parse_diff (text, max_lines)
   local files = {} ---@type Git.FileDiff[]
   local f = nil ---@type Git.FileDiff?
   local h = nil ---@type Git.Hunk?
   local cols = 1
   local old_left, new_left = 0, 0
   local old_no, new_no = 0, 0
-  for _, raw in ipairs (lines_of (text)) do
+  local max = max_lines or math.huge
+  local count = 0
+  local cut = false
+  local pos = 1
+  while pos <= #text do
+    local stop = text:find ('\n', pos, true)
+    local raw = text:sub (pos, (stop or #text + 1) - 1)
+    pos = (stop or #text) + 1
     local c = raw:sub (1, 1)
     local plain_line = h
       and cols == 1
@@ -1126,6 +1100,16 @@ function M.parse_diff (text)
       and cols > 1
       and #raw >= cols
       and prefix:find ('^[ +%-]+$') ~= nil
+    if (plain_line or combined_line) and count >= max then
+      cut = true
+      if h then
+        h.partial = true
+      end
+      break
+    end
+    if plain_line or combined_line then
+      count = count + 1
+    end
     if h and c == '\\' then
       h.lines[#h.lines + 1] =
         { kind = 'meta', text = NO_NEWLINE, raw = strip_cr (raw) }
@@ -1183,16 +1167,19 @@ function M.parse_diff (text)
   for _, file in ipairs (files) do
     finish_file (file)
   end
-  return files
+  return files, cut
 end
 
----Reads `git show` output in `SHOW_FORMAT`: the commit, then its diff.
+---Reads `git show` output in `SHOW_FORMAT`: the commit, then its diff, up to `max_lines`
+---lines of it.
 ---@param text string
+---@param max_lines? integer
 ---@return Git.Show
-function M.parse_show (text)
+function M.parse_show (text, max_lines)
   local cut = text:find (RS, 1, true)
   if not cut then
-    return { commit = nil, files = M.parse_diff (text) }
+    local files, more = M.parse_diff (text, max_lines)
+    return { commit = nil, files = files, cut = more }
   end
   local f = split (text:sub (1, cut - 1), US)
   local message = (f[8] or ''):gsub ('%s+$', '')
@@ -1212,7 +1199,8 @@ function M.parse_show (text)
   for p in (f[7] or ''):gmatch ('%S+') do
     commit.parents[#commit.parents + 1] = p
   end
-  return { commit = commit, files = M.parse_diff (text:sub (cut + 1)) }
+  local files, more = M.parse_diff (text:sub (cut + 1), max_lines)
+  return { commit = commit, files = files, cut = more }
 end
 
 ---@param start integer
@@ -1231,7 +1219,7 @@ end
 ---@param hunk Git.Hunk
 ---@return string?
 function M.hunk_patch (file, hunk)
-  if file.binary or file.combined then
+  if file.binary or file.combined or hunk.partial then
     return nil
   end
   local out = {} ---@type string[]
@@ -1257,6 +1245,60 @@ function M.hunk_patch (file, hunk)
     out[#out + 1] = l.raw
   end
   return table.concat (out, '\n') .. '\n'
+end
+
+---A patch that stages, or with `reverse` unstages, only the picked lines of a hunk. The
+---lines left out stay as they are on the side the patch applies to: when staging, a removed
+---line becomes context and an added one is dropped, and when unstaging it is the other way
+---round. Returns nil when no line is picked, or for a hunk `hunk_patch` refuses.
+---@param file Git.FileDiff
+---@param hunk Git.Hunk
+---@param picked table<integer, boolean> Line positions in `hunk.lines`.
+---@param reverse boolean
+---@return string?
+function M.lines_patch (file, hunk, picked, reverse)
+  local keep_kind = reverse and 'add' or 'del'
+  local lines = {} ---@type Git.Line[]
+  local changes = 0
+  local kept_last = true
+  for i, l in ipairs (hunk.lines) do
+    if l.kind == 'meta' then
+      if kept_last then
+        lines[#lines + 1] = l
+      end
+    elseif l.kind == 'ctx' or picked[i] then
+      lines[#lines + 1] = l
+      kept_last = true
+      if l.kind ~= 'ctx' then
+        changes = changes + 1
+      end
+    elseif l.kind == keep_kind then
+      lines[#lines + 1] = {
+        kind = 'ctx',
+        text = l.text,
+        raw = ' ' .. l.raw:sub (2),
+        old = l.old,
+        new = l.new,
+      }
+      kept_last = true
+    else
+      kept_last = false
+    end
+  end
+  if changes == 0 then
+    return nil
+  end
+  ---@type Git.Hunk
+  local part = {
+    header = hunk.header,
+    old_start = hunk.old_start,
+    old_count = hunk.old_count,
+    new_start = hunk.new_start,
+    new_count = hunk.new_count,
+    lines = lines,
+    partial = hunk.partial,
+  }
+  return M.hunk_patch (file, part)
 end
 
 ---A diff for a file Git does not track yet: every line is added. `text` is nil for a file
@@ -1319,501 +1361,14 @@ function M.untracked_diff (path, text)
 end
 
 ---------------------------------------------------------------------------------------------
--- HTML
+-- The other modules
 ---------------------------------------------------------------------------------------------
 
-local esc = M.escape
-
----@param text string
----@return string
-local function note (text)
-  return '<div class="git-note">' .. esc (text) .. '</div>'
-end
-
----@param f Git.FileDiff
----@return string
-local function empty_file_text (f)
-  if f.old_mode and f.new_mode and f.old_mode ~= f.new_mode then
-    return 'The file mode changed from '
-      .. f.old_mode
-      .. ' to '
-      .. f.new_mode
-      .. '.'
+-- Copies in their functions, so `require ('git_parse')` reaches them too.
+for _, part in ipairs ({ A, html, paths }) do
+  for k, v in pairs (part) do
+    M[k] = v
   end
-  if f.renamed then
-    return 'Renamed with no changes inside.'
-  end
-  if f.new_file then
-    return 'An empty file.'
-  end
-  return 'No changes to show.'
-end
-
----@param f Git.FileDiff
----@param opts Git.DiffOptions
----@return string
-local function file_head (f, opts)
-  local out = { '<div class="git-file-head"><span class="git-file-path">' }
-  if f.renamed and f.old_path and f.old_path ~= f.path then
-    out[#out + 1] = '<span class="git-file-old">'
-      .. esc (f.old_path)
-      .. '</span> → '
-  end
-  out[#out + 1] = esc (f.path) .. '</span>'
-  local tags = {} ---@type string[]
-  if opts.label then
-    tags[#tags + 1] = opts.label
-  end
-  if f.new_file then
-    tags[#tags + 1] = 'New'
-  elseif f.deleted then
-    tags[#tags + 1] = 'Deleted'
-  elseif f.renamed then
-    tags[#tags + 1] = 'Renamed'
-  end
-  for _, t in ipairs (tags) do
-    out[#out + 1] = '<span class="git-file-tag">' .. esc (t) .. '</span>'
-  end
-  out[#out + 1] = '<span class="git-file-stat"><span class="git-stat-add">+'
-    .. f.added
-    .. '</span><span class="git-stat-del">−'
-    .. f.removed
-    .. '</span></span></div>'
-  return table.concat (out)
-end
-
----@type table<Git.LineKind, string>
-local SIGN = { add = '+', del = '−', ctx = '', meta = '' }
-
----@param l Git.Line
----@return string
-local function line_html (l)
-  return '<div class="git-line git-l-'
-    .. l.kind
-    .. '"><span class="git-ln">'
-    .. (l.old or '')
-    .. '</span><span class="git-ln">'
-    .. (l.new or '')
-    .. '</span><span class="git-sign">'
-    .. SIGN[l.kind]
-    .. '</span><span class="git-code">'
-    .. esc (l.text)
-    .. '</span></div>'
-end
-
----The diff for the main area, as one HTML string. Each hunk button carries
----`data-item="hunk:<file>:<hunk>"`, both counted from 1.
----@param files Git.FileDiff[]
----@param opts? Git.DiffOptions
----@return string
-function M.diff_html (files, opts)
-  opts = opts or {}
-  local max = opts.max_lines or 5000
-  local total = 0
-  for _, f in ipairs (files) do
-    for _, h in ipairs (f.hunks) do
-      total = total + #h.lines
-    end
-  end
-  local out = { '<div class="git-diff">' }
-  if #files == 0 then
-    out[#out + 1] = note (opts.empty or 'No changes.')
-  end
-  local shown = 0
-  local cut = false
-  for fi, f in ipairs (files) do
-    if cut then
-      break
-    end
-    out[#out + 1] = '<div class="git-file">'
-    out[#out + 1] = file_head (f, opts)
-    if f.binary then
-      out[#out + 1] = note ('Binary file')
-    elseif #f.hunks == 0 then
-      out[#out + 1] = note (empty_file_text (f))
-    end
-    for hi, h in ipairs (f.hunks) do
-      if shown >= max then
-        cut = true
-        break
-      end
-      out[#out + 1] = '<div class="git-hunk-head"><span class="git-hunk-text">'
-        .. esc (h.header)
-        .. '</span>'
-      if opts.buttons and not f.combined and not f.binary then
-        out[#out + 1] = '<button class="git-hunk-btn" data-item="hunk:'
-          .. fi
-          .. ':'
-          .. hi
-          .. '">'
-          .. (opts.staged and 'Unstage Hunk' or 'Stage Hunk')
-          .. '</button>'
-      end
-      out[#out + 1] = '</div>'
-      for _, l in ipairs (h.lines) do
-        if shown >= max then
-          cut = true
-          break
-        end
-        out[#out + 1] = line_html (l)
-        shown = shown + 1
-      end
-    end
-    out[#out + 1] = '</div>'
-  end
-  if cut then
-    out[#out + 1] = note (
-      'Showing the first '
-        .. M.thousands (max)
-        .. ' of '
-        .. M.thousands (total)
-        .. ' lines.'
-    )
-  end
-  out[#out + 1] = '</div>'
-  return table.concat (out)
-end
-
----The commit header above a commit's diff: the whole message, the author and the date.
----@param c Git.CommitInfo
----@return string
-function M.commit_html (c)
-  local out = {
-    '<div class="git-commit-view"><div class="git-commit-title">',
-    esc (c.subject),
-    '</div>',
-  }
-  if c.body ~= '' then
-    out[#out + 1] = '<div class="git-commit-body">' .. esc (c.body) .. '</div>'
-  end
-  out[#out + 1] = '<div class="git-commit-info"><span>'
-    .. esc (c.author)
-    .. ' &lt;'
-    .. esc (c.email)
-    .. '&gt;</span><span>'
-    .. esc (c.date)
-    .. (c.relative ~= '' and (' (' .. esc (c.relative) .. ')') or '')
-    .. '</span><span class="git-hash">'
-    .. esc (c.hash)
-    .. '</span></div>'
-  if #c.parents > 1 then
-    local shorts = {} ---@type string[]
-    for _, p in ipairs (c.parents) do
-      shorts[#shorts + 1] = esc (p:sub (1, 7))
-    end
-    out[#out + 1] = '<div class="git-commit-info">A merge of '
-      .. table.concat (shorts, ' and ')
-      .. '. The changes shown are against the first.</div>'
-  end
-  out[#out + 1] = '</div>'
-  return table.concat (out)
-end
-
----Splits a path into its file name and its folder.
----@param path string
----@return string name
----@return string folder Empty for a file at the top.
-function M.split_path (path)
-  local clean = path:gsub ('/$', '')
-  local dir, name = clean:match ('^(.*)/([^/]*)$')
-  if not dir then
-    return clean, ''
-  end
-  return name, dir
-end
-
----The folder name `git clone` gives a repository: the last part of its address, without
----`.git`. Empty when the address has no name at its end.
----@param url string
----@return string
-function M.clone_name (url)
-  local trimmed = url:match ('^%s*(.-)%s*$') or '' ---@type string
-  local text = trimmed:gsub ('[/\\]+$', '')
-  local last = text:match ('([^/\\:]+)$') or '' ---@type string
-  local name = last:gsub ('%.git$', '')
-  return name
-end
-
----Reads a `data-item` value such as `'stage:u:src/a.txt'` into its action, its list (`'s'` or
----`'u'`) and its path.
----@param item string?
----@return string? action
----@return string? group
----@return string? path
-function M.parse_item (item)
-  if not item then
-    return nil, nil, nil
-  end
-  local action, group, path = item:match ('^([%w_-]+):([su]):(.*)$')
-  if action then
-    return action, group, path
-  end
-  return item, nil, nil
-end
-
----@param e Git.Entry
----@param opts Git.ListOptions
----@return string
-local function row_html (e, opts)
-  local group = e.staged and 's' or 'u'
-  local key = group .. ':' .. e.path
-  local name, dir = M.split_path (e.path)
-  local icons = opts.icons or {}
-  local tools = {} ---@type string[]
-  ---@param action string
-  ---@param title string
-  ---@param icon string
-  local function tool (action, title, icon)
-    tools[#tools + 1] = '<button class="git-tool" data-item="'
-      .. esc (action .. ':' .. key)
-      .. '" title="'
-      .. esc (title)
-      .. '">'
-      .. (icons[icon] or esc (title:sub (1, 1)))
-      .. '</button>'
-  end
-  if e.staged then
-    tool ('unstage', 'Unstage', 'unstage')
-  else
-    if M.discard_args (e) then
-      tool ('discard', 'Discard Changes', 'discard')
-    end
-    tool ('stage', 'Stage', 'stage')
-  end
-  local title = e.old_path and (e.old_path .. ' → ' .. e.path) or e.path
-  return '<div class="git-row'
-    .. (opts.selected == key and ' active' or '')
-    .. '" data-item="'
-    .. esc ('open:' .. key)
-    .. '" title="'
-    .. esc (title .. ' (' .. KIND_TITLE[e.kind] .. ')')
-    .. '"><span class="git-letter git-k-'
-    .. e.kind
-    .. '">'
-    .. esc (e.letter)
-    .. '</span><span class="git-name">'
-    .. esc (name)
-    .. '</span><span class="git-dir">'
-    .. esc (dir)
-    .. '</span><span class="git-tools">'
-    .. table.concat (tools)
-    .. '</span></div>'
-end
-
----@param title string
----@param count integer
----@param action string
----@param label string
----@return string
-local function group_head (title, count, action, label)
-  return '<div class="git-group"><span class="git-group-title">'
-    .. esc (title)
-    .. '</span><span class="ui-badge">'
-    .. count
-    .. '</span><button class="git-group-btn" data-item="'
-    .. action
-    .. '">'
-    .. esc (label)
-    .. '</button></div>'
-end
-
----The Staged and Changes lists as one HTML string. A row carries
----`data-item="open:<s|u>:<path>"` and its buttons `stage:`, `unstage:` or `discard:`.
----@param st Git.Status
----@param opts? Git.ListOptions
----@return string
-function M.changes_html (st, opts)
-  opts = opts or {}
-  local out = {} ---@type string[]
-  if #st.staged > 0 then
-    out[#out + 1] =
-      group_head ('Staged', #st.staged, 'unstage-all', 'Unstage All')
-    for _, e in ipairs (st.staged) do
-      out[#out + 1] = row_html (e, opts)
-    end
-  end
-  if #st.unstaged > 0 then
-    out[#out + 1] =
-      group_head ('Changes', #st.unstaged, 'stage-all', 'Stage All')
-    for _, e in ipairs (st.unstaged) do
-      out[#out + 1] = row_html (e, opts)
-    end
-  end
-  if #out == 0 then
-    out[1] = '<div class="ui-empty">No changes</div>'
-  end
-  return table.concat (out)
-end
-
----The history list as one HTML string. Each row carries `data-item="<hash>"`.
----@param commits Git.Commit[]
----@param selected? string The hash of the selected commit.
----@return string
-function M.log_html (commits, selected)
-  if #commits == 0 then
-    return '<div class="ui-empty">No commits yet</div>'
-  end
-  local out = {} ---@type string[]
-  for _, c in ipairs (commits) do
-    local refs = {} ---@type string[]
-    for _, r in ipairs (c.refs) do
-      refs[#refs + 1] = '<span class="git-ref git-ref-'
-        .. r.kind
-        .. (r.current and ' git-ref-current' or '')
-        .. '">'
-        .. esc (r.name)
-        .. '</span>'
-    end
-    out[#out + 1] = '<div class="git-commit'
-      .. (c.hash == selected and ' active' or '')
-      .. '" data-item="'
-      .. esc (c.hash)
-      .. '"><div class="git-commit-subject">'
-      .. table.concat (refs)
-      .. '<span class="git-subject-text">'
-      .. esc (c.subject)
-      .. '</span></div><div class="git-commit-meta"><span class="git-hash">'
-      .. esc (c.short)
-      .. '</span><span>'
-      .. esc (c.author)
-      .. '</span><span>'
-      .. esc (c.date)
-      .. '</span></div></div>'
-  end
-  return table.concat (out)
-end
-
----The screen with no repository open: a button to open one, then the recent ones. The button
----carries `data-item="open"` and each recent row `data-item="recent:<path>"`.
----@param recent string[]
----@param icon? string SVG to show at the top.
----@return string
-function M.welcome_html (recent, icon)
-  local out = {
-    '<div class="git-welcome">',
-    icon and ('<div class="git-welcome-icon">' .. icon .. '</div>') or '',
-    '<div class="git-welcome-title">No repository open</div>',
-    '<div class="git-welcome-text">Open a folder that holds a Git repository.</div>',
-    '<button class="ui-button primary" data-item="open">Open Repository</button>',
-  }
-  if #recent > 0 then
-    out[#out + 1] = '<div class="git-recent-title">Recent</div>'
-    for _, path in ipairs (recent) do
-      local name = M.split_path (path)
-      out[#out + 1] = '<div class="git-recent" data-item="'
-        .. esc ('recent:' .. path)
-        .. '"><span class="git-recent-name">'
-        .. esc (name)
-        .. '</span><span class="git-recent-path">'
-        .. esc (path)
-        .. '</span></div>'
-    end
-  end
-  out[#out + 1] = '</div>'
-  return table.concat (out)
-end
-
----A plain message for the main area, such as when Git is missing.
----@param title string
----@param text string
----@return string
-function M.message_html (title, text)
-  return '<div class="git-welcome"><div class="git-welcome-title">'
-    .. esc (title)
-    .. '</div><div class="git-welcome-text">'
-    .. esc (text)
-    .. '</div></div>'
-end
-
----------------------------------------------------------------------------------------------
--- Paths, lists and messages
----------------------------------------------------------------------------------------------
-
----Joins the repository folder and a path inside it.
----@param root string
----@param rel string
----@return string
-function M.join (root, rel)
-  local base = root:gsub ('[/\\]+$', '')
-  return base .. '/' .. rel
-end
-
----The folder that holds a path.
----@param path string
----@return string
-function M.parent (path)
-  local clean = path:gsub ('[/\\]+$', '')
-  return clean:match ('^(.*)[/\\][^/\\]*$') or clean
-end
-
----A path with the separators the system's file manager expects.
----@param path string
----@param os string Such as `'windows'`.
----@return string
-function M.native (path, os)
-  if os == 'windows' then
-    local out = path:gsub ('/', '\\')
-    return out
-  end
-  return path
-end
-
----Puts a repository at the front of the recent list, without repeats, and keeps `max`.
----@param list string[]
----@param path string
----@param max integer
----@return string[]
-function M.remember (list, path, max)
-  local out = { path } ---@type string[]
-  for _, p in ipairs (list) do
-    if p ~= path and #out < max then
-      out[#out + 1] = p
-    end
-  end
-  return out
-end
-
----The text to show when a git command fails: what Git printed on stderr, or on stdout when
----stderr is empty, or the reason it could not start. Long output keeps its first lines.
----@param res Proteus.RunResult?
----@param err string?
----@return string
-function M.error_text (res, err)
-  local text = err or ''
-  if res then
-    text = trim (res.stderr or '')
-    if text == '' then
-      text = trim (res.stdout or '')
-    end
-  end
-  if text == '' then
-    return 'Git failed with no message.'
-  end
-  local lines = lines_of (text)
-  if #lines > 8 then
-    text = table.concat (lines, '\n', 1, 8) .. '\n…'
-  end
-  return text
-end
-
----The first line Git printed, for a short report such as `'Already up to date.'`.
----@param res Proteus.RunResult
----@return string
-function M.summary (res)
-  for _, s in ipairs ({ res.stdout or '', res.stderr or '' }) do
-    local first = trim (s):match ('^[^\n]*') or ''
-    if first ~= '' then
-      return strip_cr (first)
-    end
-  end
-  return ''
-end
-
----True when a file could not be read because it is not text.
----@param err string?
----@return boolean
-function M.is_binary_error (err)
-  return err ~= nil and err:lower ():find ('utf%-8') ~= nil
 end
 
 return M

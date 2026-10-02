@@ -6,21 +6,48 @@
 -- that needs no screen comes from the `http` service in proteus.lib.http.
 --
 -- New requests and unsaved changes stay in memory and in app.store, so a reload keeps them.
+-- A folder's .folder.json holds the sign-in its requests inherit. Files go by the ids
+-- app.grants.open gives, so the client needs no `files` permission. The parts that need no
+-- screen are in api_core.lua, where the tests reach them.
+
+local core = require ('api_core') --[[@as ApiApp.Core]]
 
 local DIR = 'data/proteus.api'
 local ENV_PATH = DIR .. '/environments.json'
 local HISTORY_MAX = 50
 -- A longer answer shows as it came, since formatting it would hold up the window.
 local PRETTY_MAX = 3 * 1024 * 1024
+-- How much of a binary answer shows as hex.
+local HEX_MAX = 4096
 
 local BODY_OPTIONS = {
   { 'none', 'None' },
   { 'json', 'JSON' },
   { 'text', 'Text' },
   { 'form', 'Form' },
+  { 'multipart', 'Multipart' },
+  { 'graphql', 'GraphQL' },
+  { 'file', 'File' },
 }
-local AUTH_OPTIONS =
-  { { 'none', 'None' }, { 'bearer', 'Bearer token' }, { 'basic', 'Basic' } }
+local AUTH_OPTIONS = {
+  { 'none', 'None' },
+  { 'inherit', 'From folder' },
+  { 'bearer', 'Bearer token' },
+  { 'basic', 'Basic' },
+  { 'apikey', 'API key' },
+  { 'digest', 'Digest' },
+  { 'oauth2', 'OAuth 2' },
+}
+-- A folder's own sign-in: `inherit` there hands down what the folders around it hold.
+local FOLDER_AUTH_OPTIONS = {
+  { 'inherit', 'From the folder above' },
+  { 'none', 'None' },
+  { 'bearer', 'Bearer token' },
+  { 'basic', 'Basic' },
+  { 'apikey', 'API key' },
+  { 'digest', 'Digest' },
+  { 'oauth2', 'OAuth 2' },
+}
 
 -- lang=css
 local CSS = [[
@@ -74,6 +101,28 @@ local CSS = [[
   border-radius: var(--radius); background: none; color: var(--fg-faint); cursor: pointer; }
 .api-kv-del:hover { background: var(--bg-hover); color: var(--danger); }
 .api-kv-row:last-child input[type=checkbox], .api-kv-row:last-child .api-kv-del { visibility: hidden; }
+.api-kv.files .api-kv-head, .api-kv.files .api-kv-row {
+  grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1.5fr) 28px 28px; }
+.api-kv-file { display: flex; align-items: center; gap: 6px; height: 28px; min-width: 0; padding: 0 8px;
+  border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg);
+  font-family: var(--font-mono); font-size: 12px; cursor: pointer; overflow: hidden; white-space: nowrap; }
+.api-kv-file:hover { border-color: var(--accent); }
+.api-kv-file.need { color: var(--warning); }
+.api-kv-kind { display: inline-grid; place-items: center; width: 28px; height: 28px; border: none;
+  border-radius: var(--radius); background: none; color: var(--fg-faint); cursor: pointer; }
+.api-kv-kind:hover { background: var(--bg-hover); color: var(--fg); }
+.api-kv-kind.on { color: var(--accent); }
+.api-filebox { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.api-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 12px; }
+.api-file-name.need { color: var(--warning); }
+.api-label { font-size: 12px; color: var(--fg-muted); }
+.api-code.vars { flex: 0 0 110px; min-height: 60px; }
+.api-check { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.api-check input { accent-color: var(--accent); }
+.api-inline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.api-num { width: 110px; }
+.api-to { color: var(--fg-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .api-note { color: var(--fg-faint); font-size: 12px; }
 .api-modes-row { flex: none; display: flex; align-items: center; gap: 8px; }
 .api-modes { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -159,17 +208,6 @@ local CSS = [[
 .api-env.on { color: var(--accent); }
 ]]
 
----What came back from one send.
----@class ApiApp.Result
----@field status? integer Nil when no answer came.
----@field headers table<string, string>
----@field body string
----@field ms number
----@field error? string
----@field warning? string
----@field note? string A line to show instead of an answer, such as after Cancel.
----@field pretty? string The body formatted, made the first time it shows.
-
 ---A request open in the editor. A saved one is keyed by its path, a new one by `new:<n>`.
 ---@class ApiApp.Doc
 ---@field key string
@@ -180,16 +218,22 @@ local CSS = [[
 ---@field dirty boolean
 ---@field result? ApiApp.Result
 ---@field pending? integer The number of the send that is out, if any.
+---@field call? Proteus.HttpCall The request that is out, which Cancel stops.
 ---@field warning? string What to say about the send that is out, such as a missing variable.
+---@field folder_auth? boolean True for a folder's sign-in, which has only the Auth tab.
 
 ---A key and value table drawn as one HTML string.
 ---@class ApiApp.Grid
 ---@field el Proteus.El
 ---@field render fun()
 
+---How a key and value grid lets its rows send files.
+---@class ApiApp.FileRows
+---@field on fun(): boolean True while the rows may send files.
+---@field pick fun(row: Http.Row, done: fun()) Asks for a file for the row.
+
 ---What the list needs from a saved file, kept until the file changes.
 ---@class ApiApp.FileInfo
----@field text string
 ---@field method string
 ---@field url string
 
@@ -197,9 +241,13 @@ local CSS = [[
 return {
   name = 'API Client',
   description = 'Send HTTP requests, save them, and read the answers.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
-  -- It sends the requests the user writes, to any address.
+  version = '1.2.0',
+  requires = {
+    proteus = '>=0.3.1',
+    features = { 'permissions', 'grants', 'grants-read', 'http-bodies' },
+  },
+  -- It sends the requests the user writes, to any address. Files to send and collections to
+  -- import come from the system's dialog, by grant, so it needs no `files`.
   permissions = { 'net' },
   depends = {
     'proteus.lib.ui',
@@ -422,13 +470,17 @@ return {
           end
         end
       end
+      -- A folder's sign-in that was not saved is not kept.
       for _, doc in pairs (docs) do
-        if doc.path and doc.dirty then
+        if doc.path and doc.dirty and not doc.folder_auth then
           list[#list + 1] = { path = doc.path, req = doc.req }
         end
       end
       app.store.set ('drafts', list)
-      app.store.set ('last', current and current.path or nil)
+      app.store.set (
+        'last',
+        current and not current.folder_auth and current.path or nil
+      )
       app.store.set ('last_new', last_new)
     end
 
@@ -447,6 +499,16 @@ return {
       end
     end
 
+    ---The text a doc's file holds: a request, or a folder's sign-in.
+    ---@param doc ApiApp.Doc
+    ---@return string
+    local function doc_text (doc)
+      if doc.folder_auth then
+        return http.encode_folder (doc.req.auth)
+      end
+      return http.encode_request (doc.req)
+    end
+
     ---Marks the open request changed, and works out whether it differs from its file.
     local function touch ()
       local doc = current
@@ -454,7 +516,7 @@ return {
         return
       end
       local was = doc.dirty
-      doc.dirty = doc.path == nil or http.encode_request (doc.req) ~= doc.saved
+      doc.dirty = doc.path == nil or doc_text (doc) ~= doc.saved
       render_head ()
       render_tabs ()
       if was ~= doc.dirty then
@@ -507,18 +569,53 @@ return {
 
     ---@param get fun(): Http.Row[]
     ---@param changed fun()
+    ---@param files? ApiApp.FileRows Rows that send files, in Multipart mode.
     ---@return ApiApp.Grid
-    local function kv_grid (get, changed)
+    local function kv_grid (get, changed, files)
       local el = ui.div ({ class = 'api-kv' })
 
+      -- Each row is an element of its own, so a new blank row can be added after the one
+      -- being typed in without drawing the rows again, which would move the cursor.
       ---@param i integer
       ---@param r Http.Row
-      ---@return string
-      local function row_html (i, r)
+      ---@param with_files boolean
+      ---@return Proteus.El
+      local function row_el (i, r, with_files)
         local n = tostring (i)
-        return '<div class="api-kv-row'
-          .. (r.on and '' or ' off')
-          .. '"><input type="checkbox" title="Send this row" data-item="'
+        local value ---@type string
+        if r.file_name then
+          local need = (r.file or '') == ''
+          value = '<button class="api-kv-file'
+            .. (need and ' need' or '')
+            .. '" title="'
+            .. (need and 'Pick the file to send' or 'Pick another file')
+            .. '" data-item="'
+            .. n
+            .. ':pick">'
+            .. icon ('paperclip', 13)
+            .. esc (r.file_name)
+            .. (need and ' (pick it)' or '')
+            .. '</button>'
+        else
+          value = '<input class="api-kv-in" placeholder="Value" spellcheck="false" autocomplete="off" data-item="'
+            .. n
+            .. ':value" value="'
+            .. esc (r.value)
+            .. '">'
+        end
+        local kind = ''
+        if with_files then
+          kind = '<button class="api-kv-kind'
+            .. (r.file_name and ' on' or '')
+            .. '" title="'
+            .. (r.file_name and 'Send text instead' or 'Send a file')
+            .. '" data-item="'
+            .. n
+            .. ':kind">'
+            .. icon (r.file_name and 'type' or 'paperclip')
+            .. '</button>'
+        end
+        local html = '<input type="checkbox" title="Send this row" data-item="'
           .. n
           .. ':on"'
           .. (r.on and ' checked' or '')
@@ -526,28 +623,42 @@ return {
           .. n
           .. ':key" value="'
           .. esc (r.key)
-          .. '"><input class="api-kv-in" placeholder="Value" spellcheck="false" autocomplete="off" data-item="'
-          .. n
-          .. ':value" value="'
-          .. esc (r.value)
-          .. '"><button class="api-kv-del" title="Remove this row" data-item="'
+          .. '">'
+          .. value
+          .. kind
+          .. '<button class="api-kv-del" title="Remove this row" data-item="'
           .. n
           .. ':del">'
           .. icon ('x')
-          .. '</button></div>'
+          .. '</button>'
+        return ui.div ({
+          class = 'api-kv-row' .. (r.on and '' or ' off'),
+          html = html,
+        })
+      end
+
+      ---@return boolean
+      local function with_files ()
+        return files ~= nil and files.on ()
       end
 
       local function render ()
         local rows = get ()
-        local parts = {
-          '<div class="api-kv-head"><span></span><span>Key</span><span>Value</span><span></span></div>',
-        }
+        local wf = with_files ()
+        el:class ('files', wf)
+        local kids = {
+          ui.div ({
+            class = 'api-kv-head',
+            html = '<span></span><span>Key</span><span>Value</span><span></span>'
+              .. (wf and '<span></span>' or ''),
+          }),
+        } ---@type Proteus.El[]
         for i, r in ipairs (rows) do
-          parts[#parts + 1] = row_html (i, r)
+          kids[#kids + 1] = row_el (i, r, wf)
         end
-        parts[#parts + 1] =
-          row_html (#rows + 1, { key = '', value = '', on = true })
-        el:html (table.concat (parts))
+        kids[#kids + 1] =
+          row_el (#rows + 1, { key = '', value = '', on = true }, false)
+        el:set_children (kids)
       end
 
       el:on ('input', function (ev)
@@ -565,11 +676,7 @@ return {
           rows[i] = r
           -- The blank row now holds text, so a new blank row goes after it. Adding it
           -- without a redraw keeps the cursor where it is.
-          el:call (
-            'insertAdjacentHTML',
-            'beforeend',
-            row_html (i + 1, { key = '', value = '', on = true })
-          )
+          el:append (row_el (i + 1, { key = '', value = '', on = true }, false))
         end
         if field == 'key' then
           r.key = ev.value or ''
@@ -595,12 +702,26 @@ return {
       el:on ('click', function (ev)
         local i, field = grid_item (ev.item)
         local rows = get ()
-        if field ~= 'del' or not i or not rows[i] then
+        local r = i and rows[i]
+        if not i or not r then
           return nil
         end
-        table.remove (rows, i)
-        render ()
-        changed ()
+        if field == 'del' then
+          table.remove (rows, i)
+          render ()
+          changed ()
+        elseif files and field == 'kind' and r.file_name then
+          r.file, r.file_name = nil, nil
+          render ()
+          changed ()
+        elseif files and (field == 'kind' or field == 'pick') then
+          local row = r
+          local pick = files.pick
+          pick (row, function ()
+            render ()
+            changed ()
+          end)
+        end
         return nil
       end)
 
@@ -620,9 +741,46 @@ return {
     local headers_grid = kv_grid (function ()
       return current and current.req.headers or {}
     end, touch)
-    local form_grid = kv_grid (function ()
-      return current and current.req.form or {}
-    end, touch)
+
+    ---Asks the user for a file in the system's dialog. `done` gets the one picked.
+    ---@param heading string
+    ---@param done fun(grant: Proteus.FileGrant)
+    local function pick_file (heading, done)
+      local ok, err = pcall (
+        app.grants.open,
+        { title = heading },
+        function (picked, why)
+          if why then
+            complain ('Could not show the file picker. ' .. why)
+          elseif picked and picked[1] then
+            done (picked[1])
+          end
+        end
+      )
+      if not ok then
+        complain ('Could not show the file picker. ' .. tostring (err))
+      end
+    end
+
+    local form_grid = kv_grid (
+      function ()
+        return current and current.req.form or {}
+      end,
+      touch,
+      {
+        on = function ()
+          return current ~= nil and current.req.body_mode == 'multipart'
+        end,
+        pick = function (row, done)
+          local key = row.key ~= '' and row.key or 'the form'
+          pick_file ('File for ' .. key, function (grant)
+            row.file = grant.id
+            row.file_name = grant.name
+            done ()
+          end)
+        end,
+      }
+    )
 
     local body_modes = ui.div ({ class = 'api-modes' })
     local format_btn = ui.button ({
@@ -647,6 +805,46 @@ return {
     local body_host = ui.div ({ class = 'api-code', body_code })
     local body_none =
       ui.div ({ class = 'api-note', 'This request sends no body.' })
+
+    -- GraphQL: the query goes in the body editor, and its variables here.
+    -- The controls of the newer body modes, sign-ins and options, in tables of their own,
+    -- since a Lua function holds at most 200 locals.
+    local bx = {} ---@type table<string, Proteus.El>
+    local au = {} ---@type table<string, Proteus.El>
+    local op = {} ---@type table<string, Proteus.El>
+
+    bx.vars_code = ui.widget ('code', {
+      language = 'json',
+      text = '',
+      on_change = function ()
+        local doc = current
+        if doc then
+          doc.req.variables = bx.vars_code:widget ('get_text')
+          touch ()
+        end
+      end,
+    })
+    bx.vars_box = ui.div ({
+      class = 'api-part',
+      ui.span ({ class = 'api-label', 'Variables, as one JSON object' }),
+      ui.div ({ class = 'api-code vars', bx.vars_code }),
+    })
+
+    -- File: the whole body is one file the user picks.
+    bx.file_label = ui.span ({ class = 'api-file-name' })
+    bx.file_pick = ui.button ({
+      'Pick File…',
+      icon = 'paperclip',
+      class = 'api-small',
+    })
+    bx.file_box = ui.div ({
+      class = 'api-part',
+      ui.div ({ class = 'api-filebox', bx.file_pick, bx.file_label }),
+      ui.div ({
+        class = 'api-note',
+        'The file goes out as it is. Its Content-Type comes from its name unless a header sets one.',
+      }),
+    })
 
     local auth_modes = ui.div ({ class = 'api-modes' })
     local token_in = ui.input ({
@@ -679,6 +877,7 @@ return {
         'It goes out as the header "Authorization: Bearer" and the token.',
       }),
     })
+    au.basic_note = ui.div ({ class = 'api-note' })
     local basic_box = ui.div ({
       class = 'api-fields',
       ui.label ({ class = 'api-field', ui.span ({ 'User name' }), user_in }),
@@ -687,10 +886,132 @@ return {
         ui.span ({ 'Password' }),
         ui.div ({ class = 'api-pass', pass_in, pass_eye }),
       }),
+      au.basic_note,
+    })
+
+    ---@param placeholder string
+    ---@param secret? boolean
+    ---@return Proteus.El
+    local function field_input (placeholder, secret)
+      return ui.input ({
+        class = 'api-mono',
+        placeholder = placeholder,
+        type = secret and 'password' or nil,
+        spellcheck = false,
+      })
+    end
+    au.key_in = field_input ('Such as X-Api-Key')
+    au.key_value_in = field_input ('The key, or {{api_key}}', true)
+    au.place_seg = ui.div ({ class = 'api-seg' })
+    au.apikey_box = ui.div ({
+      class = 'api-fields',
+      ui.label ({ class = 'api-field', ui.span ({ 'Name' }), au.key_in }),
+      ui.label ({ class = 'api-field', ui.span ({ 'Key' }), au.key_value_in }),
+      ui.div ({
+        class = 'api-field',
+        ui.span ({ 'Send it as' }),
+        ui.div ({ class = 'api-inline', au.place_seg }),
+      }),
+    })
+
+    au.grant_seg = ui.div ({ class = 'api-seg' })
+    au.token_url_in = field_input ('https://auth.example.com/oauth/token')
+    au.client_id_in = field_input ('Client id, or {{client_id}}')
+    au.client_secret_in =
+      field_input ('Client secret, or {{client_secret}}', true)
+    au.scope_in = field_input ('Such as read write. Can stay empty.')
+    au.oauth_user_in = field_input ('User name')
+    au.oauth_pass_in = field_input ('Password', true)
+    au.oauth_user_box = ui.div ({
+      class = 'api-fields',
+      ui.label ({
+        class = 'api-field',
+        ui.span ({ 'User name' }),
+        au.oauth_user_in,
+      }),
+      ui.label ({
+        class = 'api-field',
+        ui.span ({ 'Password' }),
+        au.oauth_pass_in,
+      }),
+    })
+    au.token_state = ui.span ({ class = 'api-note' })
+    au.token_btn = ui.button ({
+      'Get New Token',
+      icon = 'key-round',
+      class = 'api-small',
+    })
+    au.oauth_box = ui.div ({
+      class = 'api-fields',
+      ui.div ({
+        class = 'api-field',
+        ui.span ({ 'Grant' }),
+        ui.div ({ class = 'api-inline', au.grant_seg }),
+      }),
+      ui.label ({
+        class = 'api-field',
+        ui.span ({ 'Token address' }),
+        au.token_url_in,
+      }),
+      ui.label ({
+        class = 'api-field',
+        ui.span ({ 'Client id' }),
+        au.client_id_in,
+      }),
+      ui.label ({
+        class = 'api-field',
+        ui.span ({ 'Client secret' }),
+        au.client_secret_in,
+      }),
+      ui.label ({ class = 'api-field', ui.span ({ 'Scope' }), au.scope_in }),
+      au.oauth_user_box,
+      ui.div ({ class = 'api-inline', au.token_btn, au.token_state }),
+      ui.div ({
+        class = 'api-note',
+        'Send asks for a token the first time and keeps it until it runs out. The token stays in memory and never goes in the file.',
+      }),
+    })
+
+    au.inherit_note = ui.div ({ class = 'api-note' })
+    au.inherit_edit = ui.button ({
+      'Edit Folder Sign-in',
+      icon = 'folder-key',
+      class = 'api-small',
+    })
+    au.inherit_box = ui.div ({
+      class = 'api-fields',
+      au.inherit_note,
+      ui.div ({ class = 'api-inline', au.inherit_edit }),
     })
     local auth_none = ui.div ({
       class = 'api-note',
       'This request sends no Authorization header.',
+    })
+
+    -- Options: the time limit and redirects.
+    op.timeout_in = ui.input ({
+      class = 'api-mono api-num',
+      placeholder = '30',
+      spellcheck = false,
+    })
+    op.timeout_note = ui.span ({ class = 'api-note' })
+    op.redirects_in = ui.h ('input', { attrs = { type = 'checkbox' } })
+    op.options_box = ui.div ({
+      class = 'api-fields',
+      ui.div ({
+        class = 'api-field',
+        ui.span ({ 'Wait for the answer, in seconds' }),
+        ui.div ({ class = 'api-inline', op.timeout_in, op.timeout_note }),
+      }),
+      ui.label ({
+        class = 'api-check',
+        op.redirects_in,
+        ui.span ({ 'Follow redirects' }),
+      }),
+      ui.div ({
+        class = 'api-note',
+        'When redirects are not followed, the redirect itself is the answer, so its Location header shows.',
+      }),
     })
 
     local panes = {
@@ -712,16 +1033,22 @@ return {
           format_btn,
         }),
         body_host,
+        bx.vars_box,
+        bx.file_box,
         form_grid.el,
         body_none,
       }),
       auth = ui.div ({
         class = 'api-part',
         auth_modes,
+        au.inherit_box,
         bearer_box,
         basic_box,
+        au.apikey_box,
+        au.oauth_box,
         auth_none,
       }),
+      options = ui.div ({ class = 'api-part', op.options_box }),
     } ---@type table<string, Proteus.El>
     local pane_box = ui.div ({
       class = 'api-pane',
@@ -729,6 +1056,7 @@ return {
       panes.headers,
       panes.body,
       panes.auth,
+      panes.options,
     })
 
     -- The response ------------------------------------------------------------------------
@@ -766,7 +1094,9 @@ return {
       icon = 'file-plus',
       variant = 'primary',
     })
-    local none_import = ui.button ({ 'Import curl', icon = 'import' })
+    local none_import = ui.button ({ 'Import curl', icon = 'terminal' })
+    local none_collection =
+      ui.button ({ 'Import Collection…', icon = 'import' })
     local none = ui.div ({
       class = 'api-none',
       ui.div ({
@@ -774,7 +1104,7 @@ return {
         ui.icon ('send', 28),
         ui.div ({ class = 'api-none-title', 'No request open' }),
         ui.div ({ 'Make a new request, or pick a saved one on the left.' }),
-        ui.div ({ class = 'ui-row', none_new, none_import }),
+        ui.div ({ class = 'ui-row', none_new, none_import, none_collection }),
       }),
     })
 
@@ -816,13 +1146,55 @@ return {
             .. ' · '
             .. http.format_ms (r.ms)
             .. ' · '
-            .. http.human_size (#r.body)
+            .. http.human_size (r.size)
         )
       elseif r and r.error then
         st_result.set ('No answer')
       else
         st_result.set ('')
       end
+    end
+
+    -- Folder sign-ins ---------------------------------------------------------------------
+
+    ---The sign-ins of a folder and the folders around it, from the folder itself outward.
+    ---@param folder string A path under data/proteus.api, or '' for the top.
+    ---@return Http.Auth[]
+    ---@return string[] names Each folder's name as the list shows it, '' for the top.
+    local function folder_auths (folder)
+      local out = {} ---@type Http.Auth[]
+      local names = {} ---@type string[]
+      for _, path in ipairs (core.folder_files (DIR, folder)) do
+        out[#out + 1] = http.parse_folder (app.fs.read (path))
+        names[#names + 1] = core.folder_of_file (DIR, path)
+      end
+      return out, names
+    end
+
+    ---The folder a folder's sign-in hands down to, for a folder doc: the folder around it.
+    ---@param doc ApiApp.Doc
+    ---@return string
+    local function chain_start (doc)
+      if doc.folder_auth then
+        return doc.folder:match ('^(.*)/[^/]*$') or ''
+      end
+      return doc.folder
+    end
+
+    ---The sign-in a request uses, and the folder it comes from when it is inherited.
+    ---@param doc ApiApp.Doc
+    ---@return Http.Auth
+    ---@return string? from
+    local function effective_auth (doc)
+      if doc.req.auth.mode ~= 'inherit' then
+        return doc.req.auth, nil
+      end
+      local auths, names = folder_auths (chain_start (doc))
+      if doc.folder_auth and doc.folder == '' then
+        auths, names = {}, {}
+      end
+      local auth, at = http.resolve_auth (doc.req.auth, auths)
+      return auth, at and names[at] or nil
     end
 
     -- Drawing the editor ------------------------------------------------------------------
@@ -832,10 +1204,18 @@ return {
       if not doc then
         return
       end
-      title:text (doc.req.name ~= '' and doc.req.name or 'Untitled')
-      title:class ('untitled', doc.req.name == '')
+      if doc.folder_auth then
+        title:text (
+          'Sign-in for ' .. (doc.folder ~= '' and doc.folder or 'every request')
+        )
+        title:class ('untitled', false)
+        where:text ('requests set to From folder use it')
+      else
+        title:text (doc.req.name ~= '' and doc.req.name or 'Untitled')
+        title:class ('untitled', doc.req.name == '')
+        where:text (doc.folder ~= '' and ('in ' .. doc.folder) or '')
+      end
       head_dot:show (doc.dirty)
-      where:text (doc.folder ~= '' and ('in ' .. doc.folder) or '')
       if tab then
         tab.set_dirty (doc.dirty)
       end
@@ -860,7 +1240,7 @@ return {
       local req = doc.req
       local mark = '<span class="api-mark"></span>'
       local body_extra = ''
-      if req.body_mode == 'form' then
+      if req.body_mode == 'form' or req.body_mode == 'multipart' then
         body_extra = count_html (http.count_rows (req.form))
       elseif req.body_mode ~= 'none' then
         body_extra = mark
@@ -871,11 +1251,19 @@ return {
         { 'headers', 'Headers', count_html (http.count_rows (req.headers)) },
         { 'body', 'Body', body_extra },
         { 'auth', 'Auth', req.auth.mode ~= 'none' and mark or '' },
+        {
+          'options',
+          'Options',
+          (req.timeout > 0 or not req.redirects) and mark or '',
+        },
       }
+      if doc.folder_auth then
+        list = { { 'auth', 'Auth', '' } }
+      end
       local parts = {} ---@type string[]
       for _, t in ipairs (list) do
         parts[#parts + 1] = '<button class="api-tab'
-          .. (pane == t[1] and ' on' or '')
+          .. ((pane == t[1] or doc.folder_auth) and ' on' or '')
           .. '" data-item="'
           .. t[1]
           .. '">'
@@ -887,8 +1275,9 @@ return {
     end
 
     local function show_pane ()
+      local shown = current and current.folder_auth and 'auth' or pane
       for id, el in pairs (panes) do
-        el:show (id == pane)
+        el:show (id == shown)
       end
     end
 
@@ -909,6 +1298,23 @@ return {
       box:html (table.concat (parts))
     end
 
+    ---@param box Proteus.El
+    ---@param options { [1]: string, [2]: string }[]
+    ---@param active string
+    local function render_seg (box, options, active)
+      local parts = {} ---@type string[]
+      for _, o in ipairs (options) do
+        parts[#parts + 1] = '<button class="'
+          .. (o[1] == active and 'on' or '')
+          .. '" data-item="'
+          .. o[1]
+          .. '">'
+          .. esc (o[2])
+          .. '</button>'
+      end
+      box:html (table.concat (parts))
+    end
+
     local function render_body ()
       local doc = current
       if not doc then
@@ -917,9 +1323,55 @@ return {
       local mode = doc.req.body_mode
       render_modes (body_modes, BODY_OPTIONS, mode)
       format_btn:show (mode == 'json')
-      body_host:show (mode == 'json' or mode == 'text')
-      form_grid.el:show (mode == 'form')
+      body_host:show (mode == 'json' or mode == 'text' or mode == 'graphql')
+      bx.vars_box:show (mode == 'graphql')
+      bx.file_box:show (mode == 'file')
+      form_grid.el:show (mode == 'form' or mode == 'multipart')
       body_none:show (mode == 'none')
+      local f = doc.req.file
+      local need = f.id == ''
+      bx.file_label:text (
+        need
+            and (f.name ~= '' and (f.name .. ': pick it to send') or 'No file picked')
+          or f.name
+      )
+      bx.file_label:class ('need', need)
+      bx.file_pick:html (
+        icon ('paperclip')
+          .. '<span>'
+          .. (need and 'Pick File…' or 'Pick Another…')
+          .. '</span>'
+      )
+    end
+
+    ---Tokens got for OAuth 2 sign-ins, by `http.oauth_key`. They stay in memory only.
+    local tokens = {} ---@type table<string, ApiApp.Token>
+
+    ---@param auth Http.Auth
+    ---@return string
+    local function token_key (auth)
+      return http.oauth_key (auth, http.env_vars (envs))
+    end
+
+    local function render_token ()
+      local doc = current
+      if not doc or doc.req.auth.mode ~= 'oauth2' then
+        return
+      end
+      local kept = tokens[token_key (doc.req.auth)]
+      local now = app.util.now ()
+      if kept and core.token_fresh (kept, now) then
+        au.token_state:text (
+          kept.ends
+              and ('A token is kept until ' .. os.date (
+                '%H:%M',
+                math.floor (kept.ends / 1000)
+              ) .. '.')
+            or 'A token is kept.'
+        )
+      else
+        au.token_state:text ('No token yet.')
+      end
     end
 
     local function render_auth ()
@@ -927,11 +1379,70 @@ return {
       if not doc then
         return
       end
-      local mode = doc.req.auth.mode
-      render_modes (auth_modes, AUTH_OPTIONS, mode)
+      local auth = doc.req.auth
+      local mode = auth.mode
+      render_modes (
+        auth_modes,
+        doc.folder_auth and FOLDER_AUTH_OPTIONS or AUTH_OPTIONS,
+        mode
+      )
+      au.inherit_box:show (mode == 'inherit')
       bearer_box:show (mode == 'bearer')
-      basic_box:show (mode == 'basic')
+      basic_box:show (mode == 'basic' or mode == 'digest')
+      au.basic_note:text (
+        mode == 'digest'
+            and 'The first answer asks for Digest, and the request goes again with the answer to its challenge.'
+          or ''
+      )
+      au.basic_note:show (mode == 'digest')
+      au.apikey_box:show (mode == 'apikey')
+      au.oauth_box:show (mode == 'oauth2')
       auth_none:show (mode == 'none')
+      render_seg (au.place_seg, {
+        { 'header', 'Header' },
+        { 'query', 'Query parameter' },
+      }, auth.place)
+      render_seg (au.grant_seg, {
+        { 'client_credentials', 'Client credentials' },
+        { 'password', 'Password' },
+      }, auth.grant)
+      au.oauth_user_box:show (auth.grant == 'password')
+      render_token ()
+      if mode == 'inherit' then
+        local got, from = effective_auth (doc)
+        local label = got.mode ---@type string
+        for _, o in ipairs (AUTH_OPTIONS) do
+          if o[1] == got.mode then
+            label = o[2]
+          end
+        end
+        if got.mode == 'none' then
+          au.inherit_note:text (
+            'No folder around this one has a sign-in, so it sends none.'
+          )
+        else
+          au.inherit_note:text (
+            'It uses '
+              .. label
+              .. ' from '
+              .. (from == '' and 'the top folder' or ('the folder ' .. tostring (
+                from
+              )))
+              .. '.'
+          )
+        end
+      end
+    end
+
+    local function render_options ()
+      local doc = current
+      if not doc then
+        return
+      end
+      op.timeout_note:text (
+        doc.req.timeout > 0 and '' or 'Empty waits 30 seconds.'
+      )
+      op.redirects_in:set ('checked', doc.req.redirects)
     end
 
     local function render_send ()
@@ -945,28 +1456,22 @@ return {
       send_btn:class ('primary', not waiting)
       send_btn:set (
         'title',
-        waiting and 'Stop waiting and ignore the answer'
-          or 'Send the request (Ctrl+Enter)'
+        waiting and 'Stop the request' or 'Send the request (Ctrl+Enter)'
       )
     end
 
-    ---@param headers table<string, string>
+    ---@param list Proteus.HttpHeader[]
     ---@return string
-    local function headers_html (headers)
-      local names = {} ---@type string[]
-      for k in pairs (headers) do
-        names[#names + 1] = tostring (k)
-      end
-      table.sort (names)
-      if #names == 0 then
+    local function headers_html (list)
+      if #list == 0 then
         return '<div class="api-hint">No headers came back.</div>'
       end
       local parts = { '<table class="api-htable">' }
-      for _, k in ipairs (names) do
+      for _, h in ipairs (list) do
         parts[#parts + 1] = '<tr><td>'
-          .. esc (k)
+          .. esc (h.name)
           .. '</td><td>'
-          .. esc (tostring (headers[k]))
+          .. esc (h.value)
           .. '</td></tr>'
       end
       parts[#parts + 1] = '</table>'
@@ -995,7 +1500,9 @@ return {
       local waiting = doc.pending ~= nil
       local r = not waiting and doc.result or nil
       local answer = r and r.status and r or nil
-      local kind = answer and http.body_kind (answer.headers, answer.body)
+      local kind = answer
+          and not answer.binary
+          and http.body_kind (answer.headers, answer.body)
         or 'text'
 
       local parts = {} ---@type string[]
@@ -1011,22 +1518,27 @@ return {
           .. '</span><span class="api-meta">'
           .. http.format_ms (answer.ms)
           .. '</span><span class="api-meta">'
-          .. http.human_size (#answer.body)
+          .. http.human_size (answer.size)
+          .. (answer.binary and ', bytes' or '')
           .. '</span>'
+        if answer.url then
+          parts[#parts + 1] = '<span class="api-to" title="'
+            .. esc (answer.url)
+            .. '">'
+            .. (answer.redirects == 1 and '1 redirect to ' or (answer.redirects .. ' redirects to '))
+            .. esc (answer.url)
+            .. '</span>'
+        end
       else
         parts[#parts + 1] = '<span class="api-sum-label">Response</span>'
       end
       parts[#parts + 1] = '<span class="api-grow"></span>'
       if answer then
-        local count = 0
-        for _ in pairs (answer.headers) do
-          count = count + 1
-        end
         parts[#parts + 1] = '<span class="api-seg">'
           .. seg_button ('body', 'Body', res_view == 'body')
           .. seg_button (
             'headers',
-            'Headers ' .. count_html (count),
+            'Headers ' .. count_html (#answer.list),
             res_view == 'headers'
           )
           .. '</span>'
@@ -1036,7 +1548,9 @@ return {
             .. seg_button ('raw', 'Raw', raw)
             .. '</span>'
         end
-        parts[#parts + 1] = '<button class="api-icon-btn" data-item="copy" title="Copy the body">'
+        parts[#parts + 1] = '<button class="api-icon-btn" data-item="copy" title="'
+          .. (answer.binary and 'Copy the body as base64' or 'Copy the body')
+          .. '">'
           .. icon ('copy')
           .. '</button>'
       end
@@ -1056,8 +1570,10 @@ return {
         res_hint:show (true)
       end
 
-      if waiting then
-        hint ('Waiting for the answer. Cancel stops waiting.')
+      if doc.folder_auth then
+        hint ('Requests in this folder set to From folder sign in this way.')
+      elseif waiting then
+        hint ('Waiting for the answer. Cancel stops the request.')
       elseif not r then
         hint ('Press Ctrl+Enter to send.')
       elseif r.error then
@@ -1066,13 +1582,23 @@ return {
       elseif not answer then
         hint (r.note or 'Press Ctrl+Enter to send.')
       elseif res_view == 'headers' then
-        res_headers:html (headers_html (answer.headers))
+        res_headers:html (headers_html (answer.list))
         res_headers:show (true)
       elseif answer.body == '' then
         hint ('The answer has no body.')
       else
         local text, language = answer.body, 'text'
-        if kind == 'json' then
+        if answer.binary then
+          -- Bytes that are not text show as hex, the first few kilobytes of them.
+          answer.shown = answer.shown
+            or (
+              'The answer is '
+              .. http.human_size (answer.size)
+              .. ' of bytes that are not text. The first of them:\n\n'
+              .. http.hex_dump (http.base64_decode (answer.body), HEX_MAX)
+            )
+          text = answer.shown
+        elseif kind == 'json' then
           language = 'json'
           if not raw and #answer.body <= PRETTY_MAX then
             answer.pretty = answer.pretty
@@ -1106,6 +1632,10 @@ return {
         return
       end
       local req = doc.req
+      -- A folder's sign-in has nothing to send, so only the Auth tab shows.
+      line:show (not doc.folder_auth)
+      split:show (not doc.folder_auth)
+      bottom:show (not doc.folder_auth)
       method_sel:value (req.method)
       paint_method ()
       url_in:value (req.url)
@@ -1114,14 +1644,26 @@ return {
         'set_language',
         req.body_mode == 'json' and 'json' or 'text'
       )
-      token_in:value (req.auth.token)
-      user_in:value (req.auth.user)
-      pass_in:value (req.auth.password)
+      bx.vars_code:widget ('set_text', req.variables)
+      local a = req.auth
+      token_in:value (a.token)
+      user_in:value (a.user)
+      pass_in:value (a.password)
+      au.key_in:value (a.key)
+      au.key_value_in:value (a.value)
+      au.token_url_in:value (a.token_url)
+      au.client_id_in:value (a.client_id)
+      au.client_secret_in:value (a.client_secret)
+      au.scope_in:value (a.scope)
+      au.oauth_user_in:value (a.user)
+      au.oauth_pass_in:value (a.password)
+      op.timeout_in:value (core.timeout_text (req.timeout))
       params_grid.render ()
       headers_grid.render ()
       form_grid.render ()
       render_body ()
       render_auth ()
+      render_options ()
       show_pane ()
       render_tabs ()
       render_head ()
@@ -1161,7 +1703,11 @@ return {
     end)
 
     req_tabs:on ('click', function (ev)
-      if ev.item and panes[ev.item] then
+      if
+        ev.item
+        and panes[ev.item]
+        and not (current and current.folder_auth)
+      then
         pane = ev.item
         app.store.set ('pane', pane)
         show_pane ()
@@ -1213,6 +1759,90 @@ return {
     end)
     auth_field (pass_in, function (auth, text)
       auth.password = text
+    end)
+    auth_field (au.key_in, function (auth, text)
+      auth.key = text
+    end)
+    auth_field (au.key_value_in, function (auth, text)
+      auth.value = text
+    end)
+    auth_field (au.token_url_in, function (auth, text)
+      auth.token_url = text
+    end)
+    auth_field (au.client_id_in, function (auth, text)
+      auth.client_id = text
+    end)
+    auth_field (au.client_secret_in, function (auth, text)
+      auth.client_secret = text
+    end)
+    auth_field (au.scope_in, function (auth, text)
+      auth.scope = text
+    end)
+    auth_field (au.oauth_user_in, function (auth, text)
+      auth.user = text
+    end)
+    auth_field (au.oauth_pass_in, function (auth, text)
+      auth.password = text
+    end)
+
+    au.place_seg:on ('click', function (ev)
+      local doc = current
+      if doc and (ev.item == 'header' or ev.item == 'query') then
+        doc.req.auth.place = ev.item --[[@as 'header'|'query']]
+        render_auth ()
+        touch ()
+      end
+      return nil
+    end)
+    au.grant_seg:on ('click', function (ev)
+      local doc = current
+      if doc and (ev.item == 'client_credentials' or ev.item == 'password') then
+        doc.req.auth.grant = ev.item --[[@as 'client_credentials'|'password']]
+        render_auth ()
+        touch ()
+      end
+      return nil
+    end)
+
+    bx.file_pick:on ('click', function ()
+      local doc = current
+      if not doc then
+        return nil
+      end
+      pick_file ('File to send', function (grant)
+        doc.req.file = { id = grant.id, name = grant.name }
+        if doc == current then
+          render_body ()
+        end
+        touch ()
+      end)
+      return nil
+    end)
+
+    op.timeout_in:on ('input', function (ev)
+      local doc = current
+      if not doc then
+        return nil
+      end
+      local seconds = core.parse_timeout (ev.value or '')
+      if seconds then
+        doc.req.timeout = seconds
+        render_options ()
+        render_tabs ()
+        touch ()
+      else
+        op.timeout_note:text ('Type a number of seconds, up to 3600.')
+      end
+      return nil
+    end)
+    op.redirects_in:on ('change', function (ev)
+      local doc = current
+      if doc then
+        doc.req.redirects = ev.checked == true
+        render_tabs ()
+        touch ()
+      end
+      return nil
     end)
 
     local pass_shown = false
@@ -1275,34 +1905,78 @@ return {
 
     -- Sending -----------------------------------------------------------------------------
 
+    ---Asks the token address of an OAuth 2 sign-in for a token, and keeps it. `done` gets
+    ---the token, or nil and why not. Returns the request, so Cancel can stop it.
+    ---@param auth Http.Auth
+    ---@param done fun(token: string?, err: string?)
+    ---@return Proteus.HttpCall?
+    local function get_token (auth, done)
+      local request, err = http.oauth_request (auth, http.env_vars (envs))
+      if not request then
+        done (nil, err)
+        return nil
+      end
+      local key = token_key (auth)
+      local ok, call = pcall (app.net.fetch, request, function (reply, why)
+        if not reply then
+          done (nil, http.error_text (why, browser))
+          return
+        end
+        local token, seconds, problem = http.oauth_token (reply)
+        if not token then
+          done (nil, problem)
+          return
+        end
+        tokens[key] = core.keep_token (token, seconds, app.util.now ())
+        done (token, nil)
+      end)
+      if not ok then
+        done (nil, tostring (call))
+        return nil
+      end
+      return call --[[@as Proteus.HttpCall]]
+    end
+
     local function send ()
       local doc = current
-      if not doc then
+      if not doc or doc.folder_auth then
         return
       end
       if doc.pending then
+        -- Cancel stops the request itself, not only the wait for it.
+        local call = doc.call
         doc.pending = nil
-        doc.result = {
-          headers = {},
-          body = '',
-          ms = 0,
-          note = 'Cancelled. An answer that comes now is ignored.',
-        }
+        doc.call = nil
+        if call then
+          call.cancel ()
+        end
+        doc.result =
+          core.empty_result ({ note = 'Cancelled. The request stopped.' })
         render_send ()
         render_response ()
         render_status ()
         return
       end
-      local built = http.build (doc.req, http.env_vars (envs))
+      local env = http.env_vars (envs)
+      local auth = effective_auth (doc)
+      ---@type Http.BuildContext
+      local ctx = { auth = auth }
+      local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
+      if kept and core.token_fresh (kept, app.util.now ()) then
+        ctx.token = kept.token
+      end
+      local built = http.build (doc.req, env, ctx)
       if built.url == '' then
-        doc.result = {
-          headers = {},
-          body = '',
-          ms = 0,
-          note = 'Type an address first.',
-        }
+        doc.result = core.empty_result ({ note = 'Type an address first.' })
         render_response ()
         url_in:focus ()
+        return
+      end
+      local problem = core.send_problem (built)
+      if problem then
+        doc.result = core.empty_result ({ error = problem })
+        render_response ()
+        render_status ()
         return
       end
       send_count = send_count + 1
@@ -1316,36 +1990,19 @@ return {
       render_response ()
       render_status ()
 
-      ---@param reply Proteus.HttpReply?
-      ---@param err string?
-      local function done (reply, err)
+      ---@param result ApiApp.Result
+      local function finish (result)
         if doc.pending ~= number then
           return
         end
         doc.pending = nil
-        local ms = app.util.now () - started
-        local result ---@type ApiApp.Result
-        if reply then
-          result = {
-            status = math.floor (tonumber (reply.status) or 0),
-            headers = type (reply.headers) == 'table' and reply.headers or {},
-            body = type (reply.body) == 'string' and reply.body or '',
-            ms = ms,
-            warning = warning,
-          }
-        else
-          result = {
-            headers = {},
-            body = '',
-            ms = ms,
-            error = http.error_text (err, browser),
-            warning = warning,
-          }
-        end
+        doc.call = nil
         doc.result = result
+        -- The address as typed, with {{variables}} left in, so no token from an environment
+        -- is kept in the history.
         history = http.add_history (history, {
           method = built.method,
-          url = built.url,
+          url = http.build (snapshot).url,
           status = result.status or 0,
           time = app.util.now (),
           request = snapshot,
@@ -1355,20 +2012,103 @@ return {
         if doc == current then
           render_send ()
           render_response ()
+          render_auth ()
         end
         render_status ()
       end
 
-      local ok, err = pcall (app.net.fetch, {
-        method = built.method,
-        url = built.url,
-        headers = built.headers,
-        body = built.body,
-      }, done)
-      if not ok then
-        done (nil, tostring (err))
+      ---@param err string
+      local function fail (err)
+        finish (core.empty_result ({
+          error = err,
+          warning = warning,
+          ms = app.util.now () - started,
+        }))
+      end
+
+      ---Sends a built request. A Digest challenge in a 401 is answered once.
+      ---@param b Http.Built
+      ---@param answered boolean
+      local function go (b, answered)
+        local ok, call = pcall (
+          app.net.fetch,
+          http.fetch_request (b),
+          function (reply, err)
+            if doc.pending ~= number then
+              return
+            end
+            if not reply then
+              fail (http.error_text (err, browser))
+              return
+            end
+            if b.digest and not answered and reply.status == 401 then
+              local header, why = http.digest_header (
+                b,
+                tostring (
+                  reply.headers and reply.headers['www-authenticate'] or ''
+                ),
+                core.random_hex (16, math.random),
+                1
+              )
+              if header then
+                b.headers.Authorization = header
+                go (b, true)
+                return
+              end
+              warning = (warning and (warning .. '\n') or '') .. tostring (why)
+            end
+            if auth.mode == 'oauth2' and reply.status == 401 then
+              -- The token may have ended early, so the next send asks for a new one.
+              tokens[token_key (auth)] = nil
+            end
+            finish (
+              core.result_of (reply, b.url, app.util.now () - started, warning)
+            )
+          end
+        )
+        if not ok then
+          fail (http.error_text (tostring (call), browser))
+          return
+        end
+        doc.call = call --[[@as Proteus.HttpCall]]
+      end
+
+      if auth.mode == 'oauth2' and not ctx.token then
+        doc.call = get_token (auth, function (token, err)
+          if doc.pending ~= number then
+            return
+          end
+          if not token then
+            fail ('No token came, so the request did not go. ' .. tostring (err))
+            return
+          end
+          go (http.build (doc.req, env, { auth = auth, token = token }), false)
+        end)
+      else
+        go (built, false)
       end
     end
+
+    au.token_btn:on ('click', function ()
+      local doc = current
+      if not doc then
+        return nil
+      end
+      local auth = effective_auth (doc)
+      if auth.mode ~= 'oauth2' then
+        return nil
+      end
+      au.token_state:text ('Asking for a token…')
+      get_token (auth, function (token, err)
+        if token then
+          say ('Got a new token.')
+        else
+          complain ('No token came. ' .. tostring (err))
+        end
+        render_token ()
+      end)
+      return nil
+    end)
 
     send_btn:on ('click', function ()
       send ()
@@ -1397,8 +2137,10 @@ return {
       elseif item == 'copy' then
         local r = doc.result
         if r then
-          app.system.clipboard (shown_for == r and shown_text or r.body)
-          say ('Copied the body.')
+          app.system.clipboard (
+            (shown_for == r and not r.binary) and shown_text or r.body
+          )
+          say (r.binary and 'Copied the body as base64.' or 'Copied the body.')
         end
         return nil
       end
@@ -1428,6 +2170,7 @@ return {
         doc.folder = folder_of (path)
         docs[path] = doc
       end
+      file_cache[path] = nil
       doc.saved = text
       doc.dirty = false
       if doc == current then
@@ -1442,6 +2185,24 @@ return {
     local function save (doc)
       doc = doc or current
       if not doc then
+        return
+      end
+      if doc.folder_auth and doc.path then
+        local folder_doc = doc
+        local path = doc.path --[[@as string]]
+        local text = http.encode_folder (folder_doc.req.auth)
+        if
+          change_files ('Could not save the folder sign-in', function ()
+            app.fs.write (path, text)
+          end)
+        then
+          folder_doc.saved = text
+          folder_doc.dirty = false
+          if folder_doc == current then
+            render_head ()
+          end
+          say ('Saved the folder sign-in.')
+        end
         return
       end
       local target = doc
@@ -1496,16 +2257,55 @@ return {
       end
     end
 
+    ---Opens a folder's sign-in, which its requests set to From folder use.
+    ---@param folder string A path under data/proteus.api, or '' for the top.
+    local function open_folder_auth (folder)
+      local path = core.folder_files (DIR, folder)[1]
+      local doc = docs[path]
+      if not doc then
+        local auth = http.parse_folder (app.fs.read (path))
+        local req = http.normalize ({})
+        req.auth = auth
+        doc = {
+          key = path,
+          path = path,
+          folder = folder,
+          req = req,
+          saved = http.encode_folder (auth),
+          dirty = false,
+          folder_auth = true,
+        }
+        docs[path] = doc
+      end
+      show (doc)
+    end
+
+    au.inherit_edit:on ('click', function ()
+      local doc = current
+      if doc then
+        open_folder_auth (doc.folder)
+      end
+      return nil
+    end)
+
     ---@param folder string
     local function new_request (folder)
       show (add_new (http.normalize ({}), folder))
       url_in:focus ()
     end
 
-    ---@param req Http.Request
-    local function copy_curl (req)
+    ---@param doc ApiApp.Doc
+    local function copy_curl (doc)
+      if doc.folder_auth then
+        return
+      end
+      local auth = effective_auth (doc)
+      local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
       app.system.clipboard (
-        http.to_curl (http.build (req, http.env_vars (envs)))
+        http.to_curl (http.build (doc.req, http.env_vars (envs), {
+          auth = auth,
+          token = kept and kept.token or nil,
+        }))
       )
       say ('Copied the request as a curl command.')
     end
@@ -1522,13 +2322,148 @@ return {
           return err
         end,
         on_submit = function (text)
-          local req = http.from_curl (text)
+          local req, _, notes = http.from_curl (text)
           if req then
             show (add_new (req, ''))
             say ('Opened the curl command as a new request.')
+            -- What the request leaves out, such as a file the command sends.
+            for _, note in ipairs (notes or {}) do
+              if notify then
+                notify.warn (note)
+              else
+                app.warn (note)
+              end
+            end
           end
         end,
       })
+    end
+
+    ---Writes what an import read into a folder of its own, with its folder sign-ins, and adds
+    ---an environment for its variables.
+    ---@param imported Http.Import
+    ---@param source string The file's name.
+    local function write_import (imported, source)
+      local into = http.unique_name (imported.name, function (n)
+        return app.fs.exists (DIR .. '/' .. n) or n:lower () == 'environments'
+      end)
+      local base = DIR .. '/' .. into
+      local count = 0
+      local wrote = change_files ('Could not import ' .. source, function ()
+        for _, f in ipairs (imported.folders) do
+          local dir = base .. (f.folder ~= '' and ('/' .. f.folder) or '')
+          app.fs.write (
+            dir .. '/' .. core.FOLDER_FILE,
+            http.encode_folder (f.auth)
+          )
+        end
+        for _, item in ipairs (imported.requests) do
+          local dir = base .. (item.folder ~= '' and ('/' .. item.folder) or '')
+          local name = http.unique_name (item.request.name, function (n)
+            return app.fs.exists (dir .. '/' .. n .. '.json')
+          end)
+          item.request.name = name
+          app.fs.write (
+            dir .. '/' .. name .. '.json',
+            http.encode_request (item.request)
+          )
+          count = count + 1
+        end
+      end)
+      if not wrote then
+        render_list ()
+        return
+      end
+      local notes = {} ---@type string[]
+      local seen = {} ---@type table<string, boolean>
+      for _, note in ipairs (imported.notes) do
+        if not seen[note] then
+          seen[note] = true
+          notes[#notes + 1] = note
+        end
+      end
+      if next (imported.variables) then
+        local text, name = http.add_environment (
+          app.fs.read (ENV_PATH),
+          into,
+          imported.variables
+        )
+        if
+          text
+          and change_files ('Could not save the environments', function ()
+            app.fs.write (ENV_PATH, text)
+          end)
+        then
+          load_envs ()
+          notes[#notes + 1] = 'Its variables are in the new environment "'
+            .. tostring (name)
+            .. '". Choose it to use them.'
+        elseif not text then
+          notes[#notes + 1] = 'Its variables were not added, since the environments file has a problem. '
+            .. tostring (name)
+        end
+      end
+      folded[base] = nil
+      app.store.set ('folded', folded)
+      render_list ()
+      say (
+        'Imported '
+          .. (count == 1 and '1 request' or (count .. ' requests'))
+          .. ' into "'
+          .. into
+          .. '".'
+      )
+      for _, note in ipairs (notes) do
+        if notify then
+          notify.warn (note)
+        else
+          app.warn (note)
+        end
+      end
+    end
+
+    ---Imports a Postman collection, an OpenAPI or Swagger description, an Insomnia export or
+    ---a HAR file the user picks.
+    local function import_collection ()
+      local ok, err = pcall (app.grants.open, {
+        title = 'Import a Collection',
+        filters = {
+          {
+            name = 'Collections, API descriptions and HAR files',
+            extensions = { 'json', 'yaml', 'yml', 'har' },
+          },
+        },
+      }, function (picked, why)
+        if why then
+          complain ('Could not show the file picker. ' .. why)
+          return
+        end
+        local grant = picked and picked[1]
+        if not grant then
+          return
+        end
+        app.grants.read (grant.id, function (text, read_err)
+          -- The file is read once, so the client lets it go.
+          app.grants.forget (grant.id)
+          if not text then
+            complain (
+              'Could not read ' .. grant.name .. '. ' .. tostring (read_err)
+            )
+            return
+          end
+          local imported, problem = http.import (text)
+          if not imported then
+            complain (
+              'Could not import ' .. grant.name .. '. ' .. tostring (problem)
+            )
+            return
+          end
+          write_import (imported, grant.name)
+        end)
+      end)
+      if not ok then
+        complain ('Could not show the file picker. ' .. tostring (err))
+      end
     end
 
     ---@param path string
@@ -1720,6 +2655,10 @@ return {
       import_curl ()
       return nil
     end)
+    none_collection:on ('click', function ()
+      import_collection ()
+      return nil
+    end)
 
     -- The request list --------------------------------------------------------------------
 
@@ -1794,13 +2733,16 @@ return {
           walk (e.path, depth + 1, out)
         elseif
           e.name:find ('%.json$')
+          and not core.hidden (e.name)
           and not (depth == 0 and e.name == 'environments.json')
         then
-          local text = app.fs.read (e.path) or ''
+          -- A file is read once, and again only after it changes, so a search that redraws
+          -- the list on each key reads nothing.
           local info = file_cache[e.path]
-          if not info or info.text ~= text then
-            local req = http.normalize ((http.json_decode (text)))
-            info = { text = text, method = req.method, url = req.url }
+          if not info then
+            local req =
+              http.normalize ((http.json_decode (app.fs.read (e.path) or '')))
+            info = { method = req.method, url = req.url }
             file_cache[e.path] = info
           end
           out[#out + 1] = {
@@ -1972,16 +2914,28 @@ return {
 
     do
       local stored = app.store.get ('history', {}) ---@type table<string, any>[]
+      local scrubbed = false
       for _, e in ipairs (type (stored) == 'table' and stored or {}) do
         if type (e) == 'table' and type (e.url) == 'string' then
+          local request = http.normalize (e.request)
+          -- An older history kept the address with the environment's values filled in. The
+          -- request it came from has the {{variables}} instead.
+          local url = e.url
+          if type (e.request) == 'table' then
+            url = http.build (request).url
+            scrubbed = scrubbed or url ~= e.url
+          end
           history[#history + 1] = {
             method = http.normalize ({ method = e.method }).method,
-            url = e.url,
+            url = url,
             status = math.floor (tonumber (e.status) or 0),
             time = tonumber (e.time) or 0,
-            request = http.normalize (e.request),
+            request = request,
           }
         end
+      end
+      if scrubbed then
+        app.store.set ('history', history)
       end
     end
 
@@ -2298,8 +3252,33 @@ return {
 
     -- Files changed elsewhere, such as in the editor profile ------------------------------
 
+    ---Forgets what the list knew of a file, or of every file in a folder.
+    ---@param path string
+    local function forget_cached (path)
+      file_cache[path] = nil
+      local prefix = path .. '/'
+      for k in pairs (file_cache) do
+        if k:sub (1, #prefix) == prefix then
+          file_cache[k] = nil
+        end
+      end
+    end
+
+    ---@param from any
+    ---@param to any
+    app.on ('fs:renamed', function (from, to)
+      if type (from) == 'string' and type (to) == 'string' then
+        forget_cached (from)
+        forget_cached (to)
+        schedule_list ()
+      end
+    end)
+
     ---@param path any
     app.on ('fs:changed', function (path)
+      if type (path) == 'string' then
+        forget_cached (path)
+      end
       if type (path) ~= 'string' or writing > 0 then
         return
       end
@@ -2319,7 +3298,14 @@ return {
         return
       end
       local doc = docs[path]
-      if doc and not doc.dirty then
+      if doc and not doc.dirty and doc.folder_auth then
+        local auth = http.parse_folder (app.fs.read (path))
+        doc.req.auth = auth
+        doc.saved = http.encode_folder (auth)
+        if doc == current then
+          fill_editor ()
+        end
+      elseif doc and not doc.dirty then
         if not app.fs.exists (path) then
           docs[path] = nil
           if doc == current then
@@ -2392,7 +3378,7 @@ return {
               run = function ()
                 local doc = doc_at (path)
                 if doc then
-                  copy_curl (doc.req)
+                  copy_curl (doc)
                 end
               end,
             },
@@ -2429,7 +3415,7 @@ return {
               label = 'Copy as curl',
               icon = 'clipboard-copy',
               run = function ()
-                copy_curl (draft.req)
+                copy_curl (draft)
               end,
             },
             { separator = true },
@@ -2458,6 +3444,20 @@ return {
             run = function ()
               new_folder (folder)
             end,
+          },
+          {
+            label = folder ~= '' and 'Folder Sign-in…'
+              or 'Sign-in for Every Request…',
+            icon = 'key-round',
+            run = function ()
+              open_folder_auth (folder)
+            end,
+          },
+          { separator = true },
+          {
+            label = 'Import Collection…',
+            icon = 'import',
+            run = import_collection,
           },
         }
       end)
@@ -2549,7 +3549,7 @@ return {
         when = has_doc,
         run = function ()
           if current then
-            copy_curl (current.req)
+            copy_curl (current)
           end
         end,
       },
@@ -2560,6 +3560,25 @@ return {
         toolbar = 4,
         when = on_screen,
         run = import_curl,
+      },
+      {
+        id = 'api.import',
+        title = 'Import Collection…',
+        icon = 'import',
+        toolbar = 5,
+        when = on_screen,
+        run = import_collection,
+      },
+      {
+        id = 'api.folder_auth',
+        title = 'Folder Sign-in',
+        icon = 'key-round',
+        when = has_doc,
+        run = function ()
+          if current then
+            open_folder_auth (current.folder)
+          end
+        end,
       },
       {
         id = 'api.environment',
