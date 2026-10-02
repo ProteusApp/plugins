@@ -40,7 +40,6 @@
     "lib/release.lua",
     "lib/schemas.lua",
     "lib/server.lua",
-    "tests/format.test.lua",
     "tests/release.test.lua",
     "tests/schemas.test.lua"
   ]
