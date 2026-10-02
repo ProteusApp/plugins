@@ -274,7 +274,8 @@ function M.install (grid)
   -- Links ----------------------------------------------------------------------------------
 
   ---Follows the link on a cell. A place in the book, such as `#Sheet2!A1`, shows that sheet
-  ---and selects the cells. A web or mail address is copied, since the app opens no pages.
+  ---and selects the cells. A web or mail address opens in the system's browser or mail
+  ---program, once the user allows its site. Any other address is copied.
   ---@param row integer
   ---@param col integer
   function G.follow_link (row, col)
@@ -284,11 +285,18 @@ function M.install (grid)
       return
     end
     if string.sub (link, 1, 1) ~= '#' then
-      app.system.clipboard (link)
-      env.say (
-        'info',
-        'Copied ' .. link .. '. Paste it in a browser to open it.'
-      )
+      local opened = pcall (app.system.open_url, link, function (_, err)
+        if err then
+          env.say ('warn', 'Did not open ' .. link .. ': ' .. tostring (err))
+        end
+      end)
+      if not opened then
+        app.system.clipboard (link)
+        env.say (
+          'info',
+          'Copied ' .. link .. '. Paste it in a browser to open it.'
+        )
+      end
       return
     end
     local rect, sheet_name = model.parse_ref (string.sub (link, 2))
