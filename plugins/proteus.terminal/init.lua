@@ -1,7 +1,8 @@
 -- proteus.terminal: terminals in the bottom dock. In the Code Editor they start in the open
 -- folder. Anywhere else they start in the home folder, in any profile with the bottom dock.
 --
--- Ctrl+` shows or hides the panel, and Ctrl+Shift+` opens another terminal. Each terminal has
+-- Ctrl+` shows or hides the panel, and Ctrl+Shift+` opens another terminal. The Code
+-- Editor's file tree sends `code:open_terminal` with a folder, which opens a terminal there. Each terminal has
 -- a tab along the top of the panel, named after what it runs. The `terminal.shell` setting
 -- picks the program and its arguments, such as `pwsh -NoLogo`. Empty runs the system shell:
 -- PowerShell on Windows, or the login shell elsewhere.
@@ -44,7 +45,7 @@ local CSS = [[
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, which start in the folder open in the Code Editor.',
-  version = '1.1.0',
+  version = '1.2.0',
   -- `process` runs the shell in each terminal. `files` lets it start in the Code Editor's
   -- folder, which the `project` service hands out. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
@@ -121,8 +122,9 @@ return {
       end
     end
 
+    ---@param cwd? string The folder it starts in. The open folder, or the home folder, when nil.
     ---@return CodeTerminal.Term
-    local function new_term ()
+    local function new_term (cwd)
       local id = next_id
       next_id = next_id + 1
       local term ---@type CodeTerminal.Term
@@ -131,7 +133,7 @@ return {
       local widget = ui.widget ('terminal', {
         program = program,
         args = args,
-        cwd = root or '',
+        cwd = cwd or root or '',
         font_size = tonumber (settings.get ('terminal.font_size')) or 13,
         on_started = function ()
           if term then
@@ -267,6 +269,15 @@ return {
         end
       end,
     })
+
+    -- Open in Terminal, from the Code Editor's file tree. The event needs `files` to hear.
+    app.on ('code:open_terminal', function (dir)
+      if desktop and type (dir) == 'string' and dir ~= '' then
+        -- The terminal comes first, so showing the panel starts no other.
+        new_term (dir)
+        views.show ('terminal')
+      end
+    end)
 
     settings.watch ('terminal.font_size', function (size)
       for _, t in ipairs (terms) do
