@@ -84,7 +84,10 @@ return {
       program = app.os == 'windows' and (PROGRAM .. '.cmd') or PROGRAM,
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
-      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = PROGRAM },
+      npm = {
+        packages = { 'vscode-langservers-extracted@4.10.0' },
+        bin = PROGRAM,
+      },
       languages = { 'html' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = { 'html.enabled', 'html.validate' },

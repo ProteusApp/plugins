@@ -107,7 +107,10 @@ return {
       program = 'vscode-css-language-server',
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
-      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = 'vscode-css-language-server' },
+      npm = {
+        packages = { 'vscode-langservers-extracted@4.10.0' },
+        bin = 'vscode-css-language-server',
+      },
       languages = { 'css' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = tool_settings,

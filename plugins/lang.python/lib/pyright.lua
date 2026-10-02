@@ -102,16 +102,22 @@ function M.install (ctx)
         else
           tool.log ('info', 'no Python found, so imports cannot be followed')
         end
-        program_module.find (app, tool, root, state.python, function (launch, why)
-          starting = false
-          if not launch then
-            tool.set_path (nil)
-            tool.set_state ('missing', why)
-            return
+        program_module.find (
+          app,
+          tool,
+          root,
+          state.python,
+          function (launch, why)
+            starting = false
+            if not launch then
+              tool.set_path (nil)
+              tool.set_state ('missing', why)
+              return
+            end
+            tool.set_path (launch.script)
+            client.start (launch.program, launch.args, root)
           end
-          tool.set_path (launch.script)
-          client.start (launch.program, launch.args, root)
-        end)
+        )
       end)
     end,
     stop = function ()

@@ -16,7 +16,8 @@ local M = {}
 
 -- The editor languages of the files the server serves. The editor calls `.vue` and `.svelte`
 -- files `html`, and `.scss` files `css`.
-local SERVED = { 'css', 'html', 'javascript', 'jsx', 'markdown', 'tsx', 'typescript' }
+local SERVED =
+  { 'css', 'html', 'javascript', 'jsx', 'markdown', 'tsx', 'typescript' }
 
 ---Calls `cb (true)` when the folder uses Tailwind: a config file first, then a stylesheet
 ---or a package.json that names it.
@@ -132,7 +133,7 @@ function M.install (ctx, tool, client)
         if not yes then
           starting = false
           set_languages ({})
-        tool.set_state ('stopped', 'the open folder does not use Tailwind CSS')
+          tool.set_state ('stopped', 'the open folder does not use Tailwind CSS')
           return
         end
         launch (root)
