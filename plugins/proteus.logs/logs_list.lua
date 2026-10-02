@@ -305,6 +305,7 @@ function M.attach (ctx)
     render_chip_counts ()
     render_empty ()
     update_status ()
+    ctx.render_hist ()
     if ctx.follow then
       scroll_bottom ()
     elseif ctx.selected then
@@ -421,6 +422,9 @@ function M.attach (ctx)
       end
       render_chip_counts ()
       render_empty ()
+      if #fresh > 0 then
+        ctx.schedule_hist ()
+      end
       if ctx.follow and #fresh > 0 then
         scroll_bottom ()
       end

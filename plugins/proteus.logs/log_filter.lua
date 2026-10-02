@@ -4,12 +4,13 @@
 -- its own, and this one hands out all of it, so the plugin and the tests need only this one:
 -- log_text holds small text helpers, log_ansi the colour codes, log_level a line's level,
 -- log_query the filter, log_ring the lines and the ring that holds them, log_sources where
--- lines come from, log_format the formats that take fields out of lines, and log_export the
--- text of the lines it exports. Regular expressions are in log_regex.lua, and times in
--- log_time.lua.
+-- lines come from, log_format the formats that take fields out of lines, log_histogram the
+-- bars of lines over time, and log_export the text of the lines it exports. Regular
+-- expressions are in log_regex.lua, and times in log_time.lua.
 
 local ansi = require ('log_ansi') --[[@as Logs.AnsiModule]]
 local lfmt = require ('log_format') --[[@as Logs.FormatModule]]
+local lh = require ('log_histogram') --[[@as Logs.HistogramModule]]
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
 local lq = require ('log_query') --[[@as Logs.QueryModule]]
 local lr = require ('log_ring') --[[@as Logs.RingModule]]
@@ -79,6 +80,9 @@ local highlight = lq.highlight
 ---@field clean_formats fun(value: any): Logs.Format[]
 ---@field sort_lines fun(lines: Logs.Line[], field: string, desc: boolean): Logs.Line[]
 ---@field column_widths fun(lines: Logs.Line[], fields: string[]): integer[]
+---@field histogram fun(lines: Logs.Line[], first: integer, max_bins: integer): Logs.Histogram?
+---@field with_range fun(text: string, from: number, to: number): string
+---@field without_range fun(text: string): string
 
 -- Lines longer than this show cut short in the list. The detail panel shows them whole.
 local MAX_ROW = 4000
@@ -493,6 +497,9 @@ local M = {
   clean_formats = lfmt.clean_formats,
   sort_lines = lfmt.sort_lines,
   column_widths = lfmt.widths,
+  histogram = lh.build,
+  with_range = lh.with_range,
+  without_range = lh.without_range,
 }
 
 return M

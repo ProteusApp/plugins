@@ -12,6 +12,8 @@ test ('logs_css holds the styles of each part of the screen', function ()
     'logs-src',
     'logs-head',
     'logs-hcol',
+    'logs-hist',
+    'logs-hbin',
   }) do
     ok (css:find ('.' .. class .. ' ', 1, true), 'no rule for .' .. class)
   end

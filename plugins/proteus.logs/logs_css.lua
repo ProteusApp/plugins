@@ -444,6 +444,70 @@ return [[
 .logs-f {
   color: var(--syn-property);
 }
+.logs-hist {
+  flex: none;
+  padding: 6px 12px 2px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt);
+  user-select: none;
+}
+.logs-hist-plot {
+  position: relative;
+  height: 44px;
+}
+.logs-hist-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  height: 100%;
+  cursor: crosshair;
+}
+.logs-hbin {
+  flex: 1 1 0;
+  min-width: 1px;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 1px;
+}
+.logs-hbin:hover {
+  background: var(--bg-hover);
+}
+.logs-hbin i {
+  display: block;
+  flex: none;
+  min-height: 1px;
+  background: var(--fg-faint);
+}
+.logs-hbin .logs-hb-error {
+  background: var(--danger);
+}
+.logs-hbin .logs-hb-warn {
+  background: var(--warning);
+}
+.logs-hbin .logs-hb-info {
+  background: var(--accent);
+}
+.logs-hbin .logs-hb-debug {
+  background: var(--fg-muted);
+}
+.logs-hist-sel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+  opacity: 0.25;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.logs-hist-axis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
 .logs-src-none {
   padding: 16px 8px;
   text-align: center;

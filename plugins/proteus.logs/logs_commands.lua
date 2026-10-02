@@ -585,6 +585,29 @@ function M.attach (ctx)
     end,
   })
   commands.register ({
+    id = 'logs.histogram',
+    category = 'Logs',
+    title = 'Toggle Histogram',
+    icon = 'chart-column',
+    when = here,
+    run = function ()
+      ctx.toggle_hist ()
+      ctx.render_toggles ()
+    end,
+  })
+  commands.register ({
+    id = 'logs.all_time',
+    category = 'Logs',
+    title = 'Show All Times',
+    icon = 'zoom-out',
+    when = function ()
+      return here () and lf.has_time (ctx.query)
+    end,
+    run = function ()
+      ctx.set_filter (lf.without_range (ctx.filter_text))
+    end,
+  })
+  commands.register ({
     id = 'logs.export',
     category = 'Logs',
     title = 'Export Matching Lines',

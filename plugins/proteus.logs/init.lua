@@ -12,14 +12,16 @@
 --
 -- This file puts the screen together and wires its events. The rest lives in modules that
 -- share one context, Logs.Ctx: logs_list draws the list of lines, logs_detail shows the line
--- picked in it, logs_marks keeps the bookmarks, logs_formats the formats whose fields show as
--- columns, logs_sources opens, runs and shows the sources the lines come from, and
--- logs_commands holds the right-click menus and the commands.
+-- picked in it, logs_hist draws the bars of lines over time above it, logs_marks keeps the
+-- bookmarks, logs_formats the formats whose fields show as columns, logs_sources opens, runs
+-- and shows the sources the lines come from, and logs_commands holds the right-click menus and
+-- the commands.
 
 local CSS = require ('logs_css') --[[@as string]]
 local commands_m = require ('logs_commands') --[[@as Logs.CommandsModule]]
 local detail_m = require ('logs_detail') --[[@as Logs.DetailModule]]
 local formats_m = require ('logs_formats') --[[@as Logs.FormatsModule]]
+local hist_m = require ('logs_hist') --[[@as Logs.HistModule]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 local marks_m = require ('logs_marks') --[[@as Logs.MarksModule]]
@@ -142,6 +144,11 @@ local LEVEL_PLURALS = {
 ---@field edit_format fun()
 ---@field delete_format fun()
 ---@field save_open fun() From logs_sources.
+---@field hist_el Proteus.El From logs_hist.
+---@field render_hist fun()
+---@field schedule_hist fun()
+---@field toggle_hist fun()
+---@field hist_shown fun(): boolean
 ---@field find_source fun(id: number?): Logs.Source? From logs_sources.
 ---@field render_sources fun()
 ---@field show_source fun(src: Logs.Source?)
@@ -234,6 +241,8 @@ return {
     ---@type fun()
     local redraw_list
 
+    hist_m.attach (ctx)
+
     ---@param text string
     local function say (text)
       if notify then
@@ -299,6 +308,13 @@ return {
       title = 'Wrap long lines (Alt+Z)',
       ui.icon ('text-wrap', 14),
       'Wrap',
+    })
+    local hist_btn = ui.button ({
+      variant = 'ghost',
+      class = 'logs-toggle',
+      title = 'Show how many lines were written over time',
+      ui.icon ('chart-column', 14),
+      'Histogram',
     })
     local clear_btn = ui.button ({
       variant = 'ghost',
@@ -397,9 +413,11 @@ return {
         ui.div ({ class = 'ui-grow' }),
         follow_btn,
         wrap_btn,
+        hist_btn,
         clear_btn,
         problem_el,
       }),
+      ctx.hist_el,
       ui.div ({ class = 'logs-body', list, empty }),
       detail,
     })
@@ -466,6 +484,7 @@ return {
     local function render_toggles ()
       follow_btn:class ('on', ctx.follow)
       wrap_btn:class ('on', wrap)
+      hist_btn:class ('on', ctx.hist_shown ())
     end
 
     local function scroll_bottom ()
@@ -845,6 +864,11 @@ return {
     end)
     wrap_btn:on ('click', function ()
       toggle_wrap ()
+      return nil
+    end)
+    hist_btn:on ('click', function ()
+      ctx.toggle_hist ()
+      render_toggles ()
       return nil
     end)
     clear_btn:on ('click', function ()

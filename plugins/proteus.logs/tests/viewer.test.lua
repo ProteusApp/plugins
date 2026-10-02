@@ -570,3 +570,35 @@ test ('a regular expression format keeps its named groups', function ()
   eq (cells (world), { {}, {} }, 'No Format takes the columns away')
   ok (not find (world, 'logs-head').visible)
 end)
+
+test ('the histogram shows lines over time, and a drag keeps a span', function ()
+  local world = start ()
+  open (world, 'logs.open_file', '/var/log/app.log', {
+    '2024-03-01T12:00:00Z INFO a',
+    '2024-03-01T12:00:30Z ERROR b',
+    '2024-03-01T12:05:00Z INFO c',
+    '2024-03-01T12:09:59Z INFO d',
+  })
+  local hist = find (world, 'logs-hist')
+  ok (hist.visible)
+  local bars = find (world, 'logs-hist-bars')
+  ok (bars.inner:find ('logs-hb-error', 1, true), bars.inner)
+  eq (find (world, 'logs-hist-step').shown_text, 'Each bar is 10 seconds')
+  bars:fire ('mousedown', { item = '1', button = 0 })
+  bars:fire ('mouseover', { item = '4' })
+  ok (find (world, 'logs-hist-sel').visible)
+  bars:fire ('mouseup', {})
+  eq (rows (world), {
+    '2024-03-01T12:00:00Z INFO a',
+    '2024-03-01T12:00:30Z ERROR b',
+  })
+  eq (
+    find (world, 'logs-hist-step').shown_text,
+    'Each bar is 500 milliseconds',
+    'the bars zoom in'
+  )
+  world.commands['logs.all_time'].run ()
+  eq (#rows (world), 4)
+  world.commands['logs.histogram'].run ()
+  ok (not hist.visible, 'Toggle Histogram hides it')
+end)
