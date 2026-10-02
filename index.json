@@ -5776,7 +5776,7 @@
       "id": "proteus.terminal",
       "name": "Terminal",
       "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
-      "version": "2.0.1",
+      "version": "2.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -5790,7 +5790,8 @@
         "proteus.ui.menus",
         "proteus.ui.palette",
         "proteus.ui.notify",
-        "proteus.editor.core"
+        "proteus.editor.core",
+        "proteus.tools.diagnostics"
       ],
       "permissions": [
         "process",
@@ -5801,7 +5802,9 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "terminal-sessions",
+          "terminal-lines"
         ]
       },
       "files": [
@@ -5811,13 +5814,60 @@
         "shell_words.lua",
         "terminal_groups.lua",
         "terminal_profiles.lua",
+        "terminal_session.lua",
+        "terminal_tasks.lua",
         "tests/groups.test.lua",
+        "tests/panel.test.lua",
         "tests/profiles.test.lua",
-        "tests/shell_words.test.lua"
+        "tests/session.test.lua",
+        "tests/shell_words.test.lua",
+        "tests/tasks.test.lua"
       ],
-      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
-      "updated": "2026-10-02T16:56:50Z",
+      "commit": "e7a98d50cbdfea530ad5a5ff5ad882dffada99c3",
+      "updated": "2026-10-02T17:06:09Z",
       "versions": [
+        {
+          "version": "2.0.1",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.views",
+            "proteus.core.settings"
+          ],
+          "optional": [
+            "proteus.code.project",
+            "proteus.core.commands",
+            "proteus.core.keys",
+            "proteus.ui.menus",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.editor.core"
+          ],
+          "permissions": [
+            "process",
+            "files",
+            "clipboard"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "handbook/terminal.md",
+            "init.lua",
+            "shell_words.lua",
+            "terminal_groups.lua",
+            "terminal_profiles.lua",
+            "tests/groups.test.lua",
+            "tests/profiles.test.lua",
+            "tests/shell_words.test.lua"
+          ],
+          "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+          "updated": "2026-10-02T16:56:50Z"
+        },
         {
           "version": "2.0.0",
           "depends": [
