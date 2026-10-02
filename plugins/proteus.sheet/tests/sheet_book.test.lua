@@ -128,6 +128,22 @@ test ('sheet names follow the rules', function ()
   eq (book:free_name ('Budget', true), 'Budget (2)')
   eq (book:free_name ('Budget (2)', true), 'Budget (2)')
 end)
+test ('a workbook name must make a file name on every system', function ()
+  eq (B.file_name_problem (''), 'Type a name.')
+  ok (B.file_name_problem ('a/b') ~= nil)
+  ok (B.file_name_problem ('.hidden') ~= nil)
+  ok (B.file_name_problem ('tab\there') ~= nil)
+  for _, bad in ipairs ({ 'CON', 'nul', 'Aux.backup', 'com1', 'LPT9', 'prn ' }) do
+    ok (B.file_name_problem (bad), bad .. ' should be refused')
+  end
+  for _, good in ipairs ({ 'Console', 'null', 'com10', 'Budget 2026', 'CON 1' }) do
+    eq (B.file_name_problem (good), nil, good)
+  end
+  eq (B.safe_file_name ('NUL'), 'NUL 1')
+  eq (B.safe_file_name ('a:b?'), 'a-b-')
+  eq (B.safe_file_name ('  '), 'Imported')
+  eq (B.safe_file_name ('Budget'), 'Budget')
+end)
 
 test ('formulas read other sheets by name, ignoring case', function ()
   local book = book_of ({ 'Main', 'Data', 'Q1 sales' }, {
@@ -411,7 +427,7 @@ test ('INDIRECT and OFFSET read cells worked out on demand', function ()
 end)
 
 test (
-  'a long chain of INDIRECT gives #CYCLE! rather than overflowing',
+  'a long chain of INDIRECT gives #CALC! rather than overflowing',
   function ()
     local book = B.new ({ rows = 400 })
     local s = book.sheets[1]
@@ -422,8 +438,9 @@ test (
     book:ensure ()
     for row = 1, 400 do
       local v = s:value (row, 1)
-      ok (type (v) == 'number' or v == f.error ('#CYCLE!'), 'row ' .. row)
+      ok (type (v) == 'number' or v == f.error ('#CALC!'), 'row ' .. row)
     end
+    eq (s:value (1, 1), f.error ('#CALC!'))
     eq (s:value (400, 1), 1)
     eq (s:value (399, 1), 2)
   end
@@ -482,6 +499,114 @@ test ('20,000 formulas: one edit touches only what it must', function ()
   ok (full < 30, 'the full recalculation took too long')
 end)
 
+test (
+  'big blocks are found by column and row, so an edit looks only at its own',
+  function ()
+    local book = book_of ({ 'S' }, {
+      S = {
+        A1 = '1',
+        B1 = '2',
+        Z1 = '3',
+        DA600 = '=SUM(A:B)',
+        DA601 = '=SUM(1:1)',
+        DA602 = '=SUM(A1:CZ500)',
+        DA603 = '=SUM(A1:A100)',
+        DB600 = '=DA600*2',
+      },
+    })
+    local s = book.sheets[1]
+    book:ensure ()
+    local w = s.watch
+    ok (w.cols[1] and w.cols[2] and not w.cols[3], 'A:B goes in by column')
+    ok (w.rows[1] and not w.rows[2], '1:1 goes in by row')
+    local wide = 0
+    for _ in pairs (w.big) do
+      wide = wide + 1
+    end
+    eq (wide, 1)
+    -- A1 is read by every one of them, and DB600 reads DA600.
+    set (s, 'A1', '10')
+    book:ensure ()
+    eq (book.last.evaluated, 5)
+    eq (shown (s, 'DB600'), '24')
+    -- Z1 is read by the row and the wide block, and looking for it checks only those.
+    set (s, 'Z1', '4')
+    book:ensure ()
+    eq (book.last.evaluated, 2)
+    ok (book.scanned <= 4, 'scanned ' .. book.scanned)
+    -- A cell far from every block is read by none, and only the wide block is looked at.
+    set (s, 'AZ900', '5')
+    book:ensure ()
+    eq (book.last.evaluated, 0)
+    eq (book.scanned, 1)
+    -- Taking a formula away takes its blocks out of the index.
+    set (s, 'DA600', '')
+    set (s, 'DA601', '')
+    book:ensure ()
+    ok (not w.cols[2] and not w.rows[1], 'their blocks left the index')
+  end
+)
+
+test (
+  '50,000 cells and 5,000 lookups: an edit reaches only what reads it',
+  function ()
+    local rows, lookups = 10000, 5000
+    local book = B.new ({ rows = rows, name = 'Data' })
+    local data = book.sheets[1]
+    for row = 1, rows do
+      data:put (row, 1, { text = 'k' .. row })
+      data:put (row, 2, { text = tostring (row) })
+      data:put (row, 3, { text = tostring (row * 2) })
+      data:put (row, 4, { text = 'item ' .. row })
+    end
+    for row = 1, lookups do
+      data:put (row, 6, { text = 'k' .. (row % 50 + 1) })
+      data:put (row, 7, { text = '=VLOOKUP(F' .. row .. ', $A:$D, 2, FALSE)' })
+    end
+    local started = os.clock ()
+    book:ensure ()
+    local full = os.clock () - started
+    eq (book.last.evaluated, lookups)
+    eq (data:value (7, 7), 8)
+
+    -- A key read by one lookup works out that lookup alone, and looks at no big block on the
+    -- way, however many lookups read the table.
+    started = os.clock ()
+    data:set (7, 6, 'k30')
+    book:ensure ()
+    local one = os.clock () - started
+    eq (book.last, { full = false, evaluated = 1, dirty = 1 })
+    eq (data:value (7, 7), 30)
+    ok (book.scanned <= 1, 'scanned ' .. book.scanned)
+
+    -- An edit inside the table reaches every lookup. Finding them looks at the blocks of its
+    -- column once, not once for every lookup due.
+    started = os.clock ()
+    data:set (3, 2, '-3')
+    book:ensure ()
+    local all = os.clock () - started
+    eq (book.last.evaluated, lookups)
+    ok (book.scanned <= lookups, 'scanned ' .. book.scanned)
+    eq (data:value (2, 7), -3)
+
+    -- A cell nobody reads works nothing out.
+    data:set (9000, 9, '1')
+    book:ensure ()
+    eq (book.last.evaluated, 0)
+
+    print (
+      string.format (
+        '    5,000 lookups over 40,000 cells: full %.3f s, one key %.4f s, a table cell %.3f s',
+        full,
+        one,
+        all
+      )
+    )
+    ok (one < 1, 'an edit that reaches one lookup took too long')
+    ok (all < 20, 'an edit that reaches every lookup took too long')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Undo
 ---------------------------------------------------------------------------------------------
@@ -510,6 +635,210 @@ test (
     ok (book:can_redo ())
   end
 )
+
+---------------------------------------------------------------------------------------------
+-- Defined names
+---------------------------------------------------------------------------------------------
+
+test ('defined names stand for references, values and functions', function ()
+  local book = book_of ({ 'Main', 'Data' }, {
+    Main = {
+      A1 = '=SUM(Rates)',
+      A2 = '=100*Tax',
+      A3 = '=Double(21)',
+      A4 = '=Total',
+      A5 = '=Loop',
+      A6 = '=LET(Tax, 1, Tax)',
+      A7 = '=ROWS(Rates)',
+      A8 = '=Missing',
+    },
+    Data = { B2 = '1', B3 = '2', B4 = '3' },
+  })
+  local main, data = book.sheets[1], book.sheets[2]
+  ok (book:set_name ('Rates', '=Data!$B$2:$B$4'))
+  ok (book:set_name ('Tax', '0.2'))
+  ok (book:set_name ('Double', '=LAMBDA(x, x*2)'))
+  ok (book:set_name ('Total', '=SUM(Rates)*10'))
+  ok (book:set_name ('Loop', '=Loop+1'))
+  eq (
+    { shown (main, 'A1'), shown (main, 'A2'), shown (main, 'A3') },
+    { '6', '20', '42' }
+  )
+  eq ({ shown (main, 'A4'), shown (main, 'A5'), shown (main, 'A6') }, {
+    '60',
+    '#CYCLE!',
+    '1',
+  })
+  eq ({ shown (main, 'A7'), shown (main, 'A8') }, { '3', '#NAME?' })
+  -- A formula that uses a name follows the cells the name names.
+  set (data, 'B3', '20')
+  eq ({ shown (main, 'A1'), shown (main, 'A4') }, { '24', '240' })
+  -- Names refuse what is not a name, and names taken.
+  eq (
+    { book:set_name ('A1', '=1') },
+    { false, 'A name cannot look like a cell, such as A1 or R1C1.' }
+  )
+  eq ({ book:set_name ('sum', '=1') }, { false, 'SUM is a function.' })
+  eq ({ book:set_name ('rates', '=1') }, { false, 'The name Rates is taken.' })
+  eq ({ book:set_name ('Two words', '=1') }, {
+    false,
+    'A name starts with a letter or _, and holds only letters, digits, _ and points.',
+  })
+  ok (book:set_name ('Rate.2026', '=Data!$B$2'))
+  eq (book:defined ('RATE.2026').formula, '=Data!$B$2')
+  -- Each change is one step.
+  ok (book:delete_name ('Tax'))
+  eq (shown (main, 'A2'), '#NAME?')
+  book:undo ()
+  eq (shown (main, 'A2'), '20')
+  -- Renaming a name keeps its formula.
+  ok (book:set_name ('Fee', '=0.5', 'Tax'))
+  eq ({ book:defined ('Tax'), shown (main, 'A2') }, { nil, '#NAME?' })
+end)
+
+test ('defined names follow their cells and their sheets', function ()
+  local book = book_of ({ 'Main', 'Data' }, {
+    Main = { A1 = '=SUM(Rates)' },
+    Data = { B2 = '1', B3 = '2', B4 = '3' },
+  })
+  local main, data = book.sheets[1], book.sheets[2]
+  ok (book:set_name ('Rates', '=Data!$B$2:$B$4'))
+  data:insert_rows (1, 2)
+  eq (book:defined ('Rates').formula, '=Data!$B$4:$B$6')
+  eq (shown (main, 'A1'), '6')
+  ok (book:rename_sheet (2, 'Numbers'))
+  eq (book:defined ('Rates').formula, '=Numbers!$B$4:$B$6')
+  local clip = data:copy (m.parse_range ('B4:B6') --[[@as Sheet.Rect]])
+  clip.cut = true
+  data:paste (1, 5, clip)
+  eq (book:defined ('Rates').formula, '=Numbers!$E$1:$E$3')
+  eq (shown (main, 'A1'), '6')
+  book:undo ()
+  eq (book:defined ('Rates').formula, '=Numbers!$B$4:$B$6')
+  -- The file keeps the names.
+  local back = assert (B.decode (B.encode (book)))
+  eq (back:defined ('rates').formula, '=Numbers!$B$4:$B$6')
+  eq (shown (back.sheets[1], 'A1'), '6')
+  ok (book:delete_sheet (2))
+  eq (book:defined ('Rates').formula, '=#REF!')
+  eq (shown (main, 'A1'), '#REF!')
+end)
+
+---------------------------------------------------------------------------------------------
+-- Spilled blocks
+---------------------------------------------------------------------------------------------
+
+test ('a formula that gives a block spills into the cells around it', function ()
+  local book = book_of ({ 'Sheet1' }, {
+    Sheet1 = {
+      A1 = '=SEQUENCE(3)',
+      C1 = '=SUM(A1:A3)',
+      C2 = '=A3*10',
+      C3 = '=A4',
+      E1 = '=B1:B2*2',
+      B1 = '5',
+      B2 = '6',
+    },
+  })
+  local s = book.sheets[1]
+  eq ({ shown (s, 'A1'), shown (s, 'A2'), shown (s, 'A3') }, { '1', '2', '3' })
+  eq ({ s:value (2, 1), s:value (4, 1) }, { 2, nil })
+  eq (text (s, 'A2'), '')
+  eq ({ shown (s, 'C1'), shown (s, 'C2'), shown (s, 'C3') }, { '6', '30', '0' })
+  eq ({ shown (s, 'E1'), shown (s, 'E2') }, { '10', '12' })
+  -- A longer block reaches the formulas that read the cells it newly covers.
+  set (s, 'A1', '=SEQUENCE(4, 1, 10)')
+  eq (
+    { shown (s, 'A4'), shown (s, 'C1'), shown (s, 'C3') },
+    { '13', '33', '13' }
+  )
+  -- A shorter one leaves them empty.
+  set (s, 'A1', '=SEQUENCE(2)')
+  eq ({ shown (s, 'A3'), shown (s, 'C2'), shown (s, 'C3') }, { '', '0', '0' })
+  s:undo ()
+  eq (shown (s, 'C3'), '13')
+  -- Clearing the formula takes the block away.
+  set (s, 'A1', '')
+  eq ({ shown (s, 'A2'), shown (s, 'C1') }, { '', '0' })
+end)
+
+test ('a block with no room shows #SPILL! until the room is free', function ()
+  local book = book_of ({ 'Sheet1' }, {
+    Sheet1 = { A1 = '=SEQUENCE(3)', B1 = '=A1', B2 = '=A2' },
+  })
+  local s = book.sheets[1]
+  eq (shown (s, 'B2'), '2')
+  set (s, 'A3', 'in the way')
+  eq ({ shown (s, 'A1'), shown (s, 'A2'), shown (s, 'B1'), shown (s, 'B2') }, {
+    '#SPILL!',
+    '',
+    '#SPILL!',
+    '0',
+  })
+  set (s, 'A3', '')
+  eq ({ shown (s, 'A1'), shown (s, 'B2') }, { '1', '2' })
+  -- Another block is in the way too, and so are merged cells.
+  set (s, 'D2', '=SEQUENCE(1, 3)')
+  set (s, 'E1', '=SEQUENCE(2)')
+  eq (
+    { shown (s, 'D2'), shown (s, 'E1'), shown (s, 'E2') },
+    { '1', '#SPILL!', '2' }
+  )
+  s:merge (m.parse_range ('A5:B5') --[[@as Sheet.Rect]])
+  set (s, 'A4', '=SEQUENCE(2)')
+  eq (shown (s, 'A4'), '#SPILL!')
+end)
+
+test ('A1# reads the whole block the formula in A1 spills', function ()
+  local book = book_of ({ 'Sheet1', 'Other' }, {
+    Sheet1 = {
+      A1 = '=SEQUENCE(3)',
+      C1 = '=SUM(A1#)',
+      C2 = '=ROWS(A1#)',
+      C3 = '=C1#',
+      C4 = '=SUM(A1#*2)',
+    },
+    Other = { A1 = '=COUNT(Sheet1!A1#)' },
+  })
+  local s = book.sheets[1]
+  eq ({ shown (s, 'C1'), shown (s, 'C2'), shown (s, 'C3'), shown (s, 'C4') }, {
+    '6',
+    '3',
+    '#REF!',
+    '12',
+  })
+  eq (shown (book.sheets[2], 'A1'), '3')
+  set (s, 'A1', '=SEQUENCE(5)')
+  eq ({ shown (s, 'C1'), shown (s, 'C2') }, { '15', '5' })
+  eq (shown (book.sheets[2], 'A1'), '5')
+  eq (f.shift ('=SUM(A1#)+Data!$B$2#', 1, 1), '=SUM(B2#)+Data!$B$2#')
+end)
+
+test (
+  'copying a spilled block copies its formula, or the values without it',
+  function ()
+    local book = book_of ({ 'Sheet1' }, { Sheet1 = { A1 = '=SEQUENCE(3)' } })
+    local s = book.sheets[1]
+    local part = s:copy (m.parse_range ('A2:A3') --[[@as Sheet.Rect]])
+    eq (part.texts, { { '2' }, { '3' } })
+    local whole = s:copy (m.parse_range ('A1:A3') --[[@as Sheet.Rect]])
+    eq (whole.texts, { { '=SEQUENCE(3)' }, { '' }, { '' } })
+    whole.cut = true
+    s:paste (1, 3, whole)
+    eq ({ shown (s, 'A2'), shown (s, 'C1'), shown (s, 'C3') }, { '', '1', '3' })
+  end
+)
+
+test ('other sheets read a spilled block', function ()
+  local book = book_of ({ 'Data', 'Report' }, {
+    Data = { A1 = '=UNIQUE(B1:B4)', B1 = 'x', B2 = 'y', B3 = 'x', B4 = 'z' },
+    Report = { A1 = '=COUNTA(Data!A1:A9)', A2 = '=Data!A3' },
+  })
+  local report = book.sheets[2]
+  eq ({ shown (report, 'A1'), shown (report, 'A2') }, { '3', 'z' })
+  set (book.sheets[1], 'B4', 'x')
+  eq ({ shown (report, 'A1'), shown (report, 'A2') }, { '2', '0' })
+end)
 
 test ('begin and finish make one step across sheets', function ()
   local book = book_of ({ 'One', 'Two' }, {})
@@ -594,6 +923,7 @@ local function full_book ()
   s:set_freeze (4, 1)
   s:merge ({ r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   s:set_note (5, 2, 'Rent went up in March.')
+  s:set_link (1, 1, 'https://example.com/budget')
   s:set_field ('filter', {
     rect = { r1 = 4, c1 = 1, r2 = 6, c2 = 2 },
     columns = { [1] = { values = { 'Rent' } } },
@@ -645,6 +975,7 @@ test ('decode (encode (book)) gives the same book back', function ()
   eq ({ s:freeze () }, { 4, 1 })
   eq (s:merge_at (1, 2), { r1 = 1, c1 = 1, r2 = 1, c2 = 3 })
   eq (s:note (5, 2), 'Rent went up in March.')
+  eq (s:link (1, 1), 'https://example.com/budget')
   -- The filter's hidden rows are worked out on load.
   ok (s:row_hidden (6) and not s:row_hidden (5))
   eq (text (back.sheets[2], 'B2'), 'Say "hi"\n\ttab\\')
@@ -653,7 +984,7 @@ end)
 
 test ('encode writes one cell per line, in reading order', function ()
   local text_1 = B.encode (full_book ())
-  ok (string.find (text_1, '"version": 2', 1, true))
+  ok (string.find (text_1, '"version": 3', 1, true))
   ok (
     string.find (
       text_1,

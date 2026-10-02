@@ -44,10 +44,12 @@ local xlsx = require ('sheet_xlsx') --[[@as Sheet.XlsxModule]]
 
 ---What conditional formatting adds to one drawn cell.
 ---@class Sheet.RuleLook
----@field style? Sheet.Style The fields the matching rules set, later rules winning.
+---@field style? Sheet.Style The fields the matching rules set, the rule higher in the list winning.
 ---@field fill? string A colour scale's colour.
 ---@field bar? number A data bar's width, from 0 to 1.
 ---@field bar_color? string
+---@field icon? string An icon set's icon, a character.
+---@field icon_color? string
 
 ---What the grid needs to draw one cell.
 ---@class Sheet.Look
@@ -59,6 +61,8 @@ local xlsx = require ('sheet_xlsx') --[[@as Sheet.XlsxModule]]
 ---@field kind 'empty'|'number'|'text'|'bool'|'error'
 ---@field bar? number
 ---@field bar_color? string
+---@field icon? string
+---@field icon_color? string
 ---@field merge? Sheet.Rect Set on the top left cell of a merged block.
 ---@field covered? boolean True when a merged block covers this cell and it does not show.
 ---@field note? boolean
@@ -304,6 +308,7 @@ function M.sort (sheet, rect, keys, opts)
   ---@type table<integer, { text: string, style: Sheet.Style }>
   local states = {}
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   local lo, hi = r.c1, r.c2
   if across then
     lo, hi = r.r1, r.r2
@@ -318,6 +323,7 @@ function M.sort (sheet, rect, keys, opts)
       states[key] =
         { text = sheet:text (row, col), style = sheet:style_at (row, col) }
       notes[key] = sheet:note (row, col)
+      links[key] = sheet:link (row, col)
     end
   end
   local sizes = across and sheet.widths or sheet.heights
@@ -360,6 +366,7 @@ function M.sort (sheet, rect, keys, opts)
           style = sheet:own_for (row, col, state.style),
         })
         sheet:set_prop ('notes', row * KEY + col, notes[src_row * KEY + src_col])
+        sheet:set_prop ('links', row * KEY + col, links[src_row * KEY + src_col])
       end
     end
   end
@@ -429,10 +436,12 @@ function M.remove_duplicates (sheet, rect, opts)
   -- Read every source before writing, since the rows that stay move onto rows being read.
   local texts = {} ---@type table<integer, string>
   local notes = {} ---@type table<integer, string>
+  local links = {} ---@type table<integer, string>
   for row = first, r.r2 do
     for c = r.c1, r.c2 do
       texts[row * KEY + c] = sheet:text (row, c)
       notes[row * KEY + c] = sheet:note (row, c)
+      links[row * KEY + c] = sheet:link (row, c)
     end
   end
   sheet:begin ({ select = r, label = 'Remove duplicates' })
@@ -440,13 +449,15 @@ function M.remove_duplicates (sheet, rect, opts)
     local to, from = first + i - 1, keep[i]
     if from ~= to then
       for c = r.c1, r.c2 do
-        local text, note = '', nil ---@type string, string?
+        local text, note, link = '', nil, nil ---@type string, string?, string?
         if from then
           text = formula.shift (texts[from * KEY + c], to - from, 0)
           note = notes[from * KEY + c]
+          link = links[from * KEY + c]
         end
         sheet:record (to, c, { text = text, style = sheet:own_style (to, c) })
         sheet:set_prop ('notes', to * KEY + c, note)
+        sheet:set_prop ('links', to * KEY + c, link)
       end
     end
   end
@@ -1163,7 +1174,7 @@ local function prepare (sheet, rule)
       end
       prep.average = sum / #list
     end
-  elseif kind == 'scale' or kind == 'bar' then
+  elseif kind == 'scale' or kind == 'bar' or kind == 'icons' then
     local list = numbers_in (sheet, rect)
     table.sort (list)
     if #list > 0 then
@@ -1257,9 +1268,22 @@ local function formula_holds (sheet, rule, prep, row, col)
   return v == true
 end
 
+-- The icon sets, best first: a value in the top third of its range from the lowest to the
+-- highest gets the first icon, the middle third the second, and the bottom third the last,
+-- as Excel's three-icon sets do.
+---@type table<string, { [1]: string, [2]: string }[]>
+local ICON_SETS = {
+  arrows = { { '▲', '#2b9348' }, { '▶', '#9a7d0a' }, { '▼', '#e03e3e' } },
+  lights = { { '●', '#2b9348' }, { '●', '#d4a017' }, { '●', '#e03e3e' } },
+  flags = { { '⚑', '#2b9348' }, { '⚑', '#d4a017' }, { '⚑', '#e03e3e' } },
+}
+M.ICON_SETS = ICON_SETS
+
 ---What the sheet's conditional formatting rules add to one cell: a style, a colour scale's
----fill, and a data bar's width. Nil when no rule touches the cell. The work a rule needs
----across its range, such as the top 10 or the average, is done once per recalculation.
+---fill, and a data bar's width. Nil when no rule touches the cell. The rules run in order of
+---priority, first in the list first: the first to set a field wins, and a rule set to stop
+---ends the run where it holds. The work a rule needs across its range, such as the top 10 or
+---the average, is done once per recalculation.
 ---@param sheet Sheet.Sheet
 ---@param row integer
 ---@param col integer
@@ -1270,7 +1294,9 @@ function M.rule_look (sheet, row, col)
   end
   local cache = cache_of (sheet)
   local out = nil ---@type Sheet.RuleLook?
-  local style = nil ---@type Sheet.Style?
+  -- The styles of the rules that hold, first rule first. The first wins on a field, as in
+  -- Excel, so they are laid down from the last.
+  local styles = {} ---@type Sheet.Style[]
   for i, rule in ipairs (sheet.rules) do
     local prep = cache.preps[i]
     if not prep then
@@ -1338,37 +1364,65 @@ function M.rule_look (sheet, row, col)
           fill = blend (low_color, high_color, (v - lo) / (hi - lo))
         end
         out = out or {}
-        out.fill = fill
+        out.fill = out.fill or fill
+        hit = true
       elseif kind == 'bar' and type (v) == 'number' and prep.min then
         local lo = math.min (0, prep.min --[[@as number]])
         local hi = math.max (0, prep.max --[[@as number]])
         out = out or {}
-        out.bar = hi == lo and 0
-          or math.max (0, math.min (1, (v - lo) / (hi - lo)))
-        out.bar_color = rule.color or '#638ec6'
+        if not out.bar then
+          out.bar = hi == lo and 0
+            or math.max (0, math.min (1, (v - lo) / (hi - lo)))
+          out.bar_color = rule.color or '#638ec6'
+        end
+        hit = true
+      elseif kind == 'icons' and type (v) == 'number' and prep.min then
+        local lo, hi =
+          prep.min, --[[@as number]]
+          prep.max --[[@as number]]
+        local share = hi == lo and 1 or (v - lo) / (hi - lo)
+        local slot = share >= 0.67 and 1 or share >= 0.33 and 2 or 3
+        if rule.reverse then
+          slot = 4 - slot
+        end
+        local set = ICON_SETS[rule.icons or 'arrows'] or ICON_SETS.arrows
+        out = out or {}
+        if not out.icon then
+          out.icon, out.icon_color = set[slot][1], set[slot][2]
+        end
+        hit = true
       end
       if hit and rule.style then
-        style = model.layer (style, model.intern (rule.style))
+        styles[#styles + 1] = model.intern (rule.style)
         out = out or {}
+      end
+      -- Stop if true: the rules after this one do not apply where it holds.
+      if hit and rule.stop then
+        break
       end
     end
   end
   if out then
+    local style = nil ---@type Sheet.Style?
+    for k = #styles, 1, -1 do
+      style = model.layer (style, styles[k])
+    end
     out.style = style and model.clean (style) or nil
   end
   return out
 end
 
----Adds a conditional formatting rule at the end, where it wins over the others, as one undo
----step.
+---Adds a conditional formatting rule at the top of the list, where it wins over the others,
+---as one undo step.
 ---@param sheet Sheet.Sheet
 ---@param rule Sheet.Rule
 function M.add_rule (sheet, rule)
   sheet:begin ({ label = 'Add rule' })
-  sheet:set_field (
-    'rules',
-    with_item (sheet.rules, #sheet.rules + 1, shallow (rule)) --[[@as Sheet.Rule[] ]]
-  )
+  local list = { shallow (rule) } ---@type Sheet.Rule[]
+  for _, other in ipairs (sheet.rules) do
+    list[#list + 1] = other
+  end
+  sheet:set_field ('rules', list)
   sheet:finish ()
 end
 
@@ -1436,12 +1490,20 @@ local OP_WORDS = {
 
 ---The message a refused entry shows when the rule has none.
 ---@param v Sheet.Validation
+---@param items string[] The items of a list.
 ---@return string
-local function default_message (v)
+local function default_message (v, items)
   if v.type == 'list' then
-    return 'Pick one of: ' .. table.concat (v.values or {}, ', ') .. '.'
+    return 'Pick one of: ' .. table.concat (items, ', ') .. '.'
+  elseif v.type == 'formula' then
+    return 'The value breaks the rule ' .. (v.formula or '') .. '.'
   end
   local what = v.integer and 'a whole number' or 'a number'
+  if v.type == 'date' then
+    what = 'a date'
+  elseif v.type == 'length' then
+    what = 'text with a length'
+  end
   if v.op == 'between' then
     return 'Enter '
       .. what
@@ -1470,6 +1532,68 @@ local function default_message (v)
   return 'Enter ' .. what .. '.'
 end
 
+---The values a formula gives at a cell, when the formula is written for the top left cell of
+---a range and moves for the others as a paste would, and how many. With `candidate`, the cell
+---itself reads as that value, so a validation formula can test what is being typed.
+---@param sheet Sheet.Sheet
+---@param text string
+---@param rect Sheet.Rect
+---@param row integer
+---@param col integer
+---@param candidate? Sheet.Value
+---@return Sheet.Values values
+---@return integer count
+local function values_at (sheet, text, rect, row, col, candidate)
+  local ast = rule_ast (formula.shift (text, row - rect.r1, col - rect.c1))
+  if not ast then
+    return { formula.error ('#ERROR!') }, 1
+  end
+  local base = sheet.book:context (sheet)
+  local ctx = setmetatable ({
+    row = row,
+    col = col,
+    rows = sheet.rows,
+    cols = sheet.cols,
+    value = function (r, c, name)
+      if candidate ~= nil and name == nil and r == row and c == col then
+        return candidate
+      end
+      return base.value (r, c, name)
+    end,
+  }, { __index = base }) --[[@as Sheet.Context]]
+  return formula.values (ast, ctx)
+end
+
+---The items of a validation list: the ones it holds, or the shown text of the cells its
+---formula names, without blanks or repeats.
+---@param sheet Sheet.Sheet
+---@param v Sheet.Validation
+---@param row integer
+---@param col integer
+---@return string[]
+function M.list_items (sheet, v, row, col)
+  if type (v.formula) ~= 'string' then
+    return v.values or {}
+  end
+  local rect = rect_of (v.range)
+  if not rect then
+    return {}
+  end
+  local values, count = values_at (sheet, v.formula, rect, row, col)
+  local out, seen = {}, {} ---@type string[], table<string, boolean>
+  for k = 1, count do
+    local x = values[k]
+    if x ~= nil and not formula.is_error (x) then
+      local shown = formula.format_value (x)
+      if shown ~= '' and not seen[shown] then
+        seen[shown] = true
+        out[#out + 1] = shown
+      end
+    end
+  end
+  return out
+end
+
 ---Whether a text may go into a cell. Returns true when it may. Otherwise returns false, the
 ---message to show, and whether the rule refuses the text (strict) or only warns. An empty
 ---text and a formula always pass.
@@ -1486,29 +1610,41 @@ function M.check_input (sheet, row, col, text)
     return true, nil, nil
   end
   local good = false
+  local items = {} ---@type string[]
+  local value = format.parse_input (text, sheet.book.clock)
   if v.type == 'list' then
+    items = M.list_items (sheet, v, row, col)
     local want = string.lower (text)
-    for _, item in ipairs (v.values or {}) do
+    for _, item in ipairs (items) do
       if string.lower (item) == want then
         good = true
       end
     end
-  else
-    local value = format.parse_input (text, sheet.book.clock)
-    if type (value) == 'number' then
-      good = true
-      if v.integer and value ~= math.floor (value) then
-        good = false
-      end
-      if good and v.op then
-        good = model.matches (value, text, v.op, v.value, v.value2)
-      end
+  elseif v.type == 'length' then
+    local n = utf8.len (text) or #text
+    good = not v.op or model.matches (n, text, v.op, v.value, v.value2)
+  elseif v.type == 'formula' then
+    local rect = rect_of (v.range)
+    if rect and type (v.formula) == 'string' then
+      local values, count = values_at (sheet, v.formula, rect, row, col, value)
+      local result = values[1]
+      good = count == 1
+        and (result == true or (type (result) == 'number' and result ~= 0))
+    end
+  elseif type (value) == 'number' then
+    -- A date is a number too, typed as a date.
+    good = true
+    if v.integer and v.type ~= 'date' and value ~= math.floor (value) then
+      good = false
+    end
+    if good and v.op then
+      good = model.matches (value, text, v.op, v.value, v.value2)
     end
   end
   if good then
     return true, nil, nil
   end
-  return false, v.message or default_message (v), v.strict ~= false
+  return false, v.message or default_message (v, items), v.strict ~= false
 end
 
 ---The choices of a cell's dropdown list, or nil when the cell has none.
@@ -1519,7 +1655,7 @@ end
 function M.dropdown (sheet, row, col)
   local v = M.validation_at (sheet, row, col)
   if v and v.type == 'list' then
-    return v.values or {}
+    return M.list_items (sheet, v, row, col)
   end
   return nil
 end
@@ -1751,7 +1887,43 @@ function M.write_xlsx (book)
   book:ensure ()
   return xlsx.write (books.to_data (book), function (index, row, col)
     return book:value_at (index, row, col)
+  end, function (index, row, col)
+    local sheet = book.sheets[index]
+    local cell = sheet and sheet.cells[row * model.KEY + col]
+    local area = cell and cell.spill_area
+    if not area then
+      return nil, nil
+    end
+    return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
+  end, function (index)
+    local sheet = book.sheets[index]
+    local rows = {} ---@type integer[]
+    for row in pairs (sheet and sheet.filter and sheet.filter.hidden or {}) do
+      rows[#rows + 1] = row
+    end
+    table.sort (rows)
+    return rows
   end)
+end
+
+---How CSV text comes in.
+---@class Sheet.CsvOptions
+---@field keep_zeros? boolean Keep numbers that start with 0, such as `00123`, as text with their zeros.
+
+---True when CSV text holds a number that starts with 0, such as `00123`, which reading as a
+---number would cut short.
+---@param text string
+---@param sep? string
+---@return boolean
+function M.leading_zeros (text, sep)
+  for _, line in ipairs (model.parse_csv (text, sep)) do
+    for _, cell in ipairs (line) do
+      if string.match (cell, '^0%d+$') then
+        return true
+      end
+    end
+  end
+  return false
 end
 
 ---Adds a sheet holding CSV text, each cell read as if typed, and shows it. The name is `name`
@@ -1760,8 +1932,10 @@ end
 ---@param text string
 ---@param name? string
 ---@param sep? string A comma when nil, or a tab.
+---@param opts? Sheet.CsvOptions
 ---@return Sheet.Sheet
-function M.import_csv (book, text, name, sep)
+function M.import_csv (book, text, name, sep, opts)
+  local keep_zeros = opts and opts.keep_zeros
   local free = book:free_name ('Sheet')
   if name then
     local base = string.gsub (name, "[%[%]:%*%?/\\']", '')
@@ -1776,7 +1950,9 @@ function M.import_csv (book, text, name, sep)
   local rows = model.parse_csv (text, sep)
   for r, line in ipairs (rows) do
     for c, cell in ipairs (line) do
-      if cell ~= '' then
+      if keep_zeros and string.match (cell, '^0%d+$') then
+        sheet:record (r, c, { text = "'" .. cell })
+      elseif cell ~= '' then
         sheet:record (r, c, sheet:typed (r, c, cell))
       end
     end
@@ -1873,6 +2049,8 @@ function M.look (sheet, row, col)
     kind = sheet:kind (row, col),
     bar = extra and extra.bar,
     bar_color = extra and extra.bar_color,
+    icon = extra and extra.icon,
+    icon_color = extra and extra.icon_color,
     note = sheet:note (row, col) ~= nil or nil,
     list = M.dropdown (sheet, row, col) ~= nil or nil,
   }

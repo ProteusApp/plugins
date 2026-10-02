@@ -2,20 +2,20 @@
 -- fields, each bevel drawn from four one-pixel lines, panel headings as navy title bars, a
 -- navy highlight on whatever is selected, and chunky scroll bars on a dithered track.
 --
--- It registers one theme with core.themes, with its colors as CSS variables and a little CSS
--- of its own for what colors alone cannot do. Pick it with View > Choose Color Theme, or set
--- `theme` to `bevel`.
+-- It lists one theme as data, which core.themes registers: its colors as CSS variables, and a
+-- little CSS of its own for what colors alone cannot do. Pick it with View > Choose Color
+-- Theme, or set `theme` to `bevel`.
 
 ---@type Proteus.Plugin
 return {
   name = 'Bevel theme',
   description = 'A 1990s desktop: silver panels with raised and sunken bevels, and navy title bars.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    app.use ('themes').register ({
+  themes = {
+    {
       id = 'bevel',
       name = 'Bevel',
       dark = false,
@@ -27,7 +27,7 @@ return {
         ['bg-active'] = '#b4bdd6',
         ['fg'] = '#000000',
         ['fg-muted'] = '#303030',
-        ['fg-faint'] = '#6b6b6b',
+        ['fg-faint'] = '#686868',
         ['border'] = '#808080',
         ['accent'] = '#000080',
         ['accent-fg'] = '#ffffff',
@@ -51,6 +51,22 @@ return {
         ['radius'] = '0px',
         ['font-ui'] = 'Tahoma, "MS Sans Serif", "Segoe UI", Verdana, sans-serif',
         ['font-size'] = '12px',
+        ['info'] = '#2962d1',
+        ['hint'] = '#0d746d',
+        ['diff-add'] = '#1c7549',
+        ['diff-remove'] = '#b83b3b',
+        ['diff-change'] = '#8f5e18',
+        ['ansi-red'] = '#c0333c',
+        ['ansi-green'] = '#287730',
+        ['ansi-yellow'] = '#826300',
+        ['ansi-blue'] = '#2d67bc',
+        ['ansi-cyan'] = '#127474',
+        ['ansi-bright-red'] = '#b83b3b',
+        ['ansi-bright-green'] = '#1c7549',
+        ['ansi-bright-yellow'] = '#905c00',
+        ['ansi-bright-blue'] = '#2962d1',
+        ['ansi-bright-magenta'] = '#9942ae',
+        ['ansi-bright-cyan'] = '#0d746d',
       },
       -- lang=css
       css = [[
@@ -116,6 +132,6 @@ body .menubar-item { border: none; box-shadow: none; }
 body .menubar-item:hover,
 body .menubar-item.open { background: #000080; color: #ffffff; }
       ]],
-    })
-  end,
+    },
+  },
 }

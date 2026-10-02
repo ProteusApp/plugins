@@ -50,3 +50,35 @@ test ('executable reads the path Python printed', function ()
   eq (venv.executable (''), nil)
   eq (venv.executable (nil), nil)
 end)
+
+test (
+  'a folder the user does not trust is untrusted only in the Code Editor',
+  function ()
+    ---@param root string?
+    ---@param trusted? boolean
+    ---@return Proteus.Project
+    local function project (root, trusted)
+      return {
+        root = function ()
+          return root
+        end,
+        trusted = trusted ~= nil and function ()
+          return trusted
+        end or nil,
+      } --[[@as Proteus.Project]]
+    end
+    local layer = { loaded = false, trusted = false } ---@type Proteus.ProjectLayer
+    eq (venv.untrusted (nil, layer), false, 'no project service')
+    eq (venv.untrusted (project (nil, false), layer), false, 'no folder open')
+    eq (venv.untrusted (project ('/home/me/app', false), layer), true)
+    eq (venv.untrusted (project ('/home/me/app', true), layer), false)
+    eq (
+      venv.untrusted (
+        project ('/home/me/app'),
+        { loaded = true, trusted = true }
+      ),
+      false,
+      'an older project service: the kernel says'
+    )
+  end
+)

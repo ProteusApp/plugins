@@ -1,7 +1,8 @@
 -- theme.dracula: A dark color theme from the Dracula palette by Zeno Rocha (MIT).
 --
--- It registers its theme with core.themes. Pick it with View > Choose Color Theme, or the
--- `theme` setting. Every color is a CSS variable, so the whole app changes at once.
+-- It lists its theme as data, and core.themes registers it. Pick it with View > Choose Color
+-- Theme, or the `theme` setting. Every color is a CSS variable, so the whole app changes at
+-- once.
 
 ---Every theme this plugin adds.
 ---@type Proteus.ThemeSpec[]
@@ -34,7 +35,7 @@ local THEMES = {
       ['syn-string'] = '#f1fa8c',
       ['syn-number'] = '#bd93f9',
       ['syn-constant'] = '#bd93f9',
-      ['syn-comment'] = '#6272a4',
+      ['syn-comment'] = '#8591b8',
       ['syn-function'] = '#50fa7b',
       ['syn-operator'] = '#ff79c6',
       ['syn-property'] = '#ffb86c',
@@ -48,14 +49,9 @@ local THEMES = {
 return {
   name = 'Dracula theme',
   description = 'A dark theme with vivid pink, purple and green, from the Dracula palette.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    local themes = app.use ('themes')
-    for _, theme in ipairs (THEMES) do
-      themes.register (theme)
-    end
-  end,
+  themes = THEMES,
 }

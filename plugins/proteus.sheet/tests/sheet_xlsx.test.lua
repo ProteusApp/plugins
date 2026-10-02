@@ -130,7 +130,7 @@ end)
 
 test ('reading finds the sheets in order and the active one', function ()
   local book, warnings = read_ok (fixture ())
-  eq (book.version, 2)
+  eq (book.version, 3)
   eq (book.active, 2)
   eq (#book.sheets, 2)
   eq (book.sheets[1].name, 'Budget')
@@ -215,6 +215,77 @@ test ('reading sizes a sheet to what it uses', function ()
   )
   eq (book.sheets[1].rows, 250)
   eq (book.sheets[1].cols, 30)
+end)
+
+test (
+  'reading leaves out rows past the end, and far rows with no cells',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="3" ht="30" customHeight="1"><c r="A3"><v>1</v></c></row>'
+          .. '<row r="900" hidden="1"/><row r="1048576" hidden="1" ht="30" customHeight="1"/>'
+          .. '<row r="1048577"><c r="A1048577"><v>2</v></c></row>'
+          .. '<row r="5"><c r="XFE5"><v>3</v></c><c r="B5"><v>4</v></c></row></sheetData>'
+          .. '<mergeCells><mergeCell ref="A1048576:B1048577"/></mergeCells>'
+      )
+    )
+    local sheet = book.sheets[1]
+    -- A hidden row near the cells stays, and one at the bottom of the sheet does not stretch it.
+    eq (sheet.rows, 900)
+    eq (sheet.hidden_rows, { 900 })
+    eq (sheet.heights, { ['3'] = 40 })
+    eq (sheet.cells, { A3 = '1', B5 = '4' })
+    eq (sheet.merges, nil)
+    eq (
+      warnings,
+      { 'Cells in Data past row 1048576 or column XFD were left out.' }
+    )
+  end
+)
+
+test (
+  'reading keeps the last value of a formula that reads another workbook',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1"><f>[1]Sheet1!A1*2</f><v>42</v></c>'
+          .. '<c r="B1"><f>\'[2]My data\'!B2</f><v>7</v></c>'
+          .. '<c r="C1"><f>"[1]"&amp;A1</f><v>x</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, { A1 = '42', B1 = '7', C1 = '="[1]"&A1' })
+    eq (warnings, {
+      'Formulas in Data that read other workbooks were left out. Their last values are kept.',
+    })
+  end
+)
+
+test (
+  'reading an array formula leaves out the last values of its block',
+  function ()
+    local book = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1" cm="1"><f t="array" ref="A1:B2">_xlfn._xlws.SORT(D1:E2)</f><v>1</v></c>'
+          .. '<c r="B1"><v>2</v></c><c r="C1"><f>_xlfn.LET(_xlpm.x,2,_xlpm.x*3)</f><v>6</v></c></row>'
+          .. '<row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c>'
+          .. '<c r="C2"><f>SUM(_xlfn.ANCHORARRAY(A1))</f><v>10</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, {
+      A1 = '=SORT(D1:E2)',
+      C1 = '=LET(x,2,x*3)',
+      C2 = '=SUM(A1#)',
+    })
+  end
+)
+
+test ('reading drops a NUL character', function ()
+  local book = read_ok (
+    one_sheet (
+      '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>a&#0;b_x0000_c</t></is></c></row></sheetData>'
+    )
+  )
+  eq (book.sheets[1].cells, { A1 = 'abc' })
 end)
 
 test ('reading shows numbers with the digits Excel shows', function ()
@@ -362,7 +433,7 @@ end)
 
 test ('reading warns about each kind of thing it leaves out', function ()
   local files = one_sheet (
-    '<sheetData/><autoFilter ref="A1:C9"/><conditionalFormatting sqref="A1"><cfRule type="expression" priority="1"/></conditionalFormatting><dataValidations count="1"><dataValidation sqref="B1"/></dataValidations><drawing r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>',
+    '<sheetData/><autoFilter ref="A1:C9"><filterColumn colId="1"><top10 val="5"/></filterColumn></autoFilter><conditionalFormatting sqref="A1"><cfRule type="expression" priority="1"/></conditionalFormatting><dataValidations count="1"><dataValidation type="time" sqref="B1"><formula1>0.5</formula1></dataValidation></dataValidations><drawing r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>',
     {
       ['xl/worksheets/_rels/sheet1.xml.rels'] = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/></Relationships>',
       ['xl/drawings/drawing1.xml'] = '<xdr:wsDr xmlns:xdr="urn:x"><xdr:twoCellAnchor><xdr:graphicFrame/></xdr:twoCellAnchor></xdr:wsDr>',
@@ -378,14 +449,72 @@ test ('reading warns about each kind of thing it leaves out', function ()
   local book, warnings = read_ok (files)
   eq (#book.sheets, 2)
   eq (warnings, {
-    'Charts in Data were left out.',
-    'Comments in Data were left out.',
-    'Conditional formats in Data were left out.',
-    'Data validation in Data was left out.',
-    'The filter in Data was left out.',
+    'Charts in Data that this app cannot show were left out.',
+    'Conditional formats in Data that this app cannot show were left out.',
+    'Data validation in Data that this app cannot check was left out.',
+    'Filter tests in Data that this app cannot apply were left out.',
     'The hidden sheet Secret shows here.',
     'The chart sheet Chart1 was left out.',
-    'Named ranges were left out.',
+  })
+  -- The filter's block comes over without the test it cannot apply.
+  eq (book.sheets[1].filter, { range = 'A1:C9' })
+  -- A name for the whole workbook comes over, and Excel's own names stay out.
+  eq (book.names, { { name = 'Rates', formula = '=Data!$B$1' } })
+end)
+
+test ('defined names go to Excel and come back', function ()
+  local book = {
+    version = 3,
+    sheets = {
+      { name = 'Data', cells = { A1 = '=SUM(Rates)' } },
+      { name = 'Q1/Q2' },
+    },
+    names = {
+      { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+      { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+      { name = 'Q', formula = "='Q1/Q2'!$A$1" },
+    },
+  }
+  local files, warnings = x.write (book)
+  local wb = files['xl/workbook.xml']
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Rates">Data!$B$1:$B$3</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  ok (
+    string.find (
+      wb,
+      '<definedName name="Double">_xlfn.LAMBDA(_xlpm.x, _xlpm.x*2)</definedName>',
+      1,
+      true
+    ),
+    wb
+  )
+  -- A sheet whose name Excel refuses gets a new one, and the names follow.
+  ok (
+    string.find (wb, '<definedName name="Q">Q1_Q2!$A$1</definedName>', 1, true),
+    wb
+  )
+  ok (#warnings > 0)
+  local back = read_ok (files)
+  eq (back.names, {
+    { name = 'Rates', formula = '=Data!$B$1:$B$3' },
+    { name = 'Double', formula = '=LAMBDA(x, x*2)' },
+    { name = 'Q', formula = '=Q1_Q2!$A$1' },
+  })
+  -- Names that belong to one sheet, or read another workbook, are left out.
+  local files2 = one_sheet ('<sheetData/>')
+  files2['xl/workbook.xml'] =
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="Local" localSheetId="0">Data!$A$1</definedName><definedName name="Far">[1]Sheet1!$A$1</definedName><definedName name="_xlnm.Print_Area" localSheetId="0">Data!$A$1:$C$9</definedName></definedNames></workbook>'
+  local book2, warnings2 = read_ok (files2)
+  eq (book2.names, nil)
+  eq (warnings2, {
+    'Names that belong to one sheet, or that this app cannot read, were left out.',
   })
 end)
 
@@ -434,7 +563,7 @@ end)
 ---@return Sheet.BookData
 local function sample_book ()
   return {
-    version = 2,
+    version = 3,
     active = 2,
     sheets = {
       {
@@ -576,6 +705,78 @@ test ('writing stores the value of each formula when it is given', function ()
   )
 end)
 
+test (
+  'a formula that spills writes as an array formula over its block',
+  function ()
+    local book = {
+      version = 2,
+      sheets = {
+        {
+          name = 'Data',
+          cells = {
+            A1 = '=SEQUENCE(3)',
+            C1 = '=SUM(A1#)',
+            D1 = '=LET(x, 2, f, LAMBDA(n, n*x), f(5))',
+          },
+        },
+      },
+    }
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return Sheet.Value
+    local function values (_, row, col)
+      if col == 1 then
+        return row + 0.0
+      end
+      return col == 3 and 6 or 10
+    end
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return integer?
+    ---@return integer?
+    local function spills (_, row, col)
+      if row == 1 and col == 1 then
+        return 3, 1
+      end
+      return nil, nil
+    end
+    local files = x.write (book, values, spills)
+    local sheet = files['xl/worksheets/sheet1.xml']
+    ok (
+      string.find (
+        sheet,
+        '<c r="A1" cm="1"><f t="array" ref="A1:A3">_xlfn.SEQUENCE(3)</f><v>1</v></c>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (string.find (sheet, '<c r="A3"><v>3</v></c>', 1, true), sheet)
+    ok (string.find (sheet, '<f>SUM(_xlfn.ANCHORARRAY(A1))</f>', 1, true), sheet)
+    ok (
+      string.find (
+        sheet,
+        '<f>_xlfn.LET(_xlpm.x, 2, _xlpm.f, _xlfn.LAMBDA(_xlpm.n, _xlpm.n*_xlpm.x), _xlpm.f(5))</f>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (files['xl/metadata.xml'], 'the metadata part is written')
+    ok (string.find (files['[Content_Types].xml'], '/xl/metadata.xml', 1, true))
+    ok (
+      string.find (files['xl/_rels/workbook.xml.rels'], 'sheetMetadata', 1, true)
+    )
+    -- Reading it back gives the formulas, and leaves the block's values for the formula to spill.
+    local back = read_ok (files)
+    eq (back.sheets[1].cells, book.sheets[1].cells)
+    -- A book with no spills has no metadata part.
+    eq (x.write (book, values)['xl/metadata.xml'], nil)
+  end
+)
+
 test ('writing types each value and escapes text', function ()
   local files = x.write (sample_book ())
   local sheet = files['xl/worksheets/sheet1.xml']
@@ -590,7 +791,7 @@ end)
 
 test ('writing fixes sheet names Excel refuses and warns', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Plan: 2026/27 [draft]', cells = { A1 = '1' } },
       { name = 'A very long sheet name that goes past the limit' },
@@ -615,7 +816,7 @@ end)
 
 test ('writing points formulas at a sheet whose name had to change', function ()
   local book = {
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'Q1: sales', cells = { A1 = '5' } },
       { name = 'Sums', cells = { A1 = "='Q1: sales'!A1*2", A2 = '=Sums!A1' } },
@@ -630,7 +831,7 @@ end)
 
 test ('writing gives a date formula a date format', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       {
         name = 'S',
@@ -647,7 +848,7 @@ end)
 
 test ('writing leaves out merges that overlap', function ()
   local files, warnings = x.write ({
-    version = 2,
+    version = 3,
     sheets = {
       { name = 'S', merges = { 'A1:C2', 'B2:D4', 'E1:E9', '$F$1:G1' } },
     },
@@ -656,42 +857,34 @@ test ('writing leaves out merges that overlap', function ()
   eq (warnings, { 'Merged cells in S that overlap others were left out.' })
 end)
 
-test ('writing warns once for each kind of thing it leaves out', function ()
+test ('writing warns once about what Excel cannot hold', function ()
   local book = sample_book ()
   book.sheets[1].rules = {
-    {
-      range = 'B5:B6',
-      type = 'compare',
-      op = '>',
-      value = '0',
-      style = { color = '#c62828' },
-    },
+    { range = 'B5:B6', type = 'compare', op = 'near', value = '0' },
+    { range = 'B5:B6', type = 'compare', op = 'odd', value = '1' },
   }
-  book.sheets[2].rules = {
-    { range = 'A1', type = 'blank', style = { fill = '#eeeeee' } },
-  }
-  book.sheets[2].notes = { A1 = 'Check this.' }
+  -- Excel separates choices with commas, so a choice cannot hold one.
   book.sheets[3].validation =
-    { { range = 'A2', type = 'list', values = { 'y', 'n' } } }
+    { { range = 'A2', type = 'list', values = { 'yes, please', 'no' } } }
   book.sheets[3].charts = {
     {
       id = 'c1',
       type = 'column',
-      range = 'A1:B5',
+      range = 'Z1:Z5',
       x = 0,
       y = 0,
       w = 400,
       h = 300,
     },
   }
-  book.sheets[1].notes = {}
-  local _, warnings = x.write (book)
+  book.sheets[2].notes = { A1 = 'Check this.' }
+  local files, warnings = x.write (book)
   eq (warnings, {
-    'Conditional formats were left out of the Excel file.',
-    'Validation rules were left out of the Excel file.',
-    'Notes were left out of the Excel file.',
-    'Charts were left out of the Excel file.',
+    'Conditional formats Excel cannot hold were left out of the Excel file.',
+    'Validation rules Excel cannot hold were left out of the Excel file.',
+    'Charts with no data were left out of the Excel file.',
   })
+  eq (read_ok (files).sheets[2].notes, { A1 = 'Check this.' })
 end)
 
 test ('writing an empty book still makes a sheet', function ()
@@ -704,7 +897,7 @@ end)
 
 test ('writing escapes control characters in text', function ()
   local files = x.write ({
-    version = 2,
+    version = 3,
     sheets = { { name = 'S', cells = { A1 = 'a\rb\1c _x0041_ d' } } },
   })
   ok (
@@ -719,6 +912,295 @@ test ('writing escapes control characters in text', function ()
   eq ((read_ok (files).sheets[1].cells or {}).A1, 'a\rb\1c _x0041_ d')
 end)
 
+---A book with every part beside the cells that an Excel file keeps: notes, links, rules of
+---each kind, validation of each kind, a filter and a chart.
+---@return Sheet.BookData
+local function parts_book ()
+  local book = sample_book ()
+  local budget = book.sheets[1]
+  budget.notes = { B5 = 'Rent went up.\nTwice.', A12 = 'Merged & <odd>' }
+  budget.links = { A5 = 'https://example.com/rent?a=1&b=2', A6 = '#Q1!A1' }
+  local bold = { bold = true }
+  budget.rules = {
+    {
+      range = 'B5:B6',
+      type = 'compare',
+      op = '>',
+      value = '1000',
+      style = { bold = true, color = '#c62828' },
+      stop = true,
+    },
+    {
+      range = 'B5:B6',
+      type = 'compare',
+      op = 'between',
+      value = '1',
+      value2 = '10',
+      style = { fill = '#fff2cc' },
+    },
+    {
+      range = 'A5:A6',
+      type = 'compare',
+      op = '=',
+      value = 'Rent',
+      style = bold,
+    },
+    {
+      range = 'A5:A6',
+      type = 'text',
+      op = 'contains',
+      value = 'en',
+      style = { italic = true },
+    },
+    {
+      range = 'A5:A6',
+      type = 'text',
+      op = 'not_contains',
+      value = 'x',
+      style = bold,
+    },
+    {
+      range = 'A5:A6',
+      type = 'text',
+      op = 'starts',
+      value = 'F',
+      style = { underline = true },
+    },
+    { range = 'A5:A6', type = 'text', op = 'ends', value = 'd', style = bold },
+    { range = 'A5:A6', type = 'blank', style = { fill = '#eeeeee' } },
+    { range = 'A5:A6', type = 'not_blank', style = { strike = true } },
+    { range = 'B5:B6', type = 'error', style = { color = '#ff0000' } },
+    { range = 'A5:A6', type = 'duplicate', style = { format = '0.00' } },
+    {
+      range = 'A5:A6',
+      type = 'unique',
+      style = { border_bottom = 'thin', border_color = '#333333' },
+    },
+    { range = 'B5:B6', type = 'top', count = 1, percent = true, style = bold },
+    { range = 'B5:B6', type = 'bottom', count = 2, style = bold },
+    { range = 'B5:B6', type = 'above_average', style = bold },
+    { range = 'B5:B6', type = 'below_average', style = bold },
+    {
+      range = 'B5:B6',
+      type = 'formula',
+      formula = '=$B5>$B$6',
+      style = { fill = '#dddddd' },
+    },
+    {
+      range = 'B5:B6',
+      type = 'scale',
+      min_color = '#ffffff',
+      mid_color = '#ffeb84',
+      max_color = '#63be7b',
+    },
+    { range = 'B5:B6', type = 'bar', color = '#638ec6' },
+    { range = 'B5:B6', type = 'icons', icons = 'flags', reverse = true },
+  }
+  budget.validation = {
+    { range = 'A5:A6', type = 'list', values = { 'Rent', 'Food', 'Fun' } },
+    {
+      range = 'B5:B6',
+      type = 'number',
+      op = 'between',
+      value = '0',
+      value2 = '5000',
+      integer = true,
+      message = 'Between 0 and 5000.',
+    },
+    {
+      range = 'C5',
+      type = 'date',
+      op = '>=',
+      value = '2026-01-01',
+      strict = false,
+    },
+    { range = 'D5', type = 'length', op = '<=', value = '10' },
+    { range = 'E5', type = 'formula', formula = '=E5>0' },
+    { range = 'F5', type = 'list', formula = '=$A$5:$A$6' },
+  }
+  budget.filter = {
+    range = 'A4:B6',
+    columns = {
+      A = { values = { 'Rent', '' } },
+      B = { op = '>', value = '100' },
+    },
+  }
+  budget.charts = {
+    {
+      id = 'c1',
+      type = 'column',
+      stacked = true,
+      range = 'A4:B6',
+      title = 'Budget',
+      x_title = 'Item',
+      y_title = 'Amount',
+      colors = { '#123456' },
+      x = 150,
+      y = 30,
+      w = 400,
+      h = 200,
+    },
+  }
+  return book
+end
+
+test (
+  'notes, links, rules, validation, the filter and charts go to Excel',
+  function ()
+    local files, warnings = x.write (parts_book ())
+    eq (warnings, {})
+    for path, text in pairs (files) do
+      if not string.find (path, '%.vml$') then
+        local root, err = x.parse_xml (text)
+        ok (root, path .. ': ' .. tostring (err))
+      end
+    end
+    local sheet = files['xl/worksheets/sheet1.xml']
+    -- Each part sits where Excel's schema wants it.
+    local order = {
+      '</sheetData>',
+      '<autoFilter ref="A4:B6">',
+      '<mergeCells',
+      '<conditionalFormatting',
+      '<dataValidations',
+      '<hyperlinks>',
+      '<pageMargins',
+      '<drawing r:id=',
+      '<legacyDrawing r:id=',
+    }
+    local at = 0
+    for _, piece in ipairs (order) do
+      local found = string.find (sheet, piece, 1, true)
+      ok (found and found > at, piece)
+      at = found or at
+    end
+    ok (
+      string.find (
+        sheet,
+        '<cfRule type="cellIs" operator="greaterThan" dxfId="0" priority="1" stopIfTrue="1">',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (
+      string.find (
+        sheet,
+        '<formula>NOT(ISERROR(SEARCH("en",A5)))</formula>',
+        1,
+        true
+      )
+    )
+    ok (string.find (files['xl/styles.xml'], '<dxfs count="', 1, true))
+    ok (files['xl/comments1.xml'] and files['xl/drawings/vmlDrawing1.vml'])
+    ok (files['xl/drawings/drawing1.xml'] and files['xl/charts/chart1.xml'])
+    local chart = files['xl/charts/chart1.xml']
+    ok (string.find (chart, '<c:f>Budget!$B$5:$B$6</c:f>', 1, true), chart)
+    ok (string.find (chart, '<c:grouping val="stacked"/>', 1, true))
+    local types = files['[Content_Types].xml']
+    ok (string.find (types, 'Extension="vml"', 1, true))
+    ok (string.find (types, '/xl/charts/chart1.xml', 1, true))
+    ok (
+      string.find (
+        files['xl/worksheets/_rels/sheet1.xml.rels'],
+        'TargetMode="External"',
+        1,
+        true
+      )
+    )
+    ok (string.find (files['xl/workbook.xml'], '_xlnm._FilterDatabase', 1, true))
+  end
+)
+
+test ('the rows a filter hides go to Excel hidden', function ()
+  local files = x.write (parts_book (), nil, nil, function (index)
+    return index == 1 and { 6 } or {}
+  end)
+  ok (
+    string.find (
+      files['xl/worksheets/sheet1.xml'],
+      '<row r="6" hidden="1">',
+      1,
+      true
+    )
+  )
+end)
+
+test ('notes, links, rules and charts come from Excel', function ()
+  local files = one_sheet (
+    '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>k</t></is></c><c r="B1" t="inlineStr"><is><t>v</t></is></c></row>'
+      .. '<row r="2"><c r="A2" t="inlineStr"><is><t>a</t></is></c><c r="B2"><v>1</v></c></row>'
+      .. '<row r="3"><c r="A3" t="inlineStr"><is><t>b</t></is></c><c r="B3"><v>2</v></c></row></sheetData>'
+      .. '<conditionalFormatting sqref="B2:B3 D2:D3"><cfRule type="expression" priority="2"><formula>B2&gt;1</formula></cfRule>'
+      .. '<cfRule type="cellIs" operator="lessThan" priority="1"><formula>"m"</formula></cfRule></conditionalFormatting>'
+      .. '<dataValidations count="1"><dataValidation type="whole" operator="greaterThan" errorStyle="information" sqref="B2:B3 C1">'
+      .. '<formula1>0</formula1></dataValidation></dataValidations>'
+      .. '<hyperlinks><hyperlink ref="A2:A3" r:id="rId3" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></hyperlinks>'
+      .. '<drawing r:id="rId1" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>',
+    {
+      ['xl/worksheets/_rels/sheet1.xml.rels'] = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        .. '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'
+        .. '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments1.xml"/>'
+        .. '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="mailto:a@example.com" TargetMode="External"/>'
+        .. '</Relationships>',
+      ['xl/comments1.xml'] = '<comments xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><authors><author>Ann</author></authors>'
+        .. '<commentList><comment ref="B2" authorId="0"><text><r><rPr><b/></rPr><t>Ann:</t></r><r><t xml:space="preserve">&#10;Looks low.</t></r></text></comment></commentList></comments>',
+      ['xl/drawings/drawing1.xml'] = '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        .. '<xdr:oneCellAnchor><xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>95250</xdr:rowOff></xdr:from>'
+        .. '<xdr:ext cx="3810000" cy="2857500"/><xdr:graphicFrame><a:graphic><a:graphicData><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:oneCellAnchor>'
+        .. '<xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:row>0</xdr:row></xdr:from><xdr:to><xdr:col>1</xdr:col><xdr:row>1</xdr:row></xdr:to><xdr:pic/><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>',
+      ['xl/drawings/_rels/drawing1.xml.rels'] = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/></Relationships>',
+      ['xl/charts/chart1.xml'] = '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><c:chart>'
+        .. '<c:title><c:tx><c:rich><a:p><a:r><a:t>Sales</a:t></a:r></a:p></c:rich></c:tx></c:title><c:plotArea><c:lineChart><c:grouping val="standard"/>'
+        .. '<c:ser><c:idx val="0"/><c:tx><c:strRef><c:f>Data!$B$1</c:f></c:strRef></c:tx><c:cat><c:strRef><c:f>Data!$A$2:$A$3</c:f></c:strRef></c:cat>'
+        .. '<c:val><c:numRef><c:f>Data!$B$2:$B$3</c:f></c:numRef></c:val></c:ser></c:lineChart></c:plotArea><c:legend><c:legendPos val="t"/></c:legend></c:chart></c:chartSpace>',
+    }
+  )
+  local book, warnings = read_ok (files)
+  local data = book.sheets[1]
+  eq (warnings, { 'Pictures in Data were left out.' })
+  eq (data.notes, { B2 = 'Looks low.' })
+  eq (data.links, { A2 = 'mailto:a@example.com', A3 = 'mailto:a@example.com' })
+  -- Rules come first by priority, and a formula follows each block it covers.
+  eq (data.rules, {
+    { range = 'B2:B3', type = 'compare', op = '<', value = 'm' },
+    { range = 'D2:D3', type = 'compare', op = '<', value = 'm' },
+    { range = 'B2:B3', type = 'formula', formula = '=B2>1' },
+    { range = 'D2:D3', type = 'formula', formula = '=D2>1' },
+  })
+  eq (data.validation, {
+    {
+      range = 'B2:B3',
+      type = 'number',
+      op = '>',
+      value = '0',
+      integer = true,
+      strict = false,
+    },
+    {
+      range = 'C1',
+      type = 'number',
+      op = '>',
+      value = '0',
+      integer = true,
+      strict = false,
+    },
+  })
+  eq (data.charts, {
+    {
+      id = 'c1',
+      type = 'line',
+      range = 'A1:B3',
+      title = 'Sales',
+      legend = 'top',
+      x = 300,
+      y = 34,
+      w = 400,
+      h = 300,
+    },
+  })
+end)
+
 ---------------------------------------------------------------------------------------------
 -- Round trips
 ---------------------------------------------------------------------------------------------
@@ -729,6 +1211,23 @@ test ('a book written and read back is the same book', function ()
   eq (warnings, {})
   eq (back, book)
 end)
+
+test (
+  'notes, links, rules, validation, the filter and charts come back the same',
+  function ()
+    local book = parts_book ()
+    local back, warnings = read_ok ((x.write (book)))
+    eq (warnings, {})
+    local want, got = book.sheets[1], back.sheets[1]
+    eq (got.notes, want.notes)
+    eq (got.links, want.links)
+    eq (got.rules, want.rules)
+    eq (got.validation, want.validation)
+    eq (got.filter, want.filter)
+    eq (got.charts, want.charts)
+    eq (back, book)
+  end
+)
 
 test ('a book read from Excel, written and read again is unchanged', function ()
   local first = read_ok (fixture ())

@@ -21,10 +21,13 @@ local GRAPH_FILE = 'kanban.ndg'
 return {
   name = NAME,
   description = 'Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.',
-  version = '1.2.0',
+  version = '1.4.0',
   depends = { 'proteus.lib.ui', 'proteus.nodal.app' },
   permissions = { 'workspace' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = {
+    proteus = '>=0.3.1',
+    features = { 'permissions', 'nodal-docks' },
+  },
   optional = {
     'proteus.ui.notify',
     'proteus.ui.statusbar',
@@ -33,14 +36,15 @@ return {
     'proteus.core.settings',
     'proteus.core.themes',
     'proteus.ui.menus',
+    'proteus.ui.views',
   },
   activate = function (app)
     local graph = app.plugin.read (GRAPH_FILE)
     if not graph then
       error ('the graph ' .. GRAPH_FILE .. ' is missing')
     end
-    local handle, refusal =
-      app.use ('nodal.app').mount_text (graph, { status_bar = true })
+    local options = { status_bar = true, docks = true }
+    local handle, refusal = app.use ('nodal.app').mount_text (graph, options)
     if not handle then
       error ('the graph did not load: ' .. tostring (refusal and refusal.code))
     end
@@ -71,8 +75,8 @@ test (
 
 test ('the graph file is a Nodal graph', function ()
   ok (
-    graph:find ('^{\n  "version": 3,'),
-    GRAPH_FILE .. ' is not a version 3 graph'
+    graph:find ('^{\n  "version": 4,'),
+    GRAPH_FILE .. ' is not a version 4 graph'
   )
   ok (graph:find ('"nodes": [', 1, true), GRAPH_FILE .. ' has no nodes')
 end)

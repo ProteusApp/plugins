@@ -424,6 +424,45 @@ test ('notes are set, changed and removed', function ()
   eq (s:note (1, 1), nil)
 end)
 
+test ('links follow their cells through edits, files and undo', function ()
+  local s = sheet_of ({ A1 = 'Site', A2 = 'Totals' })
+  s:set_link (1, 1, 'https://example.com')
+  s:set_link (2, 1, '#Sheet1!B9')
+  eq (s:link (1, 1), 'https://example.com')
+  -- An insert moves them, and undo puts them back.
+  s:insert_rows (1, 2)
+  eq ({ s:link (3, 1), s:link (4, 1), s:link (1, 1) }, {
+    'https://example.com',
+    '#Sheet1!B9',
+    nil,
+  })
+  s.book:undo ()
+  eq (s:link (1, 1), 'https://example.com')
+  -- A delete drops the links of its rows, and undo brings them back.
+  s:delete_rows (1, 1)
+  eq ({ s:link (1, 1), s:link (2, 1) }, { '#Sheet1!B9', nil })
+  s.book:undo ()
+  eq (s:link (1, 1), 'https://example.com')
+  -- Copy and paste carry them, and the file keeps them.
+  local clip = s:copy (r ('A1:A2'))
+  s:paste (5, 3, clip)
+  eq (s:link (5, 3), 'https://example.com')
+  local data = m.to_data (s)
+  eq (data.sheets[1].links, {
+    A1 = 'https://example.com',
+    A2 = '#Sheet1!B9',
+    C5 = 'https://example.com',
+    C6 = '#Sheet1!B9',
+  })
+  local back = m.from_data (data)
+  eq (back:link (6, 3), '#Sheet1!B9')
+  -- Clearing everything takes them away, and so does an empty link.
+  s:clear (r ('C5:C6'), 'all')
+  eq (s:link (5, 3), nil)
+  s:set_link (1, 1, '')
+  eq (s:link (1, 1), nil)
+end)
+
 test (
   'merging keeps the top left text and refuses to cut another merge',
   function ()
@@ -648,6 +687,49 @@ test ('inserting and deleting columns moves styles, widths and more', function (
   eq (s.filter and s.filter.columns, { [1] = { values = { 'Rent', 'Food' } } })
 end)
 
+test (
+  'undo keeps only what an insert or a delete moved, and plays it back exactly',
+  function ()
+    local s = busy_sheet ()
+    -- A long column of numbers below everything, which only moves.
+    for row = 30, 2029 do
+      s:put (row, 1, { text = tostring (row) })
+    end
+    local start = m.to_data (s)
+    s:delete_rows (6, 3)
+    local deleted = m.to_data (s)
+    s:insert_cols (2, 2)
+    local inserted = m.to_data (s)
+    local book = s.book
+    -- The delete keeps the cells of its three rows and the formulas it rewrote, not the
+    -- thousands of cells that only moved.
+    local step = book.done[#book.done - 1]
+    local shift = assert (step.changes[1].shift, 'a shift')
+    local kept = 0
+    for _ in pairs (assert (shift.band, 'a band').cells) do
+      kept = kept + 1
+    end
+    ok (kept > 0 and kept <= 9, 'band cells ' .. kept)
+    local rewritten = 0
+    for _ in pairs (shift.texts) do
+      rewritten = rewritten + 1
+    end
+    ok (rewritten <= 3, 'rewritten ' .. rewritten)
+    eq (step.changes[1].before.cells, nil)
+    book:undo ()
+    eq (m.to_data (s), deleted)
+    book:undo ()
+    eq (m.to_data (s), start)
+    eq (shown (s, 'B11'), '150')
+    book:redo ()
+    eq (m.to_data (s), deleted)
+    book:redo ()
+    eq (m.to_data (s), inserted)
+    eq (text (s, 'D8'), '=SUM(D5:D7)')
+    eq (shown (s, 'D8'), '100')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Paste and paste special
 ---------------------------------------------------------------------------------------------
@@ -745,7 +827,9 @@ test ('cut moves cells, styles and notes, even to another sheet', function ()
   eq (text (s, 'B1'), '')
   eq (s:own_style (1, 2), nil)
   eq (s:note (1, 2), nil)
-  eq (other:text (3, 3), '=A1*2')
+  -- The moved formula still reads A1 on the sheet it came from.
+  eq (other:text (3, 3), '=Sheet1!A1*2')
+  eq (other:value (3, 3), 10)
   ok (other:is_bold (3, 3))
   eq (other:note (3, 3), 'Moves.')
   local info = assert (s.book:undo ())
@@ -816,6 +900,10 @@ test ('matches tests values the way filters and rules do', function ()
   ok (not mt (nil, '', '>', '0'))
   ok (mt (nil, '', '<>', '0'))
   ok (mt (f.error ('#N/A'), '#N/A', 'error'))
+  -- Numbers compare at 15 significant digits, as formulas do.
+  ok (mt (0.1 + 0.2, '0.3', '=', '0.3'))
+  ok (not mt (0.1 + 0.2, '0.3', '>', '0.3'))
+  ok (mt (0.1 + 0.2, '0.3', 'between', '0.3', '1'))
 end)
 
 ---------------------------------------------------------------------------------------------

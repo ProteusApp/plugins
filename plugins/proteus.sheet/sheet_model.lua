@@ -9,6 +9,7 @@
 
 local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
+local style_mod = require ('sheet_model_style') --[[@as Sheet.ModelStyleModule]]
 
 ---A cell with text or a style of its own. Empty cells have no entry at all.
 ---@class Sheet.Cell
@@ -27,6 +28,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field busy? boolean True while the value is being worked out.
 ---@field deps? Sheet.Cell[]
 ---@field loops? boolean True when the formula reads its own cell.
+---@field spill? Sheet.Array The block of values a formula gives, which the cells around it show.
+---@field spill_area? Sheet.Rect The cells the block covers, the formula's own cell first.
 
 ---The text and style of one cell, as undo keeps them.
 ---@class Sheet.CellState
@@ -62,16 +65,9 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field columns table<integer, Sheet.FilterColumn>
 ---@field hidden table<integer, boolean>
 
----Everything a sheet holds, kept by undo around an insert or a delete.
----@class Sheet.SheetState
----@field cells table<integer, Sheet.Cell>
----@field row_styles table<integer, Sheet.Style>
----@field col_styles table<integer, Sheet.Style>
----@field widths table<integer, number>
----@field heights table<integer, number>
----@field hidden_rows table<integer, boolean>
----@field hidden_cols table<integer, boolean>
----@field notes table<integer, string>
+---What the rows or columns an insert or a delete moves past hold besides cells: the lists a
+---sheet keeps and its size. Undo keeps them before and after.
+---@class Sheet.SheetShape
 ---@field merges Sheet.Rect[]
 ---@field filter? Sheet.LiveFilter
 ---@field rules Sheet.Rule[]
@@ -82,6 +78,26 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field freeze_rows integer
 ---@field freeze_cols integer
 
+---What deleted rows or columns held, by their places before the delete, so undo puts it back.
+---@class Sheet.Band
+---@field cells table<integer, Sheet.CellState>
+---@field notes table<integer, string>
+---@field links table<integer, string>
+---@field styles table<integer, Sheet.Style> Row or column styles.
+---@field sizes table<integer, number> Heights or widths.
+---@field hidden table<integer, boolean>
+
+---An insert or a delete, as undo keeps it: the move itself, the formulas on the sheet whose
+---text it changed, and what the deleted rows or columns held. It holds only what the move
+---changes, never a copy of the whole sheet.
+---@class Sheet.Shift
+---@field axis 'row'|'col'
+---@field at integer
+---@field count integer Positive inserts before `at`, negative deletes from `at` on.
+---@field texts table<integer, string> Formula texts after the move, by their new places.
+---@field old_texts table<integer, string> The same formulas' texts before, by their old places.
+---@field band? Sheet.Band
+
 ---Cells taken by a copy or a cut.
 ---@class Sheet.Clip
 ---@field texts string[][] Rows of cell text.
@@ -90,6 +106,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field literals? string[][] Each value as text that types back to it, for pasting values.
 ---@field merges? Sheet.Rect[] Merged blocks, counting rows and columns from 1 in the clip.
 ---@field notes? table<integer, string> Notes by `i * KEY + j` in the clip.
+---@field links? table<integer, string> Links by `i * KEY + j` in the clip.
 ---@field row? integer The top row they came from, so pasted formulas can move.
 ---@field col? integer
 ---@field sheet? Sheet.Sheet The sheet they came from.
@@ -130,6 +147,7 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field hidden_rows table<integer, boolean> Rows the user hid.
 ---@field hidden_cols table<integer, boolean>
 ---@field notes table<integer, string> Notes by `row * KEY + col`.
+---@field links table<integer, string> Links by `row * KEY + col`: a web or mail address, or a place in the book after `#`, such as `#Sheet2!A1`.
 ---@field merges Sheet.Rect[]
 ---@field freeze_rows integer
 ---@field freeze_cols integer
@@ -142,6 +160,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field merge_index? table<integer, Sheet.Rect>
 ---@field merge_list? Sheet.Rect[] The list the merge index was built from.
 ---@field layout_cache? Sheet.Layout
+---@field touched table<integer, boolean>|true Cells written since the grid last asked, by key, or true when anything may have changed.
+---@field tall? Sheet.TallRows The rows grown for their text, kept by the grid's drawing.
 local Sheet = {}
 Sheet.__index = Sheet
 
@@ -189,7 +209,15 @@ end
 
 ---@return Sheet.Watch
 function M.new_watch ()
-  return { points = {}, big = {}, by_col = {} }
+  return {
+    points = {},
+    cols = {},
+    rows = {},
+    big = {},
+    by_col = {},
+    spills = {},
+    blocked = {},
+  }
 end
 
 ---------------------------------------------------------------------------------------------
@@ -363,328 +391,26 @@ end
 -- Styles
 ---------------------------------------------------------------------------------------------
 
-M.STYLE_FIELDS = {
-  'bold',
-  'italic',
-  'underline',
-  'strike',
-  'size',
-  'color',
-  'fill',
-  'align',
-  'valign',
-  'wrap',
-  'format',
-  'border_top',
-  'border_right',
-  'border_bottom',
-  'border_left',
-  'border_color',
-}
+-- sheet_model_style makes, layers and patches styles, and the module offers its functions.
+M.STYLE_FIELDS = style_mod.STYLE_FIELDS
+M.RESET = style_mod.RESET
+M.is_default = style_mod.is_default
+M.intern = style_mod.intern
+M.copy_style = style_mod.copy_style
+M.layer = style_mod.layer
+M.EMPTY = style_mod.EMPTY
+M.clean = style_mod.clean
+M.cell_patch = style_mod.cell_patch
 
--- The value an own style holds to cancel a row or column field. Each is also the default.
-M.RESET = {
-  bold = false,
-  italic = false,
-  underline = false,
-  strike = false,
-  wrap = false,
-  size = 13,
-  color = 'none',
-  fill = 'none',
-  align = 'general',
-  valign = 'bottom',
-  format = 'General',
-  border_top = 'none',
-  border_right = 'none',
-  border_bottom = 'none',
-  border_left = 'none',
-  border_color = 'none',
-}
-
-local FLAGS = {
-  bold = true,
-  italic = true,
-  underline = true,
-  strike = true,
-  wrap = true,
-}
-local ALIGNS = { left = true, center = true, right = true, general = true }
-local VALIGNS = { top = true, middle = true, bottom = true }
-local LINES = {
-  thin = true,
-  medium = true,
-  thick = true,
-  dashed = true,
-  dotted = true,
-  double = true,
-  none = true,
-}
-local SIDES = { 'border_top', 'border_right', 'border_bottom', 'border_left' }
-
----A field's value when it is valid, or nil.
----@param field string
----@param v any
----@return any
-local function checked (field, v)
-  if v == nil then
-    return nil
-  end
-  if FLAGS[field] then
-    if type (v) == 'boolean' then
-      return v
-    end
-    return nil
-  end
-  if field == 'size' then
-    local n = tonumber (v)
-    if n and n > 0 and n < 1000 then
-      return math.tointeger (n) or n
-    end
-    return nil
-  end
-  if type (v) ~= 'string' or v == '' then
-    return nil
-  end
-  if field == 'align' then
-    return ALIGNS[v] and v or nil
-  elseif field == 'valign' then
-    return VALIGNS[v] and v or nil
-  elseif field ~= 'border_color' and string.sub (field, 1, 7) == 'border_' then
-    return LINES[v] and v or nil
-  end
-  return v
-end
-
----True when a field's value is the default.
----@param field string
----@param v any
----@return boolean
-local function is_default (field, v)
-  if v == nil or v == false then
-    return true
-  end
-  if field == 'format' then
-    return type (v) == 'string' and string.lower (v) == 'general'
-  end
-  return v == M.RESET[field]
-end
-M.is_default = is_default
-
----@type table<string, Sheet.Style>
-local interned = setmetatable ({}, { __mode = 'v' })
-
----The shared table for a style, or nil when it sets nothing. Fields of the wrong type are
----dropped.
----@param t any
----@return Sheet.Style?
-local function intern (t)
-  if type (t) ~= 'table' then
-    return nil
-  end
-  local parts = {} ---@type string[]
-  local out = {} ---@type table<string, any>
-  local any = false
-  for i, field in ipairs (M.STYLE_FIELDS) do
-    local v = checked (field, t[field])
-    if v ~= nil then
-      out[field] = v
-      any = true
-      parts[i] = type (v) == 'number' and string.format ('%.10g', v)
-        or tostring (v)
-    else
-      parts[i] = ''
-    end
-  end
-  if not any then
-    return nil
-  end
-  local key = table.concat (parts, '\31')
-  local hit = interned[key]
-  if hit then
-    return hit
-  end
-  local style = out --[[@as Sheet.Style]]
-  interned[key] = style
-  return style
-end
-M.intern = intern
-
----@param style? Sheet.Style
----@return table<string, any>
-local function fields_of (style)
-  local out = {} ---@type table<string, any>
-  if style then
-    for k, v in
-      pairs (style --[[@as table<string, any>]])
-    do
-      out[k] = v
-    end
-  end
-  return out
-end
-
----A plain copy of a style, safe to hand out and change.
----@param style? Sheet.Style
----@return Sheet.Style?
-function M.copy_style (style)
-  if not style then
-    return nil
-  end
-  return fields_of (style) --[[@as Sheet.Style]]
-end
-
----@type table<Sheet.Style, table<Sheet.Style, Sheet.Style>>
-local layered = setmetatable ({}, { __mode = 'k' })
-
----The style `top` laid over `base`.
----@param base? Sheet.Style
----@param top? Sheet.Style
----@return Sheet.Style?
-local function layer (base, top)
-  if not base then
-    return top
-  end
-  if not top then
-    return base
-  end
-  local memo = layered[base]
-  if not memo then
-    memo = setmetatable ({}, { __mode = 'k' })
-    layered[base] = memo
-  end
-  local hit = memo[top]
-  if hit then
-    return hit
-  end
-  local t = fields_of (base)
-  for k, v in
-    pairs (top --[[@as table<string, any>]])
-  do
-    t[k] = v
-  end
-  hit = intern (t) --[[@as Sheet.Style]]
-  memo[top] = hit
-  return hit
-end
-M.layer = layer
-
--- The style of a cell with no style. Never change it.
-local EMPTY = {} ---@type Sheet.Style
-M.EMPTY = EMPTY
-
----@type table<Sheet.Style, Sheet.Style>
-local cleaned = setmetatable ({}, { __mode = 'k' })
-
----A style without its reset and default values, as it shows.
----@param style? Sheet.Style
----@return Sheet.Style
-local function clean (style)
-  if not style then
-    return EMPTY
-  end
-  local hit = cleaned[style]
-  if hit then
-    return hit
-  end
-  local t = {} ---@type table<string, any>
-  for k, v in
-    pairs (style --[[@as table<string, any>]])
-  do
-    if not is_default (k, v) then
-      t[k] = v
-    end
-  end
-  hit = intern (t) or EMPTY
-  cleaned[style] = hit
-  return hit
-end
-M.clean = clean
-
----A row or column style with a patch applied. A field set to false goes, or becomes its reset
----value when `keep` says a style below it sets the field.
----@param style? Sheet.Style
----@param patch Sheet.StylePatch
----@param keep? table<string, boolean>
----@return Sheet.Style?
-local function patched (style, patch, keep)
-  local t = fields_of (style)
-  for k, v in
-    pairs (patch --[[@as table<string, any>]])
-  do
-    if is_default (k, v) then
-      if keep and keep[k] then
-        t[k] = M.RESET[k]
-      else
-        t[k] = nil
-      end
-    else
-      t[k] = v
-    end
-  end
-  return intern (t)
-end
-
----A cell's own style after a patch, given the style it inherits from its row and column, so
----that the cell shows every patched field as the patch says. A field the row or column
----already gives is left out, and a default the row or column overrides becomes a reset.
----@param own? Sheet.Style
----@param patch Sheet.StylePatch
----@param inherited Sheet.Style
----@return Sheet.Style?
-local function cell_patch (own, patch, inherited)
-  local t = fields_of (own)
-  local have = inherited --[[@as table<string, any>]]
-  for k, v in
-    pairs (patch --[[@as table<string, any>]])
-  do
-    if is_default (k, v) then
-      if have[k] ~= nil then
-        t[k] = M.RESET[k]
-      else
-        t[k] = nil
-      end
-    elseif have[k] == v then
-      t[k] = nil
-    else
-      t[k] = v
-    end
-  end
-  return intern (t)
-end
-M.cell_patch = cell_patch
-
----A style without some fields.
----@param style? Sheet.Style
----@param fields string[]
----@return Sheet.Style?
-local function strip (style, fields)
-  if not style then
-    return nil
-  end
-  local t = fields_of (style)
-  for _, k in ipairs (fields) do
-    t[k] = nil
-  end
-  return intern (t)
-end
-
----A patch that sets every field to what `full` shows, and every other field to the default.
----@param full Sheet.Style
----@return Sheet.StylePatch
-local function full_patch (full)
-  local patch = {} ---@type table<string, any>
-  local f = full --[[@as table<string, any>]]
-  for _, k in ipairs (M.STYLE_FIELDS) do
-    local v = f[k]
-    if v == nil or is_default (k, v) then
-      patch[k] = false
-    else
-      patch[k] = v
-    end
-  end
-  return patch --[[@as Sheet.StylePatch]]
-end
+local SIDES, is_default, intern, layer =
+  style_mod.SIDES, style_mod.is_default, style_mod.intern, style_mod.layer
+local clean, cell_patch, fields_of =
+  style_mod.clean, style_mod.cell_patch, style_mod.fields_of
+local patched, strip, full_patch, patch_fields =
+  style_mod.patched,
+  style_mod.strip,
+  style_mod.full_patch,
+  style_mod.patch_fields
 
 ---The own style a cell needs to show the style `full`, given its row and column styles. Copy,
 ---fill and sort use it, so a cell shows the style it had where it came from.
@@ -694,20 +420,6 @@ end
 ---@return Sheet.Style?
 function Sheet:own_for (row, col, full)
   return cell_patch (nil, full_patch (full), self:inherited (row, col))
-end
-
----The patch fields that are real style fields.
----@param patch Sheet.StylePatch
----@return string[]
-local function patch_fields (patch)
-  local out = {} ---@type string[]
-  local p = patch --[[@as table<string, any>]]
-  for _, k in ipairs (M.STYLE_FIELDS) do
-    if p[k] ~= nil then
-      out[#out + 1] = k
-    end
-  end
-  return out
 end
 
 ---------------------------------------------------------------------------------------------
@@ -807,6 +519,7 @@ function M.blank (book, name, rows, cols)
   self.hidden_rows = {}
   self.hidden_cols = {}
   self.notes = {}
+  self.links = {}
   self.merges = {}
   self.freeze_rows = 0
   self.freeze_cols = 0
@@ -814,6 +527,7 @@ function M.blank (book, name, rows, cols)
   self.validation = {}
   self.charts = {}
   self.watch = M.new_watch ()
+  self.touched = true
   return self
 end
 
@@ -850,7 +564,28 @@ end
 function Sheet:value (row, col)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
-  return cell and cell.value
+  if cell and cell.text ~= '' then
+    return cell.value
+  end
+  return (self:spilled (row, col))
+end
+
+---The value a formula's block shows in an empty cell, and the formula's cell, or nil when no
+---block spills there.
+---@param row integer
+---@param col integer
+---@return Sheet.Value
+---@return Sheet.Cell?
+function Sheet:spilled (row, col)
+  local anchor = self.watch.spills[row * KEY + col]
+  if not anchor then
+    return nil, nil
+  end
+  local block, area = anchor.spill, anchor.spill_area
+  if not block or not area then
+    return nil, nil
+  end
+  return block.v[(row - area.r1) * block.w + (col - area.c1) + 1], anchor
 end
 
 ---The style a cell shows: its own style over its row's over its column's, without reset
@@ -1002,6 +737,20 @@ end
 function Sheet:display (row, col, digits)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
+  if not cell or cell.text == '' then
+    local v, anchor = self:spilled (row, col)
+    if anchor then
+      -- A spilled number shows with the cell's format, or the formula's automatic one.
+      local own = self:style_at (row, col).format
+      if not own and type (v) == 'number' then
+        own = self:auto_format (anchor)
+      end
+      if digits and not own then
+        return formula.format_value (v, digits), nil
+      end
+      return format.format (v, own)
+    end
+  end
   if not cell then
     return '', nil
   end
@@ -1334,6 +1083,14 @@ function Sheet:note (row, col)
   return self.notes[row * KEY + col]
 end
 
+---The link on a cell, or nil.
+---@param row integer
+---@param col integer
+---@return string?
+function Sheet:link (row, col)
+  return self.links[row * KEY + col]
+end
+
 ---@return integer rows
 ---@return integer cols
 function Sheet:freeze ()
@@ -1536,8 +1293,22 @@ function Sheet:put (row, col, st)
     self.cells[key] = cell
     self.book:cell_changed (self, row, col, old, cell)
   end
+  local touched = self.touched
+  if touched ~= true then
+    touched[key] = true
+  end
   self:grow (row, col)
   self.book:touch ()
+end
+
+---The cells written since the last call, by key, or true when anything may have changed,
+---such as after an insert, a load or a new column width. The grid grows rows for their text
+---by this, so an edit looks at the cells it wrote rather than at the whole sheet.
+---@return table<integer, boolean>|true
+function Sheet:take_touched ()
+  local touched = self.touched
+  self.touched = {}
+  return touched
 end
 
 ---Sets a field, or one entry of a map field when `key` is given, without recording it.
@@ -1552,27 +1323,25 @@ function Sheet:put_prop (field, key, value)
     local map = t[field] --[[@as table<any, any>]]
     map[key] = value
   end
+  if field ~= 'notes' and field ~= 'links' and field ~= 'name' then
+    -- Sizes, row and column styles and the lists may change how tall any row needs to be.
+    self.touched = true
+  end
   if field == 'name' then
     self.book:names_changed ()
   elseif field == 'rows' or field == 'cols' then
     self.book.full = true
+  elseif field == 'hidden_rows' or field == 'filter' then
+    self.book:rows_changed ()
   end
   self.book:touch ()
 end
 
----Everything the sheet holds, by reference. An insert or a delete builds new tables rather
----than changing these, so the state stays as it was for undo.
----@return Sheet.SheetState
-function Sheet:snapshot ()
+---The lists and the size of the sheet, by reference. An insert or a delete builds new lists
+---rather than changing these, so the shape stays as it was for undo.
+---@return Sheet.SheetShape
+function Sheet:shape ()
   return {
-    cells = self.cells,
-    row_styles = self.row_styles,
-    col_styles = self.col_styles,
-    widths = self.widths,
-    heights = self.heights,
-    hidden_rows = self.hidden_rows,
-    hidden_cols = self.hidden_cols,
-    notes = self.notes,
     merges = self.merges,
     filter = self.filter,
     rules = self.rules,
@@ -1585,17 +1354,9 @@ function Sheet:snapshot ()
   }
 end
 
----Puts back everything a snapshot holds, without recording it.
----@param st Sheet.SheetState
-function Sheet:put_state (st)
-  self.cells = st.cells
-  self.row_styles = st.row_styles
-  self.col_styles = st.col_styles
-  self.widths = st.widths
-  self.heights = st.heights
-  self.hidden_rows = st.hidden_rows
-  self.hidden_cols = st.hidden_cols
-  self.notes = st.notes
+---Puts back the lists and the size a shape holds, without recording it.
+---@param st Sheet.SheetShape
+function Sheet:put_shape (st)
   self.merges = st.merges
   self.filter = st.filter
   self.rules = st.rules
@@ -1605,8 +1366,161 @@ function Sheet:put_state (st)
   self.cols = st.cols
   self.freeze_rows = st.freeze_rows
   self.freeze_cols = st.freeze_cols
+  self.touched = true
   self.book.full = true
   self.book:touch ()
+end
+
+---Moves every cell, note, style, size and hidden mark past `at` by `count` rows or columns,
+---without recording it, and returns what the deleted ones held. A cell keeps its text and
+---its parsed formula, so nothing is read again. Formula texts change apart, in `put_texts`.
+---@param axis 'row'|'col'
+---@param at integer
+---@param count integer
+---@return Sheet.Band?
+function Sheet:move_band (axis, at, count)
+  local is_row = axis == 'row'
+  ---@type Sheet.Band?
+  local band = count < 0
+      and {
+        cells = {},
+        notes = {},
+        links = {},
+        styles = {},
+        sizes = {},
+        hidden = {},
+      }
+    or nil
+  local cells = {} ---@type table<integer, Sheet.Cell>
+  for key, cell in pairs (self.cells) do
+    local pos = is_row and cell.row or cell.col
+    local np = moved_to (pos, at, count)
+    if np then
+      if is_row then
+        cell.row = np
+      else
+        cell.col = np
+      end
+      cells[cell.row * KEY + cell.col] = cell
+    elseif band then
+      band.cells[key] = { text = cell.text, style = cell.style }
+    end
+  end
+  self.cells = cells
+  ---Moves a map by cell, keeping what the deleted cells held in `lost`.
+  ---@param map table<integer, string>
+  ---@param lost? table<integer, string>
+  ---@return table<integer, string>
+  local function move_keys (map, lost)
+    local out = {} ---@type table<integer, string>
+    for key, text in pairs (map) do
+      local row = math.floor (key / KEY)
+      local col = key - row * KEY
+      local np = moved_to (is_row and row or col, at, count)
+      if np then
+        if is_row then
+          out[np * KEY + col] = text
+        else
+          out[row * KEY + np] = text
+        end
+      elseif lost then
+        lost[key] = text
+      end
+    end
+    return out
+  end
+  self.notes = move_keys (self.notes, band and band.notes)
+  self.links = move_keys (self.links, band and band.links)
+  ---@generic T
+  ---@param map table<integer, T>
+  ---@param lost? table<integer, T>
+  ---@return table<integer, T>
+  local function shift_map (map, lost)
+    local out = {} ---@type table<integer, any>
+    for k, v in pairs (map) do
+      local nk = moved_to (k, at, count)
+      if nk then
+        out[nk] = v
+      elseif lost then
+        lost[k] = v
+      end
+    end
+    return out
+  end
+  if is_row then
+    self.row_styles = shift_map (self.row_styles, band and band.styles)
+    self.heights = shift_map (self.heights, band and band.sizes)
+    self.hidden_rows = shift_map (self.hidden_rows, band and band.hidden)
+  else
+    self.col_styles = shift_map (self.col_styles, band and band.styles)
+    self.widths = shift_map (self.widths, band and band.sizes)
+    self.hidden_cols = shift_map (self.hidden_cols, band and band.hidden)
+  end
+  self.touched = true
+  self.book.full = true
+  self.book:touch ()
+  return band
+end
+
+---Puts back what deleted rows or columns held, after undo inserted them again.
+---@param axis 'row'|'col'
+---@param band Sheet.Band
+function Sheet:put_band (axis, band)
+  local clock = self.book.clock
+  for key, st in pairs (band.cells) do
+    local row = math.floor (key / KEY)
+    local col = key - row * KEY
+    self.cells[key] = make_cell (row, col, st.text, st.style, clock)
+  end
+  for key, text in pairs (band.notes) do
+    self.notes[key] = text
+  end
+  for key, text in pairs (band.links or {}) do
+    self.links[key] = text
+  end
+  local styles = axis == 'row' and self.row_styles or self.col_styles
+  local sizes = axis == 'row' and self.heights or self.widths
+  local hidden = axis == 'row' and self.hidden_rows or self.hidden_cols
+  for k, v in pairs (band.styles) do
+    styles[k] = v
+  end
+  for k, v in pairs (band.sizes) do
+    sizes[k] = v
+  end
+  for k, v in pairs (band.hidden) do
+    hidden[k] = v
+  end
+  self.book.full = true
+  self.book:touch ()
+end
+
+---Gives formula cells new texts, by place, without recording it.
+---@param texts table<integer, string>
+function Sheet:put_texts (texts)
+  local clock = self.book.clock
+  for key, text in pairs (texts) do
+    local cell = self.cells[key]
+    if cell then
+      self.cells[key] = make_cell (cell.row, cell.col, text, cell.style, clock)
+    end
+  end
+  self.book.full = true
+end
+
+---Plays an insert or a delete forward, or backward with `back`, without recording it.
+---@param shift Sheet.Shift
+---@param back boolean
+function Sheet:play_shift (shift, back)
+  if back then
+    self:move_band (shift.axis, shift.at, -shift.count)
+    if shift.band then
+      self:put_band (shift.axis, shift.band)
+    end
+    self:put_texts (shift.old_texts)
+  else
+    shift.band = self:move_band (shift.axis, shift.at, shift.count)
+    self:put_texts (shift.texts)
+  end
 end
 
 ---------------------------------------------------------------------------------------------
@@ -1769,7 +1683,7 @@ end
 ---Clears a block as one undo step. `what` is `contents` (the default), which keeps styles and
 ---notes as spreadsheets do on Delete, or `formats`, `notes` or `all`.
 ---@param rect Sheet.Rect
----@param what? 'contents'|'formats'|'notes'|'all'
+---@param what? 'contents'|'formats'|'notes'|'links'|'all'
 function Sheet:clear (rect, what)
   local r = tidy (rect)
   local w = what or 'contents'
@@ -1784,17 +1698,21 @@ function Sheet:clear (rect, what)
   if w == 'formats' or w == 'all' then
     self:clear_format (r)
   end
-  if w == 'notes' or w == 'all' then
-    local keys = {} ---@type integer[]
-    for key in pairs (self.notes) do
-      local row = math.floor (key / KEY)
-      local col = key - row * KEY
-      if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
-        keys[#keys + 1] = key
+  for _, field in ipairs ({ 'notes', 'links' }) do
+    if w == field or w == 'all' then
+      local keys = {} ---@type integer[]
+      for key in
+        pairs ((self --[[@as table<string, table<integer, string>>]])[field])
+      do
+        local row = math.floor (key / KEY)
+        local col = key - row * KEY
+        if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
+          keys[#keys + 1] = key
+        end
       end
-    end
-    for _, key in ipairs (keys) do
-      self:set_prop ('notes', key, nil)
+      for _, key in ipairs (keys) do
+        self:set_prop (field, key, nil)
+      end
     end
   end
   self:finish ()
@@ -2273,6 +2191,23 @@ function Sheet:set_note (row, col, text)
   self:finish ()
 end
 
+---Sets the link on a cell, or takes it away with nil or `''`, as one undo step.
+---@param row integer
+---@param col integer
+---@param target? string
+function Sheet:set_link (row, col, target)
+  local value = target
+  if value == '' then
+    value = nil
+  end
+  self:begin ({
+    select = { r1 = row, c1 = col, r2 = row, c2 = col },
+    label = 'Link',
+  })
+  self:set_prop ('links', row * KEY + col, value)
+  self:finish ()
+end
+
 ---Merges a block, or each row of it on its own with `across`. The block shows its top left
 ---cell, so the text of the other cells goes. Merges inside the block join it. A block that
 ---cuts across another merge's edge is refused, with the reason. One undo step.
@@ -2402,7 +2337,6 @@ function Sheet:reshape (axis, at, count)
   end
   local name = self.name
   local opts = { sheet = name, own = name }
-  local clock = self.book.clock
   local is_row = axis == 'row'
   ---@param pos integer
   ---@return integer?
@@ -2422,57 +2356,33 @@ function Sheet:reshape (axis, at, count)
     end
     return out
   end
-  local before = self:snapshot ()
-  local after = self:snapshot ()
+  local before = self:shape ()
+  local after = self:shape ()
 
-  local cells = {} ---@type table<integer, Sheet.Cell>
-  for _, cell in pairs (self.cells) do
-    local row, col = cell.row, cell.col
-    local nr, nc = row, col ---@type integer?, integer?
-    if is_row then
-      nr = move (row)
-    else
-      nc = move (col)
-    end
-    if nr and nc then
-      local text = cell.text
-      if cell.formula then
-        text = formula.adjust (text, axis, at, count, opts)
+  -- The formulas on this sheet whose text the move changes. The rest keep their text.
+  local texts, old_texts = {}, {} ---@type table<integer, string>, table<integer, string>
+  for key, cell in pairs (self.cells) do
+    if cell.formula then
+      local row, col = cell.row, cell.col
+      local nr, nc = row, col ---@type integer?, integer?
+      if is_row then
+        nr = move (row)
+      else
+        nc = move (col)
       end
-      local moved = cell
-      if text ~= cell.text or nr ~= row or nc ~= col then
-        moved = make_cell (nr, nc, text, cell.style, clock)
+      if nr and nc then
+        local text = formula.adjust (cell.text, axis, at, count, opts)
+        if text ~= cell.text then
+          texts[nr * KEY + nc] = text
+          old_texts[key] = cell.text
+        end
       end
-      cells[nr * KEY + nc] = moved
     end
   end
-  after.cells = cells
-
-  local notes = {} ---@type table<integer, string>
-  for key, text in pairs (self.notes) do
-    local row = math.floor (key / KEY)
-    local col = key - row * KEY
-    local nr, nc = row, col ---@type integer?, integer?
-    if is_row then
-      nr = move (row)
-    else
-      nc = move (col)
-    end
-    if nr and nc then
-      notes[nr * KEY + nc] = text
-    end
-  end
-  after.notes = notes
 
   if is_row then
-    after.row_styles = shift_map (self.row_styles)
-    after.heights = shift_map (self.heights)
-    after.hidden_rows = shift_map (self.hidden_rows)
     after.rows = math.max (1, self.rows + count)
   else
-    after.col_styles = shift_map (self.col_styles)
-    after.widths = shift_map (self.widths)
-    after.hidden_cols = shift_map (self.hidden_cols)
     after.cols = math.max (1, self.cols + count)
   end
 
@@ -2538,8 +2448,23 @@ function Sheet:reshape (axis, at, count)
 
   local word = is_row and 'rows' or 'columns'
   self:begin ({ label = (count > 0 and 'Insert ' or 'Delete ') .. word })
-  self.book:log ({ kind = 'state', sheet = self, before = before, after = after })
-  self:put_state (after)
+  ---@type Sheet.Shift
+  local shift = {
+    axis = axis,
+    at = at,
+    count = count,
+    texts = texts,
+    old_texts = old_texts,
+  }
+  self.book:log ({
+    kind = 'shift',
+    sheet = self,
+    shift = shift,
+    before = before,
+    after = after,
+  })
+  self:play_shift (shift, false)
+  self:put_shape (after)
   self.book:rewrite_formulas (function (text, own)
     return formula.adjust (
       text,
@@ -2549,6 +2474,10 @@ function Sheet:reshape (axis, at, count)
       { sheet = name, own = own.name }
     )
   end, self)
+  -- A defined name belongs to no sheet, so only its references that name this one move.
+  self.book:rewrite_names (function (text)
+    return formula.adjust (text, axis, at, count, { sheet = name })
+  end)
   self:finish ()
 end
 
@@ -2574,317 +2503,6 @@ end
 ---@param count? integer
 function Sheet:delete_cols (at, count)
   self:reshape ('col', at, -(count or 1))
-end
-
----------------------------------------------------------------------------------------------
--- Fill, copy and paste
----------------------------------------------------------------------------------------------
-
----Copies the top row of a block into the rows below it, moving references as a paste does,
----with the styles. A block of one row copies the row above it instead. Returns false when
----there is no row to copy from.
----@param rect Sheet.Rect
----@return boolean
-function Sheet:fill_down (rect)
-  local r = tidy (rect)
-  local src, first = r.r1, r.r1 + 1
-  if r.r1 == r.r2 then
-    if r.r1 == 1 then
-      return false
-    end
-    src, first = r.r1 - 1, r.r1
-  end
-  self:begin ({ select = r, label = 'Fill down' })
-  for col = r.c1, r.c2 do
-    local text = self:text (src, col)
-    local full = full_patch (self:style_at (src, col))
-    for row = first, r.r2 do
-      self:record (row, col, {
-        text = formula.shift (text, row - src, 0),
-        style = cell_patch (nil, full, self:inherited (row, col)),
-      })
-    end
-  end
-  self:finish ()
-  return true
-end
-
----Copies the left column of a block into the columns right of it. A block of one column
----copies the column to its left instead.
----@param rect Sheet.Rect
----@return boolean
-function Sheet:fill_right (rect)
-  local r = tidy (rect)
-  local src, first = r.c1, r.c1 + 1
-  if r.c1 == r.c2 then
-    if r.c1 == 1 then
-      return false
-    end
-    src, first = r.c1 - 1, r.c1
-  end
-  self:begin ({ select = r, label = 'Fill right' })
-  for row = r.r1, r.r2 do
-    local text = self:text (row, src)
-    local full = full_patch (self:style_at (row, src))
-    for col = first, r.c2 do
-      self:record (row, col, {
-        text = formula.shift (text, 0, col - src),
-        style = cell_patch (nil, full, self:inherited (row, col)),
-      })
-    end
-  end
-  self:finish ()
-  return true
-end
-
----A value as text that types back to the same value.
----@param v Sheet.Value
----@return string
-local function literal_text (v)
-  if v == nil then
-    return ''
-  end
-  local t = type (v)
-  if t == 'number' then
-    return M.number_text (v --[[@as number]])
-  elseif t == 'boolean' then
-    return v and 'TRUE' or 'FALSE'
-  elseif t == 'table' then
-    return (v --[[@as Sheet.Error]]).code
-  end
-  local s = v --[[@as string]]
-  if s == '' then
-    return ''
-  end
-  local first = string.sub (s, 1, 1)
-  if first == '=' or first == "'" then
-    return "'" .. s
-  end
-  local back = format.parse_input (s)
-  if back ~= s then
-    return "'" .. s
-  end
-  return s
-end
-
----Takes a block of cells for a copy. The clip keeps each cell's text, full style and value,
----the merges and notes inside the block, and the shown values as tab-separated text for the
----system clipboard.
----@param rect Sheet.Rect
----@return Sheet.Clip
-function Sheet:copy (rect)
-  local r = tidy (rect)
-  self.book:ensure ()
-  local texts, bold, styles, literals, shown = {}, {}, {}, {}, {} ---@type string[][], boolean[][], Sheet.Style[][], string[][], string[][]
-  for row = r.r1, r.r2 do
-    local t, b, st, l, s = {}, {}, {}, {}, {} ---@type string[], boolean[], Sheet.Style[], string[], string[]
-    for col = r.c1, r.c2 do
-      local cell = self.cells[row * KEY + col]
-      local style = self:style_at (row, col)
-      t[#t + 1] = cell and cell.text or ''
-      b[#b + 1] = style.bold == true
-      st[#st + 1] = style
-      l[#l + 1] = literal_text (cell and cell.value)
-      s[#s + 1] = self:display (row, col)
-    end
-    texts[#texts + 1], bold[#bold + 1], styles[#styles + 1] = t, b, st
-    literals[#literals + 1], shown[#shown + 1] = l, s
-  end
-  local merges = {} ---@type Sheet.Rect[]
-  for _, m in ipairs (self.merges) do
-    if M.contains (r, m) then
-      merges[#merges + 1] = {
-        r1 = m.r1 - r.r1 + 1,
-        c1 = m.c1 - r.c1 + 1,
-        r2 = m.r2 - r.r1 + 1,
-        c2 = m.c2 - r.c1 + 1,
-      }
-    end
-  end
-  local notes = {} ---@type table<integer, string>
-  for key, text in pairs (self.notes) do
-    local row = math.floor (key / KEY)
-    local col = key - row * KEY
-    if row >= r.r1 and row <= r.r2 and col >= r.c1 and col <= r.c2 then
-      notes[(row - r.r1 + 1) * KEY + (col - r.c1 + 1)] = text
-    end
-  end
-  return {
-    texts = texts,
-    bold = bold,
-    styles = styles,
-    literals = literals,
-    merges = merges,
-    notes = notes,
-    row = r.r1,
-    col = r.c1,
-    sheet = self,
-    tsv = M.to_csv (shown, '\t', '\n'),
-  }
-end
-
----Pastes a clip with its top left cell at `row` and `col`, as one undo step, and returns the
----block that changed. Formulas from a copy move their relative references by the distance
----moved. A cut moves the cells as they are and empties where they came from. When `fill` is a
----block whose size is a whole number of clips, the clip repeats to fill it, so a one-cell clip
----fills any block. `opts` pastes only values, formulas or formats, and can turn rows into
----columns.
----@param row integer
----@param col integer
----@param clip Sheet.Clip
----@param fill? Sheet.Rect
----@param opts? Sheet.PasteOptions
----@return Sheet.Rect?
-function Sheet:paste (row, col, clip, fill, opts)
-  local o = opts or {}
-  local only, turn = o.only, o.transpose == true
-  local texts = clip.texts
-  local h, w = #texts, 0
-  for _, line in ipairs (texts) do
-    if #line > w then
-      w = #line
-    end
-  end
-  if h == 0 or w == 0 then
-    return nil
-  end
-  local th, tw = h, w
-  if turn then
-    th, tw = w, h
-  end
-  local target = { r1 = row, c1 = col, r2 = row + th - 1, c2 = col + tw - 1 }
-  if fill then
-    local f = tidy (fill)
-    local fh, fw = f.r2 - f.r1 + 1, f.c2 - f.c1 + 1
-    if fh % th == 0 and fw % tw == 0 and (fh > th or fw > tw) then
-      target = f
-    end
-  end
-  local with_text = only ~= 'formats'
-  local with_style = only == nil or only == 'formats'
-  local from_row, from_col = clip.row, clip.col
-  local source = clip.sheet or self
-  -- A cut moves cells within one book. From another book it pastes as a copy.
-  local cut = clip.cut == true and source.book == self.book
-  self:begin ({ select = target, label = 'Paste' })
-  if cut and from_row and from_col and only == nil then
-    local src = {
-      r1 = from_row,
-      c1 = from_col,
-      r2 = from_row + h - 1,
-      c2 = from_col + w - 1,
-    }
-    for i = 1, h do
-      for j = 1, w do
-        source:record (from_row + i - 1, from_col + j - 1, { text = '' })
-      end
-    end
-    source:unmerge (src)
-    for key in pairs (clip.notes or {}) do
-      local i = math.floor (key / KEY)
-      local j = key - i * KEY
-      source:set_prop (
-        'notes',
-        (from_row + i - 1) * KEY + (from_col + j - 1),
-        nil
-      )
-    end
-  end
-  if with_style and clip.merges then
-    self:unmerge (target)
-  end
-  for r = target.r1, target.r2 do
-    for c = target.c1, target.c2 do
-      local oi = (r - target.r1) % th
-      local oj = (c - target.c1) % tw
-      local i, j = oi + 1, oj + 1
-      if turn then
-        i, j = oj + 1, oi + 1
-      end
-      local cell = self.cells[r * KEY + c]
-      ---@type Sheet.CellState
-      local state =
-        { text = cell and cell.text or '', style = cell and cell.style }
-      if with_text then
-        local text = texts[i][j] or ''
-        if only == 'values' and clip.literals then
-          text = clip.literals[i] and clip.literals[i][j] or ''
-        elseif from_row and from_col and not cut then
-          text =
-            formula.shift (text, r - (from_row + i - 1), c - (from_col + j - 1))
-        end
-        if clip.typed and only == nil then
-          state = self:typed (r, c, text)
-        else
-          state.text = text
-        end
-      end
-      if with_style then
-        local full = clip.styles and clip.styles[i] and clip.styles[i][j]
-        if full then
-          state.style =
-            cell_patch (nil, full_patch (full), self:inherited (r, c))
-        elseif clip.bold and clip.bold[i] and clip.bold[i][j] ~= nil then
-          state.style = with_bold (state.style, clip.bold[i][j])
-        end
-      end
-      self:record (r, c, state)
-    end
-  end
-  if with_style and clip.merges and #clip.merges > 0 then
-    local list = {} ---@type Sheet.Rect[]
-    for _, m in ipairs (self.merges) do
-      list[#list + 1] = m
-    end
-    for tr = target.r1, target.r2, th do
-      for tc = target.c1, target.c2, tw do
-        for _, m in ipairs (clip.merges) do
-          local a, b, c, d = m.r1, m.c1, m.r2, m.c2
-          if turn then
-            a, b, c, d = m.c1, m.r1, m.c2, m.r2
-          end
-          list[#list + 1] = {
-            r1 = tr + a - 1,
-            c1 = tc + b - 1,
-            r2 = tr + c - 1,
-            c2 = tc + d - 1,
-          }
-        end
-      end
-    end
-    self:set_prop ('merges', nil, list)
-  end
-  if only == nil and clip.notes then
-    for key, text in pairs (clip.notes) do
-      local i = math.floor (key / KEY)
-      local j = key - i * KEY
-      local oi, oj = i - 1, j - 1
-      if turn then
-        oi, oj = j - 1, i - 1
-      end
-      self:set_prop ('notes', (target.r1 + oi) * KEY + (target.c1 + oj), text)
-    end
-  end
-  self:finish ()
-  return target
-end
-
----Pastes plain text from the clipboard: tab-separated, comma-separated, or one cell per line.
----Each cell reads as if typed.
----@param row integer
----@param col integer
----@param text string
----@param fill? Sheet.Rect
----@param opts? Sheet.PasteOptions
----@return Sheet.Rect?
-function Sheet:paste_text (row, col, text, fill, opts)
-  return self:paste (
-    row,
-    col,
-    { texts = M.parse_clipboard (text), typed = true },
-    fill,
-    opts
-  )
 end
 
 ---------------------------------------------------------------------------------------------
@@ -2914,10 +2532,7 @@ end
 local function compare (a, b)
   local ta, tb = type (a), type (b)
   if ta == 'number' and tb == 'number' then
-    local x, y =
-      a, --[[@as number]]
-      b --[[@as number]]
-    return x < y and -1 or (x > y and 1 or 0)
+    return formula.compare_numbers (a --[[@as number]], b --[[@as number]])
   end
   if ta == 'string' and tb == 'string' then
     local x, y = lower (a --[[@as string]]), lower (b --[[@as string]])
@@ -3060,607 +2675,8 @@ function Sheet:refilter ()
   local f = self.filter
   if f then
     f.hidden = self:hidden_by (f)
+    self.book:rows_changed ()
   end
-end
-
----------------------------------------------------------------------------------------------
--- The sheet as data
----------------------------------------------------------------------------------------------
-
----A copy of this sheet under another name, in the same book, with every cell, style and
----setting. The book adds it to its list.
----@param name string
----@return Sheet.Sheet
-function Sheet:clone (name)
-  local copy = M.blank (self.book, name, self.rows, self.cols)
-  local clock = self.book.clock
-  for key, cell in pairs (self.cells) do
-    copy.cells[key] =
-      make_cell (cell.row, cell.col, cell.text, cell.style, clock)
-  end
-  for _, field in ipairs ({
-    'row_styles',
-    'col_styles',
-    'widths',
-    'heights',
-    'hidden_rows',
-    'hidden_cols',
-    'notes',
-  }) do
-    local src = (self --[[@as table<string, any>]])[field] --[[@as table<any, any>]]
-    local dst = (copy --[[@as table<string, any>]])[field] --[[@as table<any, any>]]
-    for k, v in pairs (src) do
-      dst[k] = v
-    end
-  end
-  copy.merges = self.merges
-  copy.rules = self.rules
-  copy.validation = self.validation
-  copy.charts = self.charts
-  copy.freeze_rows, copy.freeze_cols = self.freeze_rows, self.freeze_cols
-  local f = self.filter
-  if f then
-    local hidden = {} ---@type table<integer, boolean>
-    for k, v in pairs (f.hidden) do
-      hidden[k] = v
-    end
-    copy.filter = { rect = f.rect, columns = f.columns, hidden = hidden }
-  end
-  return copy
-end
-
----@param v any
----@return integer?
-local function whole (v)
-  local n = tonumber (v)
-  if not n or n ~= n or n == math.huge or n == -math.huge then
-    return nil
-  end
-  return math.tointeger (math.floor (n))
-end
-
----A column from a key such as `C`, `3` or 3.
----@param key any
----@return integer?
-local function col_key (key)
-  if type (key) == 'number' then
-    return whole (key)
-  elseif type (key) == 'string' then
-    return M.col_number (key) or whole (key)
-  end
-  return nil
-end
-
----@param t any
----@return table?
-local function copy_table (t)
-  if type (t) ~= 'table' then
-    return nil
-  end
-  local out = {} ---@type table<any, any>
-  for k, v in
-    pairs (t --[[@as table<any, any>]])
-  do
-    if type (v) == 'table' then
-      out[k] = copy_table (v)
-    else
-      out[k] = v
-    end
-  end
-  return out
-end
-
----@param v any
----@return string?
-local function text_of (v)
-  if type (v) == 'string' then
-    return v
-  elseif type (v) == 'number' then
-    return formula.format_number (v, 15)
-  elseif type (v) == 'boolean' then
-    return v and 'TRUE' or 'FALSE'
-  end
-  return nil
-end
-
----A filter column test from file data, or nil.
----@param t any
----@return Sheet.FilterColumn?
-local function filter_column (t)
-  if type (t) ~= 'table' then
-    return nil
-  end
-  local out = {} ---@type Sheet.FilterColumn
-  if type (t.values) == 'table' then
-    local values = {} ---@type string[]
-    for _, v in
-      ipairs (t.values --[[@as any[] ]])
-    do
-      local s = text_of (v)
-      if s then
-        values[#values + 1] = s
-      end
-    end
-    out.values = values
-  end
-  if type (t.op) == 'string' then
-    out.op = t.op
-    out.value = text_of (t.value)
-    out.value2 = text_of (t.value2)
-  end
-  if not out.values and not out.op then
-    return nil
-  end
-  return out
-end
-
----Fills an empty sheet from file data, without undo. Fields of the wrong type are skipped.
----@param data any
-function Sheet:load (data)
-  if type (data) ~= 'table' then
-    return
-  end
-  local rows, cols = whole (data.rows), whole (data.cols)
-  if rows and rows >= 1 then
-    self.rows = rows
-  end
-  if cols and cols >= 1 then
-    self.cols = cols
-  end
-  if type (data.cells) == 'table' then
-    for addr, v in
-      pairs (data.cells --[[@as table<any, any>]])
-    do
-      local row, col = nil, nil ---@type integer?, integer?
-      if type (addr) == 'string' then
-        row, col = M.parse_address (addr)
-      end
-      local text = text_of (v)
-      if row and col and text and text ~= '' then
-        self:put (row, col, { text = text })
-      end
-    end
-  end
-  if type (data.styles) == 'table' then
-    for addr, style in
-      pairs (data.styles --[[@as table<any, any>]])
-    do
-      local row, col = nil, nil ---@type integer?, integer?
-      if type (addr) == 'string' then
-        row, col = M.parse_address (addr)
-      end
-      local s = intern (style)
-      if row and col and s then
-        self:put (row, col, { text = self:text (row, col), style = s })
-      end
-    end
-  end
-  if type (data.widths) == 'table' then
-    for key, w in
-      pairs (data.widths --[[@as table<any, any>]])
-    do
-      local col = col_key (key)
-      if col and col >= 1 and type (w) == 'number' and w > 0 then
-        local px =
-          math.floor (math.max (MIN_WIDTH, math.min (MAX_WIDTH, w)) + 0.5)
-        self.widths[col] = px ~= M.DEFAULT_WIDTH and px or nil
-      end
-    end
-  end
-  if type (data.heights) == 'table' then
-    for key, h in
-      pairs (data.heights --[[@as table<any, any>]])
-    do
-      local row = whole (key)
-      if row and row >= 1 and type (h) == 'number' and h > 0 then
-        local px =
-          math.floor (math.max (MIN_HEIGHT, math.min (MAX_HEIGHT, h)) + 0.5)
-        self.heights[row] = px ~= M.DEFAULT_HEIGHT and px or nil
-      end
-    end
-  end
-  if type (data.hidden_rows) == 'table' then
-    for _, v in
-      pairs (data.hidden_rows --[[@as table<any, any>]])
-    do
-      local row = whole (v)
-      if row and row >= 1 then
-        self.hidden_rows[row] = true
-      end
-    end
-  end
-  if type (data.hidden_cols) == 'table' then
-    for _, v in
-      pairs (data.hidden_cols --[[@as table<any, any>]])
-    do
-      local col = col_key (v)
-      if col and col >= 1 then
-        self.hidden_cols[col] = true
-      end
-    end
-  end
-  if type (data.freeze) == 'table' then
-    self.freeze_rows = math.max (0, whole (data.freeze.rows) or 0)
-    self.freeze_cols = math.max (0, whole (data.freeze.cols) or 0)
-  end
-  if type (data.col_styles) == 'table' then
-    for key, style in
-      pairs (data.col_styles --[[@as table<any, any>]])
-    do
-      local col = col_key (key)
-      if col and col >= 1 then
-        self.col_styles[col] = intern (style)
-      end
-    end
-  end
-  if type (data.row_styles) == 'table' then
-    for key, style in
-      pairs (data.row_styles --[[@as table<any, any>]])
-    do
-      local row = whole (key)
-      if row and row >= 1 then
-        self.row_styles[row] = intern (style)
-      end
-    end
-  end
-  if type (data.merges) == 'table' then
-    local list = {} ---@type Sheet.Rect[]
-    for _, text in
-      ipairs (data.merges --[[@as any[] ]])
-    do
-      local m = M.parse_range (text)
-      if m and (m.r1 < m.r2 or m.c1 < m.c2) then
-        local clash = false
-        for _, other in ipairs (list) do
-          if M.overlaps (m, other) then
-            clash = true
-          end
-        end
-        if not clash then
-          list[#list + 1] = m
-        end
-      end
-    end
-    self.merges = list
-  end
-  if type (data.notes) == 'table' then
-    for addr, text in
-      pairs (data.notes --[[@as table<any, any>]])
-    do
-      local row, col = nil, nil ---@type integer?, integer?
-      if type (addr) == 'string' then
-        row, col = M.parse_address (addr)
-      end
-      if row and col and type (text) == 'string' and text ~= '' then
-        self.notes[row * KEY + col] = text
-      end
-    end
-  end
-  local f = data.filter ---@type any
-  local rect = type (f) == 'table' and M.parse_range (f.range)
-  if type (f) == 'table' and rect then
-    local columns = {} ---@type table<integer, Sheet.FilterColumn>
-    if type (f.columns) == 'table' then
-      for key, t in
-        pairs (f.columns --[[@as table<any, any>]])
-      do
-        local col = col_key (key)
-        local test = filter_column (t)
-        if col and test then
-          columns[col] = test
-        end
-      end
-    end
-    self.filter = { rect = rect, columns = columns, hidden = {} }
-  end
-  for _, field in ipairs ({ 'rules', 'validation', 'charts' }) do
-    local list = {} ---@type table[]
-    if type (data[field]) == 'table' then
-      for _, item in
-        ipairs (data[field] --[[@as any[] ]])
-      do
-        if type (item) == 'table' and M.parse_range (item.range) then
-          list[#list + 1] = copy_table (item) --[[@as table]]
-        end
-      end
-    end
-    (self --[[@as table<string, any>]])[field] = list
-  end
-  for i, chart in ipairs (self.charts) do
-    if type (chart.id) ~= 'string' then
-      chart.id = 'c' .. i
-    end
-    chart.type = chart.type or 'column'
-    chart.x = tonumber (chart.x) or 0
-    chart.y = tonumber (chart.y) or 0
-    chart.w = tonumber (chart.w) or 480
-    chart.h = tonumber (chart.h) or 300
-  end
-end
-
----@param map table<integer, any>
----@return integer[]
-local function sorted (map)
-  local keys = {} ---@type integer[]
-  for k in pairs (map) do
-    keys[#keys + 1] = k
-  end
-  table.sort (keys)
-  return keys
-end
-
----The sheet as plain data, the shape of one sheet in a `.sheet.json` file. Empty fields are
----left out, except `cells`.
----@return Sheet.SheetData
-function Sheet:to_data ()
-  ---@type Sheet.SheetData
-  local data = {
-    name = self.name,
-    rows = self.rows,
-    cols = self.cols,
-    cells = {},
-  }
-  if next (self.widths) then
-    data.widths = {}
-    for c, w in pairs (self.widths) do
-      data.widths[M.col_name (c)] = w
-    end
-  end
-  if next (self.heights) then
-    data.heights = {}
-    for r, h in pairs (self.heights) do
-      data.heights[string.format ('%d', r)] = h
-    end
-  end
-  if next (self.hidden_rows) then
-    data.hidden_rows = sorted (self.hidden_rows)
-  end
-  if next (self.hidden_cols) then
-    local list = {} ---@type string[]
-    for _, c in ipairs (sorted (self.hidden_cols)) do
-      list[#list + 1] = M.col_name (c)
-    end
-    data.hidden_cols = list
-  end
-  if self.freeze_rows > 0 or self.freeze_cols > 0 then
-    data.freeze = {
-      rows = self.freeze_rows > 0 and self.freeze_rows or nil,
-      cols = self.freeze_cols > 0 and self.freeze_cols or nil,
-    }
-  end
-  local cells = data.cells --[[@as table<string, string>]]
-  local styles = {} ---@type table<string, Sheet.Style>
-  for _, cell in pairs (self.cells) do
-    local addr = M.address (cell.row, cell.col)
-    if cell.text ~= '' then
-      cells[addr] = cell.text
-    end
-    if cell.style then
-      styles[addr] = M.copy_style (cell.style) --[[@as Sheet.Style]]
-    end
-  end
-  if next (styles) then
-    data.styles = styles
-  end
-  if next (self.col_styles) then
-    data.col_styles = {}
-    for c, style in pairs (self.col_styles) do
-      data.col_styles[M.col_name (c)] = M.copy_style (style) --[[@as Sheet.Style]]
-    end
-  end
-  if next (self.row_styles) then
-    data.row_styles = {}
-    for r, style in pairs (self.row_styles) do
-      data.row_styles[string.format ('%d', r)] = M.copy_style (style) --[[@as Sheet.Style]]
-    end
-  end
-  if #self.merges > 0 then
-    local list = {} ---@type string[]
-    for i, m in ipairs (self.merges) do
-      list[i] = M.range_name (m)
-    end
-    data.merges = list
-  end
-  if next (self.notes) then
-    data.notes = {}
-    for key, text in pairs (self.notes) do
-      local row = math.floor (key / KEY)
-      data.notes[M.address (row, key - row * KEY)] = text
-    end
-  end
-  local f = self.filter
-  if f then
-    local columns = {} ---@type table<string, Sheet.FilterColumn>
-    for c, test in pairs (f.columns) do
-      columns[M.col_name (c)] = copy_table (test) --[[@as Sheet.FilterColumn]]
-    end
-    data.filter = {
-      range = M.range_name (f.rect),
-      columns = next (columns) and columns or nil,
-    }
-  end
-  if #self.rules > 0 then
-    data.rules = copy_table (self.rules) --[[@as Sheet.Rule[] ]]
-  end
-  if #self.validation > 0 then
-    data.validation = copy_table (self.validation) --[[@as Sheet.Validation[] ]]
-  end
-  if #self.charts > 0 then
-    data.charts = copy_table (self.charts) --[[@as Sheet.ChartSpec[] ]]
-  end
-  return data
-end
-
----------------------------------------------------------------------------------------------
--- Ranges, CSV and the clipboard
----------------------------------------------------------------------------------------------
-
----Splits CSV text into rows of fields. Quoted fields may hold the separator, doubled quotes
----and line breaks. Lines may end with \r\n or \n.
----@param text string
----@param sep? string A comma when nil, or a tab for tab-separated text.
----@return string[][]
-function M.parse_csv (text, sep)
-  sep = sep or ','
-  local rows = {} ---@type string[][]
-  if text == '' then
-    return rows
-  end
-  local stop = '[' .. (sep == '\t' and '\t' or '%' .. sep) .. '\r\n]'
-  local n = #text
-  local row = {} ---@type string[]
-  local pos = 1
-  while true do
-    local field ---@type string
-    if string.sub (text, pos, pos) == '"' then
-      local parts = {} ---@type string[]
-      local p = pos + 1
-      while true do
-        local q = string.find (text, '"', p, true)
-        if not q then
-          parts[#parts + 1] = string.sub (text, p)
-          pos = n + 1
-          break
-        end
-        parts[#parts + 1] = string.sub (text, p, q - 1)
-        if string.sub (text, q + 1, q + 1) == '"' then
-          parts[#parts + 1] = '"'
-          p = q + 2
-        else
-          pos = q + 1
-          break
-        end
-      end
-      field = table.concat (parts)
-      -- Text after the closing quote joins the field, as spreadsheets read it.
-      local e = string.find (text, stop, pos) or (n + 1)
-      field = field .. string.sub (text, pos, e - 1)
-      pos = e
-    else
-      local e = string.find (text, stop, pos) or (n + 1)
-      field = string.sub (text, pos, e - 1)
-      pos = e
-    end
-    row[#row + 1] = field
-    local ch = string.sub (text, pos, pos)
-    if ch == sep then
-      pos = pos + 1
-    elseif ch == '\r' or ch == '\n' then
-      rows[#rows + 1] = row
-      row = {}
-      pos = pos
-        + (
-          (ch == '\r' and string.sub (text, pos + 1, pos + 1) == '\n') and 2
-          or 1
-        )
-      if pos > n then
-        break
-      end
-    else
-      rows[#rows + 1] = row
-      break
-    end
-  end
-  return rows
-end
-
----Joins rows of fields into CSV text. Fields holding the separator, a quote or a line break
----go in quotes, with quotes doubled.
----@param rows string[][]
----@param sep? string
----@param eol? string
----@return string
-function M.to_csv (rows, sep, eol)
-  sep = sep or ','
-  eol = eol or '\r\n'
-  local lines = {} ---@type string[]
-  for _, row in ipairs (rows) do
-    local fields = {} ---@type string[]
-    for i, field in ipairs (row) do
-      if
-        string.find (field, sep, 1, true)
-        or string.find (field, '["\r\n]')
-      then
-        field = '"' .. string.gsub (field, '"', '""') .. '"'
-      end
-      fields[i] = field
-    end
-    lines[#lines + 1] = table.concat (fields, sep)
-  end
-  return table.concat (lines, eol)
-end
-
----Reads pasted text into rows of cells. Text with tabs is tab-separated. Text with commas is
----comma-separated when every line splits into the same number of fields. A single line only
----splits when no field starts with a space, so a sentence stays in one cell. Anything else
----puts one line in each cell.
----@param text string
----@return string[][]
-function M.parse_clipboard (text)
-  local s = string.gsub (text, '\r?\n$', '')
-  if s == '' then
-    return { { '' } }
-  end
-  if string.find (s, '\t', 1, true) then
-    return M.parse_csv (s, '\t')
-  end
-  if string.find (s, ',', 1, true) then
-    local rows = M.parse_csv (s, ',')
-    local width = #rows[1]
-    local even = width > 1
-    for _, row in ipairs (rows) do
-      if #row ~= width then
-        even = false
-      end
-    end
-    if even and #rows == 1 then
-      for _, field in ipairs (rows[1]) do
-        if string.sub (field, 1, 1) == ' ' then
-          even = false
-        end
-      end
-    end
-    if even then
-      return rows
-    end
-  end
-  local rows = {} ---@type string[][]
-  for line in string.gmatch (s .. '\n', '([^\n]*)\n') do
-    rows[#rows + 1] = { (string.gsub (line, '\r$', '')) }
-  end
-  return rows
-end
-
----True when clipboard text is what a clip put there, so a paste can use the clip's formulas.
----@param clip Sheet.Clip
----@param text string
----@return boolean
-function M.same_clip (clip, text)
-  ---@param s string
-  ---@return string
-  local function plain (s)
-    local out = string.gsub (s, '\r\n', '\n')
-    out = string.gsub (out, '\n+$', '')
-    return out
-  end
-  return clip.tsv ~= nil and plain (clip.tsv) == plain (text)
-end
-
----Makes a sheet, alone in a new book, from rows of cell text such as a parsed CSV file. Each
----cell reads as if typed.
----@param rows string[][]
----@param opts? Sheet.Options
----@return Sheet.Sheet
-function M.from_grid (rows, opts)
-  local sheet = M.new (opts)
-  for r, line in ipairs (rows) do
-    for c, text in ipairs (line) do
-      if text ~= '' then
-        sheet:put (r, c, sheet:typed (r, c, text))
-      end
-    end
-  end
-  return sheet
 end
 
 ---------------------------------------------------------------------------------------------
@@ -3694,6 +2710,33 @@ end
 ---@return Sheet.Sheet
 function M.example (opts)
   return books ().example (opts):active_sheet ()
+end
+
+---------------------------------------------------------------------------------------------
+-- Parts
+---------------------------------------------------------------------------------------------
+
+---What the parts of the model get from this module. Each part returns a function that takes
+---the kit and adds its methods to every sheet and its functions to the module.
+---@class Sheet.ModelKit
+local kit = {
+  Sheet = Sheet,
+  M = M,
+  KEY = KEY,
+  tidy = tidy,
+  with_bold = with_bold,
+  cell_patch = cell_patch,
+  full_patch = full_patch,
+  intern = intern,
+  make_cell = make_cell,
+  MIN_WIDTH = MIN_WIDTH,
+  MAX_WIDTH = MAX_WIDTH,
+  MIN_HEIGHT = MIN_HEIGHT,
+  MAX_HEIGHT = MAX_HEIGHT,
+}
+for _, name in ipairs ({ 'sheet_model_clip', 'sheet_model_data' }) do
+  local add = require (name) --[[@as fun(kit: Sheet.ModelKit)]]
+  add (kit)
 end
 
 return M

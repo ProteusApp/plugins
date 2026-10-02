@@ -1,9 +1,9 @@
 -- sheet_panels: the Format, Data and Insert commands of the Sheet app, and the parts they open.
 --
 -- Every command changes the book through `ctl.change`, so each is one undo step that the grid
--- draws and saves. The side panels live in sheet_panel_side.lua, and the find bar, the filter
--- menu and the note editor in sheet_panel_find.lua. The toolbar in sheet_toolbar.lua runs the
--- same actions through the table the parts share.
+-- draws and saves. The side panels live in sheet_panel_side.lua and the panel modules it
+-- installs, and the find bar, the filter menu and the note editor in sheet_panel_find.lua. The
+-- toolbar in sheet_toolbar.lua runs the same actions through the table the parts share.
 --
 -- A shortcut's `when` is false while the keyboard is in a text box outside the grid, such as
 -- the find bar or a panel, so those boxes keep their own keys. Formatting shortcuts still act
@@ -854,6 +854,17 @@ local M = {
       end,
     })
     command ({
+      id = 'sheet.names',
+      title = 'Defined names…',
+      menu = 'Data',
+      group = 'check',
+      order = 31,
+      icon = 'tag',
+      run = function ()
+        panels.open ('names')
+      end,
+    })
+    command ({
       id = 'sheet.find',
       title = 'Find…',
       icon = 'search',
@@ -948,6 +959,33 @@ local M = {
       key = 'shift+f2',
       run = function ()
         floats.note ()
+      end,
+    })
+    command ({
+      id = 'sheet.link',
+      title = 'Link',
+      menu = 'Insert',
+      group = 'objects',
+      order = 12,
+      icon = 'link',
+      key = 'ctrl+k',
+      when = has_sheet,
+      run = function ()
+        floats.link ()
+      end,
+    })
+    command ({
+      id = 'sheet.follow_link',
+      title = 'Follow link',
+      icon = 'external-link',
+      when = function ()
+        local sheet = ctl.sheet ()
+        local _, row, col = ctl.selection ()
+        return sheet ~= nil and sheet:link (row, col) ~= nil
+      end,
+      run = function ()
+        local _, row, col = ctl.selection ()
+        ctl.follow_link (row, col)
       end,
     })
     command ({

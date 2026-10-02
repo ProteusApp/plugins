@@ -191,6 +191,22 @@ test ('draw_rows keeps a margin around the rows in view', function ()
   ok (not calc.needs_rows (geo, 2400, H + 240, 98, 116, 2))
 end)
 
+test ('draw_cols keeps a margin around the columns in view', function ()
+  local lefts = { 0 }
+  for c = 1, 200 do
+    lefts[c + 1] = c * 100
+  end
+  local geo = calc.geometry ({ 0, 24 }, lefts, 0, 1)
+  -- Scrolled to column 51, with 8 columns in view, and the frozen column A.
+  local first, last = calc.draw_cols (geo, 5000, W + 100 + 800, 4)
+  eq ({ first, last }, { 48, 64 })
+  ok (not calc.needs_cols (geo, 5000, W + 900, first, last, 2))
+  ok (calc.needs_cols (geo, 5300, W + 900, first, last, 2))
+  ok (calc.needs_cols (geo, 4700, W + 900, first, last, 2))
+  -- The first scrolling column is never before the frozen ones.
+  eq ({ calc.draw_cols (geo, 0, W + 900, 4) }, { 2, 14 })
+end)
+
 test ('map_pos keeps a position in its row after rows grow', function ()
   local model_tops = { 0, 24, 48, 72 }
   local grown = { 0, 30, 54, 78 }
@@ -439,6 +455,40 @@ test (
   end
 )
 
+test ('the cells a formula spills into draw its values', function ()
+  local s = sheet_of ({ A1 = '=SEQUENCE(3, 1, 41)' })
+  local html = table_of (s, 1, 4)
+  for _, n in ipairs ({ '>41<', '>42<', '>43<' }) do
+    ok (string.find (html, n, 1, true), n .. ' is drawn')
+  end
+end)
+
+test ('text does not run over the cells a formula spills into', function ()
+  local s = sheet_of ({ A2 = 'a long label that runs on', B1 = '=SEQUENCE(2)' })
+  local html = table_of (s, 1, 3)
+  eq (count (html, 'sheet%-grid%-o'), 0)
+  s:set (1, 2, '')
+  eq (count (table_of (s, 1, 3), 'sheet%-grid%-o'), 1)
+end)
+
+test ('an icon set draws its icon before the text', function ()
+  local s = sheet_of ({ A1 = '1', A2 = '9' })
+  s:set_field (
+    'rules',
+    { { range = 'A1:A2', type = 'icons', icons = 'arrows' } }
+  )
+  local html = table_of (s, 1, 2)
+  ok (
+    string.find (
+      html,
+      '<span class="sheet-grid-ic" style="color:#2b9348">▲</span>9',
+      1,
+      true
+    ),
+    html
+  )
+end)
+
 test ('hidden rows and columns draw nothing', function ()
   local s = sheet_of ({ A1 = 'a', A2 = 'b', B1 = 'c' })
   s:set_hidden ('row', 2, 2, true)
@@ -537,6 +587,142 @@ test (
     eq (tops, { 0, 30, 70, 94 })
   end
 )
+
+test (
+  'row heights follow only the cells written since they were last worked out',
+  function ()
+    local s = sheet_of ()
+    s:set_style ({ r1 = 1, c1 = 1, r2 = 200, c2 = 1 }, { wrap = true })
+    for row = 1, 200 do
+      s:set (row, 1, 'word ' .. row)
+    end
+    local measured = 0
+    ---@param text string
+    ---@return number
+    local function measure (text)
+      measured = measured + 1
+      -- Two lines of 16 pixels for long text, one for short.
+      return #text > 20 and 36 or 20
+    end
+    eq (draw.auto_heights (s, measure), {})
+    eq (measured, 200)
+    -- Wrapped text grows its row as it is typed, and only that cell is measured again.
+    s:set (7, 1, 'a much longer text that wraps')
+    eq (draw.auto_heights (s, measure), { [7] = 37 })
+    eq (measured, 201)
+    -- Nothing written, nothing measured.
+    draw.auto_heights (s, measure)
+    eq (measured, 201)
+    -- A big font and line breaks still grow rows, and clearing the text shrinks it back.
+    s:set (9, 2, 'one\ntwo')
+    s:set (7, 1, '')
+    eq (draw.auto_heights (s, measure), { [9] = 38 })
+    eq (measured, 201)
+    -- A new column width may change every wrapped row, so they are all measured again.
+    s:set_width (1, 300)
+    draw.auto_heights (s, measure)
+    eq (measured, 400)
+    -- Without a measure, wrapped text is guessed from its length.
+    s:set (3, 1, string.rep ('long words ', 30))
+    local grown = draw.auto_heights (s)
+    ok ((grown[3] or 0) > 24, 'the row grew')
+  end
+)
+
+test ('columns are drawn near the view, with padding for the rest', function ()
+  local s = sheet_of ({ A1 = 'frozen', E1 = 'shown', Z1 = 'far' })
+  s:set_freeze (0, 1)
+  local geo = geo_for (s)
+  local parts = draw.table_parts (s, geo, {
+    first = 1,
+    last = 5,
+    col_first = 4,
+    col_last = 8,
+    styles = draw.new_styles (),
+  })
+  eq ({ parts.col_first, parts.col_last }, { 4, 8 })
+  -- The header, the frozen A, a pad for B and C, D to H, and a pad for I to Z.
+  eq (count (parts.cols, '<col '), 1 + 1 + 1 + 5 + 1)
+  ok (string.find (parts.cols, 'width:200px', 1, true), 'B and C pad')
+  ok (string.find (parts.cols, 'width:1800px', 1, true), 'I to Z pad')
+  ok (
+    string.find (parts.head, '>A<', 1, true)
+      and string.find (parts.head, '>H<', 1, true)
+  )
+  ok (
+    not string.find (parts.head, '>C<', 1, true)
+      and not string.find (parts.head, '>Z<', 1, true)
+  )
+  local row1 = parts.rows[1]
+  eq (row1.key, 'r1')
+  ok (
+    string.find (row1.html, 'frozen', 1, true)
+      and string.find (row1.html, 'shown', 1, true)
+  )
+  ok (not string.find (row1.html, 'far', 1, true))
+  eq (count (row1.html, '<td'), 1 + 1 + 5 + 1)
+  eq (parts.width, W + 2600)
+  -- A merged block the window cuts is drawn whole.
+  s:merge ({ r1 = 2, c1 = 3, r2 = 2, c2 = 5 })
+  parts = draw.table_parts (s, geo_for (s), {
+    first = 1,
+    last = 5,
+    col_first = 4,
+    col_last = 8,
+    styles = draw.new_styles (),
+  })
+  eq (parts.col_first, 3)
+end)
+
+test ('only the rows that changed are written again', function ()
+  local s = sheet_of ({ A1 = 'one', A2 = 'two', A3 = 'three' })
+  local styles = draw.new_styles ()
+  ---@return Sheet.GridParts
+  local function parts_of ()
+    return draw.table_parts (s, geo_for (s), {
+      first = 1,
+      last = 10,
+      styles = styles,
+    })
+  end
+  local drawn, order = {}, {} ---@type Sheet.GridDrawn, string[]
+  ---@param parts Sheet.GridParts
+  ---@return Sheet.GridRowDiff
+  local function apply (parts)
+    local diff = draw.diff_rows (drawn, order, parts.rows)
+    for _, part in ipairs (diff.write) do
+      drawn[part.key] = part
+    end
+    for _, key in ipairs (diff.drop) do
+      drawn[key] = nil
+    end
+    order = diff.order
+    return diff
+  end
+  local first = apply (parts_of ())
+  eq (#first.write, 11)
+  ok (first.moved)
+  local again = apply (parts_of ())
+  eq (#again.write, 0)
+  ok (not again.moved)
+  s:set (2, 1, 'TWO')
+  local edit = apply (parts_of ())
+  eq (#edit.write, 1)
+  eq (edit.write[1].key, 'r2')
+  ok (not edit.moved)
+  -- Scrolling down drops the rows above and pads them.
+  local scrolled = draw.diff_rows (
+    drawn,
+    order,
+    draw.table_parts (s, geo_for (s), {
+      first = 4,
+      last = 12,
+      styles = styles,
+    }).rows
+  )
+  ok (scrolled.moved)
+  eq (scrolled.drop, { 'r1', 'r2', 'r3' })
+end)
 
 test ('charts go in the pane of their top left corner', function ()
   local s = sheet_of ()

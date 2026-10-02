@@ -1,7 +1,7 @@
 -- sheet_grid_act: the actions on the Sheet app grid's selection. Copy, cut and paste, clearing
 -- and filling, inserting, deleting and hiding rows and columns, freezing panes, sizes, and the
 -- measuring behind auto-fit. sheet_grid.lua installs it into the grid, and the commands in
--- init.lua call these functions.
+-- sheet_commands.lua call these functions.
 
 local calc = require ('sheet_grid_calc') --[[@as Sheet.GridCalcModule]]
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
@@ -271,6 +271,45 @@ function M.install (grid)
     })
   end
 
+  -- Links ----------------------------------------------------------------------------------
+
+  ---Follows the link on a cell. A place in the book, such as `#Sheet2!A1`, shows that sheet
+  ---and selects the cells. A web or mail address is copied, since the app opens no pages.
+  ---@param row integer
+  ---@param col integer
+  function G.follow_link (row, col)
+    local s, book = G.sheet (), G.cur_book
+    local link = s and s:link (row, col)
+    if not s or not book or not link then
+      return
+    end
+    if string.sub (link, 1, 1) ~= '#' then
+      app.system.clipboard (link)
+      env.say (
+        'info',
+        'Copied ' .. link .. '. Paste it in a browser to open it.'
+      )
+      return
+    end
+    local rect, sheet_name = model.parse_ref (string.sub (link, 2))
+    if not rect then
+      env.say ('warn', 'The link points at ' .. link .. ', which is not a cell.')
+      return
+    end
+    if sheet_name then
+      local target = book:find (sheet_name)
+      if not target then
+        env.say ('warn', 'There is no sheet named "' .. sheet_name .. '".')
+        return
+      end
+      local index = book:index_of (target)
+      if index and index ~= book.active then
+        G.show_sheet (index)
+      end
+    end
+    G.select (rect)
+  end
+
   -- Measuring ------------------------------------------------------------------------------
 
   ---The inline CSS for a style's font.
@@ -306,6 +345,41 @@ function M.install (grid)
         .. '</div>'
     )
     return (tonumber (G.measurer:get ('offsetWidth')) or 8) - 8
+  end
+
+  -- Wrapped texts already measured, by width, font and text.
+  local wrap_cache = {} ---@type table<string, number>
+  local wrap_count = 0
+
+  ---The height a text needs when it wraps in a column, measured once for each width, font
+  ---and text. Rows grow by this as wrapped text is typed.
+  ---@param text string
+  ---@param style Sheet.Style
+  ---@param width number
+  ---@return number
+  function G.measure_wrap (text, style, width)
+    local css = font_css (style)
+    local key = width .. '\0' .. css .. '\0' .. text
+    local hit = wrap_cache[key]
+    if hit then
+      return hit
+    end
+    G.measurer:html (
+      '<div style="width:'
+        .. math.max (1, width - 9)
+        .. 'px;white-space:pre-wrap;overflow-wrap:anywhere;'
+        .. css
+        .. '">'
+        .. calc.escape (text)
+        .. '</div>'
+    )
+    local h = tonumber (G.measurer:get ('offsetHeight')) or 0
+    if wrap_count >= 2000 then
+      wrap_cache, wrap_count = {}, 0
+    end
+    wrap_cache[key] = h
+    wrap_count = wrap_count + 1
+    return h
   end
 
   ---The widest of several texts, each in its own font, measured with one element.

@@ -33,6 +33,7 @@
     "edit.lua",
     "frames.lua",
     "gestures.lua",
+    "handbook/canvas.md",
     "init.lua",
     "node_html.lua",
     "style.lua",

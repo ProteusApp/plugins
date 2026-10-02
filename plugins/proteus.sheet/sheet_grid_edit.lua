@@ -401,6 +401,14 @@ function M.install (grid)
           message or 'That value is outside the rule for this cell.'
         )
       end
+      -- A formula that does not read, such as one with the wrong count of arguments, still
+      -- goes in and shows #ERROR!, and the message says why.
+      if formula.is_formula (text) then
+        local ast, problem = formula.parse (text)
+        if not ast then
+          env.say ('warn', problem or 'The formula does not read.')
+        end
+      end
     end
     close ()
     back_to (e)

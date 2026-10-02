@@ -1,11 +1,12 @@
 # Rebuilds index.json after a plugin or profile is merged, removed or changed on main. The
-# Proteus marketplace reads that file to list what was approved.
+# Proteus marketplace reads that file to list what was approved. A push that changes
+# index.json itself, or how it is built, rebuilds it too, so only this workflow writes it.
 name: Build the index
 
 on:
   push:
     branches: [main]
-    paths: ['plugins/**', 'profiles/**']
+    paths: ['plugins/**', 'profiles/**', 'index.json', 'removed.json', 'scripts/index.mjs', 'scripts/registry.mjs']
   workflow_dispatch:
 
 permissions:
@@ -28,6 +29,7 @@ jobs:
           node-version: 22
       - run: node scripts/check.mjs
       - run: node scripts/index.mjs
+      - run: node scripts/index.mjs --verify
       - name: Commit the index
         run: |
           if git diff --quiet -- index.json; then

@@ -343,6 +343,49 @@ function M.needs_rows (geo, sy, vh, first, last, slack)
   return last < geo.rows and seen_last + slack > last
 end
 
+---The scrolling columns in view, first and last.
+---@param geo Sheet.GridGeo
+---@param sx number
+---@param vw number
+---@return integer first
+---@return integer last
+function M.seen_cols (geo, sx, vw)
+  local first = M.index_at (geo.lefts, geo.fw + sx)
+  local last = M.index_at (geo.lefts, sx + math.max (0, vw - M.HEAD_W))
+  first = math.max (first, geo.fc + 1)
+  return first, math.max (first, last)
+end
+
+---The scrolling columns to draw: the ones in view plus `margin` more on each side.
+---@param geo Sheet.GridGeo
+---@param sx number
+---@param vw number
+---@param margin integer
+---@return integer first
+---@return integer last
+function M.draw_cols (geo, sx, vw, margin)
+  local first, last = M.seen_cols (geo, sx, vw)
+  return math.max (geo.fc + 1, first - margin),
+    math.min (geo.cols, last + margin)
+end
+
+---True when the columns in view come near the edge of the columns drawn, so the table needs
+---drawing again.
+---@param geo Sheet.GridGeo
+---@param sx number
+---@param vw number
+---@param first integer The first scrolling column drawn.
+---@param last integer The last column drawn.
+---@param slack integer
+---@return boolean
+function M.needs_cols (geo, sx, vw, first, last, slack)
+  local seen_first, seen_last = M.seen_cols (geo, sx, vw)
+  if first > geo.fc + 1 and seen_first - slack < first then
+    return true
+  end
+  return last < geo.cols and seen_last + slack > last
+end
+
 ---The block the fill handle fills when dragged to a cell: the source stretched down, up, right
 ---or left, whichever way the cell lies furthest. Nil while the cell is inside the source.
 ---@param src Sheet.Rect

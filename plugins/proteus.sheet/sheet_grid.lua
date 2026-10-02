@@ -1,11 +1,12 @@
--- sheet_grid: the Sheet app's grid. It draws the active sheet, keeps the selection, and handles
--- the mouse and the keys. sheet_grid_act.lua adds the actions on the selection, such as copy,
--- paste and inserting rows, sheet_grid_edit.lua adds editing and the formula bar, and
--- sheet_grid_tabs.lua the sheet tabs along the bottom. init.lua builds the controller from the
--- functions here.
+-- sheet_grid: the Sheet app's grid. It draws the active sheet and keeps the selection.
+-- sheet_grid_mouse.lua and sheet_grid_keys.lua handle the mouse and the keys,
+-- sheet_grid_act.lua adds the actions on the selection, such as copy, paste and inserting rows,
+-- sheet_grid_edit.lua adds editing and the formula bar, and sheet_grid_tabs.lua the sheet tabs
+-- along the bottom. init.lua builds the controller from the functions here.
 --
--- The grid is one HTML table, drawn from sheet_grid_draw.lua. Only rows near the view are
--- drawn in a long sheet. The boxes over the cells, such as the selection and the active cell,
+-- The grid is one HTML table, drawn from sheet_grid_draw.lua. Only the rows and columns near
+-- the view are drawn, and each row is its own element, written again only when its cells
+-- changed, so an edit rewrites the rows it touched rather than the whole table. The boxes over the cells, such as the selection and the active cell,
 -- are placed by arithmetic from the running sums of the row heights and column widths. Every
 -- box sits in four layers, one per pane of the frozen rows and columns, and each layer sticks
 -- or scrolls with its pane. So moving the selection rewrites one small style element, and
@@ -96,6 +97,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field srect? Proteus.Rect Where the scrolling box sits in the window.
 ---@field drawn_first integer
 ---@field drawn_last integer
+---@field drawn_cfirst integer The first scrolling column drawn.
+---@field drawn_clast integer The last column drawn.
 ---@field view_opts Sheet.ViewOptions
 ---@field chart_id? string
 ---@field drag? Sheet.GridDrag
@@ -126,6 +129,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field sel_rect fun(): Sheet.Rect
 ---@field cur_rect fun(): Sheet.Rect
 ---@field draw fun()
+---@field needs_draw fun(): boolean
+---@field measure_wrap? Sheet.MeasureWrap
 ---@field place fun()
 ---@field place_boxes fun()
 ---@field reveal fun(row: integer, col: integer)
@@ -168,6 +173,7 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field autofit fun(cols?: integer[])
 ---@field autofit_row fun(rows: integer[])
 ---@field fill_to_end fun()
+---@field follow_link fun(row: integer, col: integer)
 ---@field count_label fun(what: string, axis: 'row'|'col'): string
 ---@field stats_later fun()
 ---@field begin_edit fun(source: 'cell'|'bar', text: string, typed: boolean)
@@ -190,11 +196,15 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@class Sheet.GridModule
 local M = {}
 
--- A sheet with more rows than this draws only the rows near the view, plus a margin.
-local DRAW_ALL = 300
+-- A sheet with more rows than this draws only the rows near the view, plus a margin. Every
+-- sheet does, since only the rows that change are written again.
+local DRAW_ALL = 0
 local MARGIN = 60
 -- How close the view may come to the edge of the drawn rows before they are drawn again.
 local SLACK = 20
+-- The same for columns.
+local COL_MARGIN = 8
+local COL_SLACK = 3
 -- How many reference outlines can show at once.
 local REF_BOXES = 12
 local HEAD_W, HEAD_H = calc.HEAD_W, calc.HEAD_H
@@ -225,6 +235,7 @@ local CSS = [[
   background-color: var(--bg); vertical-align: bottom; white-space: nowrap; line-height: 1.25; }
 .sheet-grid-t td > div { max-height: var(--h, 19px); overflow: hidden; white-space: pre; }
 .sheet-grid-t td.sheet-grid-o { overflow: visible; }
+.sheet-grid-t .sheet-grid-ic { float: left; margin-right: 4px; }
 .sheet-grid-t td.sheet-grid-fc { position: sticky; z-index: 3; }
 .sheet-grid-t tr.sheet-grid-fr > td { position: sticky; z-index: 4; }
 .sheet-grid-t tr.sheet-grid-fr > td.sheet-grid-fc { z-index: 8; }
@@ -243,11 +254,12 @@ local CSS = [[
 .sheet-grid-t thead th.sheet-grid-fc, .sheet-grid-t tr.sheet-grid-fr > th { z-index: 13; }
 .sheet-grid-t thead th.sheet-grid-corner { left: 0; z-index: 14; }
 .sheet-grid-t thead th.sheet-grid-hid { box-shadow: inset 3px 0 0 -1px var(--fg-faint); }
-.sheet-grid-t tr.sheet-grid-pad td { padding: 0; border: 0; background: none; }
+.sheet-grid-t tr.sheet-grid-pad td, .sheet-grid-t td.sheet-grid-cp { padding: 0; border: 0; background: none; }
 .sheet-grid-nogrid .sheet-grid-t td { border-right-color: transparent; border-bottom-color: transparent; }
 .sheet-grid-cs { position: absolute; top: 0; right: -1px; width: 5px; height: 100%; cursor: col-resize; }
 .sheet-grid-rs { position: absolute; left: 0; bottom: -1px; height: 5px; width: 100%; cursor: row-resize; }
 .sheet-grid-cs:hover, .sheet-grid-rs:hover { background: var(--accent); }
+.sheet-grid-t td.sheet-grid-ln > div { color: var(--accent); text-decoration: underline; }
 .sheet-grid-t td.sheet-grid-nt { background-image: linear-gradient(225deg, var(--warning) 50%, transparent 50%);
   background-size: 8px 8px; background-position: right top; background-repeat: no-repeat; }
 .sheet-grid-t td.sheet-grid-dd, .sheet-grid-t td.sheet-grid-fb { padding-right: 18px; background-repeat: no-repeat;
@@ -321,24 +333,8 @@ local REF_COLORS = {
   'var(--danger)',
 }
 
----@type table<string, { [1]: integer, [2]: integer }>
-local ARROWS = {
-  ArrowUp = { -1, 0 },
-  ArrowDown = { 1, 0 },
-  ArrowLeft = { 0, -1 },
-  ArrowRight = { 0, 1 },
-}
-
 ---The box names every pane layer holds.
 local BOXES = { 'sel', 'copy', 'target', 'point', 'cur', 'frame' }
-
----@param rect Sheet.Rect
----@param r integer
----@param c integer
----@return boolean
-local function inside (rect, r, c)
-  return r >= rect.r1 and r <= rect.r2 and c >= rect.c1 and c <= rect.c2
-end
 
 ---@param app Proteus.App
 ---@param env Sheet.GridEnv
@@ -369,6 +365,8 @@ function M.new (app, env)
     vh = 600,
     drawn_first = 1,
     drawn_last = 0,
+    drawn_cfirst = 1,
+    drawn_clast = 0,
     view_opts = { gridlines = true, formulas = false },
     styles = draw.new_styles (),
     ref_css = '',
@@ -433,7 +431,17 @@ function M.new (app, env)
     G.pop,
   })
   G.holder = ui.div ({ class = 'sheet-grid-hold', G.edbox })
-  G.host = ui.div ({ class = 'sheet-grid-host' })
+  -- The table, with one element per drawn row, kept by key so a row is written only when it
+  -- changed.
+  local tcols = ui.h ('colgroup', {})
+  local thead = ui.h ('thead', {})
+  local tbody = ui.h ('tbody', {})
+  local tbl = ui.h ('table', { class = 'sheet-grid-t', tcols, thead, tbody })
+  local drawn = {} ---@type Sheet.GridDrawn
+  local row_els = {} ---@type table<string, Proteus.El>
+  local row_order = {} ---@type string[]
+  local table_done = { width = -1, cols = '', head = '' }
+  G.host = ui.div ({ class = 'sheet-grid-host', tbl })
   G.canvas = ui.div ({ class = 'sheet-grid-canvas', panes, G.holder, G.host })
   G.scroll = ui.div ({ class = 'sheet-grid-scroll', G.canvas })
   G.guide = ui.div ({ class = 'sheet-grid-guide' })
@@ -518,7 +526,8 @@ function M.new (app, env)
       or #grown.tops ~= #lay.tops
     then
       grown.sheet, grown.stamp, grown.model = s, s.book.stamp, lay.tops
-      grown.tops = draw.grow_tops (lay.tops, draw.auto_heights (s))
+      grown.tops =
+        draw.grow_tops (lay.tops, draw.auto_heights (s, G.measure_wrap))
     end
     G.geo = calc.geometry (grown.tops, lay.lefts, fr, fc)
     return G.geo
@@ -594,8 +603,107 @@ function M.new (app, env)
 
   -- Drawing --------------------------------------------------------------------------------
 
-  ---Draws the table again: the rows near the view, the classes of new looks, and the CSS that
-  ---places the frozen panes.
+  ---Empties the table, so the next draw writes every row.
+  local function clear_table ()
+    for _, el in pairs (row_els) do
+      el:remove ()
+    end
+    drawn, row_els, row_order = {}, {}, {}
+    table_done = { width = -1, cols = '', head = '' }
+    tcols:html ('')
+    thead:html ('')
+  end
+
+  ---Writes the parts of the table that changed: its width, its columns, its header, and the
+  ---rows whose class, style or cells changed. Rows that left the view go.
+  ---@param parts Sheet.GridParts
+  local function write_table (parts)
+    if parts.width ~= table_done.width then
+      table_done.width = parts.width
+      tbl:style ('width', parts.width .. 'px')
+    end
+    if parts.cols ~= table_done.cols then
+      table_done.cols = parts.cols
+      tcols:html (parts.cols)
+    end
+    if parts.head ~= table_done.head then
+      table_done.head = parts.head
+      thead:html (parts.head)
+    end
+    local diff = draw.diff_rows (drawn, row_order, parts.rows)
+    for _, key in ipairs (diff.drop) do
+      local el = row_els[key]
+      if el then
+        el:remove ()
+      end
+      row_els[key], drawn[key] = nil, nil
+    end
+    for _, part in ipairs (diff.write) do
+      local el = row_els[part.key]
+      local had = drawn[part.key]
+      if not el then
+        el = ui.h ('tr', {})
+        row_els[part.key] = el
+      end
+      if not had or had.class ~= part.class then
+        if part.class then
+          el:attr ('class', part.class)
+        else
+          el:unattr ('class')
+        end
+      end
+      if not had or had.style ~= part.style then
+        if part.style then
+          el:attr ('style', part.style)
+        else
+          el:unattr ('style')
+        end
+      end
+      if not had or had.html ~= part.html then
+        el:html (part.html)
+      end
+      drawn[part.key] = part
+    end
+    if diff.moved then
+      -- Rows that stay keep their elements. When they are still in order, as after a scroll
+      -- or an edit, only the new rows go in, each before the row that follows it. Otherwise
+      -- every row moves to its place.
+      local was = {} ---@type table<string, integer>
+      for i, key in ipairs (row_order) do
+        was[key] = i
+      end
+      local last, sorted = 0, true
+      for _, key in ipairs (diff.order) do
+        local at = was[key]
+        if at then
+          if at < last then
+            sorted = false
+            break
+          end
+          last = at
+        end
+      end
+      if sorted then
+        local ref = nil ---@type Proteus.El?
+        for i = #diff.order, 1, -1 do
+          local key = diff.order[i]
+          local el = row_els[key]
+          if not was[key] then
+            tbody:insert_before (el, ref)
+          end
+          ref = el
+        end
+      else
+        for _, key in ipairs (diff.order) do
+          tbody:append (row_els[key])
+        end
+      end
+    end
+    row_order = diff.order
+  end
+
+  ---Draws the table again: the rows and columns near the view, the classes of new looks, and
+  ---the CSS that places the frozen panes. Only the rows that changed reach the screen.
   function G.draw ()
     local s = G.sheet ()
     if not s then
@@ -604,17 +712,21 @@ function M.new (app, env)
     read_view ()
     local geo = make_geo () --[[@as Sheet.GridGeo]]
     local first, last = calc.draw_rows (geo, G.sy, G.vh, MARGIN, DRAW_ALL)
+    local cfirst, clast = calc.draw_cols (geo, G.sx, G.vw, COL_MARGIN)
     G.drawn_first, G.drawn_last = first, last
-    local ok, html = pcall (draw.table_html, s, geo, {
+    local ok, parts = pcall (draw.table_parts, s, geo, {
       first = first,
       last = last,
+      col_first = cfirst,
+      col_last = clast,
       formulas = G.view_opts.formulas,
       styles = G.styles,
     })
     if not ok then
-      env.say ('error', 'The sheet could not be drawn: ' .. tostring (html))
+      env.say ('error', 'The sheet could not be drawn: ' .. tostring (parts))
       return
     end
+    G.drawn_cfirst, G.drawn_clast = parts.col_first, parts.col_last
     if G.styles.stamp ~= written.cells then
       written.cells = G.styles.stamp
       cell_style:set (draw.styles_css (G.styles))
@@ -624,7 +736,7 @@ function M.new (app, env)
       written.frame = frame
       frame_style:set (frame)
     end
-    G.host:html (html)
+    write_table (parts)
     G.area:class ('sheet-grid-nogrid', not G.view_opts.gridlines)
     draw_charts ()
     G.place ()
@@ -820,6 +932,24 @@ function M.new (app, env)
     env.emit ('selection', G.sel.r, G.sel.c)
   end
 
+  ---True when the view came near the edge of the rows or columns drawn.
+  ---@return boolean
+  function G.needs_draw ()
+    local geo = G.geo
+    if not geo then
+      return false
+    end
+    return calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
+      or calc.needs_cols (
+        geo,
+        G.sx,
+        G.vw,
+        G.drawn_cfirst,
+        G.drawn_clast,
+        COL_SLACK
+      )
+  end
+
   ---Scrolls so a cell shows, and draws more rows when it lies past the ones drawn.
   ---@param row integer
   ---@param col integer
@@ -841,21 +971,15 @@ function M.new (app, env)
     if ny ~= G.sy then
       G.scroll:set ('scrollTop', ny)
       G.sy = ny
-      if
-        calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-      then
-        G.draw ()
-      end
+    end
+    if G.needs_draw () then
+      G.draw ()
     end
   end
 
   G.scroll:on ('scroll', function ()
     read_scroll ()
-    local geo = G.geo
-    if
-      geo
-      and calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-    then
+    if G.needs_draw () then
       G.draw ()
     end
     G.tip:style ('display', 'none')
@@ -1130,7 +1254,7 @@ function M.new (app, env)
       G.sheet_shown ()
     else
       G.geo = nil
-      G.host:html ('')
+      clear_table ()
       G.tabs_draw ()
     end
   end
@@ -1406,737 +1530,24 @@ function M.new (app, env)
     env.emit ('chart', id)
   end
 
-  -- The mouse ------------------------------------------------------------------------------
+  -- The mouse and the keys -----------------------------------------------------------------
 
-  local stop_scroller = nil ---@type fun()?
-
-  ---@param x number
-  ---@param y number
-  local function drag_to (x, y)
-    local d = G.drag
-    local s, geo = G.sheet (), G.geo
-    if not d or not s or not geo then
-      return
-    end
-    d.x, d.y = x, y
-    local sr = scroll_rect ()
-    if d.kind == 'csize' or d.kind == 'rsize' then
-      local col = d.kind == 'csize'
-      local delta = (col and x or y) - d.start
-      local lo = col and 24 or 12
-      local size = math.max (lo, (d.size or 0) + delta)
-      local i = d.index or 1
-      local edges = col and geo.lefts or geo.tops
-      local frozen = col and geo.fc or geo.fr
-      local head = col and HEAD_W or HEAD_H
-      local scroll = col and G.sx or G.sy
-      local at = head + edges[i] + size - (i > frozen and scroll or 0)
-      if col then
-        G.guide:style ({
-          display = 'block',
-          left = at .. 'px',
-          top = '0',
-          width = '2px',
-          height = '100%',
-        })
-      else
-        G.guide:style ({
-          display = 'block',
-          top = at .. 'px',
-          left = '0',
-          height = '2px',
-          width = '100%',
-        })
-      end
-      return
-    end
-    if d.kind == 'chart' then
-      local box = d.box
-      if not box or not d.chart then
-        return
-      end
-      local now = draw.drag_box (
-        box,
-        d.handle or 'move',
-        x - (d.row or 0),
-        y - (d.col or 0),
-        60
-      )
-      d.now = now
-      drag_style:set (
-        '.sheet-grid-chart[data-item="chart:'
-          .. calc.escape (d.chart)
-          .. '"]{left:'
-          .. (HEAD_W + now.x)
-          .. 'px!important;top:'
-          .. (HEAD_H + map_y (now.y))
-          .. 'px!important;width:'
-          .. now.w
-          .. 'px!important;height:'
-          .. now.h
-          .. 'px!important}'
-      )
-      return
-    end
-    local hit = calc.hit (geo, x - sr.left, y - sr.top, G.sx, G.sy)
-    local key = hit.row .. ',' .. hit.col
-    if key == d.last then
-      return
-    end
-    d.last = key
-    if d.kind == 'cells' then
-      G.sel.er, G.sel.ec = hit.row, hit.col
-      G.place ()
-    elseif d.kind == 'rows' then
-      select_rows (hit.row, true)
-    elseif d.kind == 'cols' then
-      select_cols (hit.col, true)
-    elseif d.kind == 'point' then
-      G.point_at (hit.row, hit.col, true)
-    elseif d.kind == 'fill' then
-      d.target = calc.fill_target (G.sel_rect (), hit.row, hit.col)
-      G.set_box ('target', d.target)
-    elseif d.kind == 'move' then
-      d.target = calc.move_target (
-        G.sel_rect (),
-        d.row or 1,
-        d.col or 1,
-        hit.row,
-        hit.col,
-        s.rows,
-        s.cols
-      )
-      G.set_box ('target', d.target)
-    end
-  end
-
-  ---Scrolls while a drag holds the pointer past the edge of the view.
-  local function auto_scroll ()
-    local d = G.drag
-    local geo = G.geo
-    if not d or not geo then
-      return
-    end
-    local kinds = {
-      cells = true,
-      rows = true,
-      cols = true,
-      point = true,
-      fill = true,
-      move = true,
-    }
-    if not kinds[d.kind] then
-      return
-    end
-    local sr = scroll_rect ()
-    local x, y = d.x - sr.left, d.y - sr.top
-    local dx, dy = 0, 0
-    if x > G.vw - 4 then
-      dx = 30
-    elseif x < HEAD_W + geo.fw and G.sx > 0 and d.kind ~= 'rows' then
-      dx = -30
-    end
-    if y > G.vh - 4 then
-      dy = 24
-    elseif y < HEAD_H + geo.fh and G.sy > 0 and d.kind ~= 'cols' then
-      dy = -24
-    end
-    if dx == 0 and dy == 0 then
-      if stop_scroller then
-        stop_scroller ()
-        stop_scroller = nil
-      end
-      return
-    end
-    if stop_scroller then
-      return
-    end
-    stop_scroller = app.timer.every (40, function ()
-      local dd = G.drag
-      if not dd then
-        if stop_scroller then
-          stop_scroller ()
-          stop_scroller = nil
-        end
-        return
-      end
-      if dx ~= 0 then
-        G.scroll:set ('scrollLeft', math.max (0, G.sx + dx))
-      end
-      if dy ~= 0 then
-        G.scroll:set ('scrollTop', math.max (0, G.sy + dy))
-      end
-      read_scroll ()
-      if
-        calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-      then
-        G.draw ()
-      end
-      dd.last = nil
-      drag_to (dd.x, dd.y)
-    end)
-  end
-
-  ---@param kind 'cells'|'rows'|'cols'|'point'|'fill'|'move'|'csize'|'rsize'|'chart'
-  ---@param ev Proteus.DomEvent
-  ---@return Sheet.GridDrag
-  local function start_drag (kind, ev)
-    local d = { kind = kind, start = 0, x = ev.x or 0, y = ev.y or 0 } ---@type Sheet.GridDrag
-    G.drag = d
-    if kind ~= 'fill' then
-      G.area:class ('sheet-grid-busy', true)
-    end
-    return d
-  end
-
-  local function end_drag ()
-    local d = G.drag
-    G.drag = nil
-    G.area:class ('sheet-grid-busy', false)
-    if stop_scroller then
-      stop_scroller ()
-      stop_scroller = nil
-    end
-    return d
-  end
-
-  app.dom.on_global ('mousemove', function (ev)
-    if G.drag then
-      drag_to (ev.x or 0, ev.y or 0)
-      auto_scroll ()
-    end
-    return nil
-  end)
-
-  app.dom.on_global ('mouseup', function ()
-    local d = end_drag ()
-    if not d then
-      return nil
-    end
-    local s = G.sheet ()
-    if not s then
-      return nil
-    end
-    if d.kind == 'csize' or d.kind == 'rsize' then
-      G.guide:style ('display', 'none')
-      local col = d.kind == 'csize'
-      local delta = (col and d.x or d.y) - d.start
-      local size = math.max (col and 24 or 12, (d.size or 0) + delta)
-      if math.abs (delta) >= 1 and d.index then
-        local rect = G.sel_rect ()
-        local idx = d.index --[[@as integer]]
-        local lo, hi = idx, idx
-        -- A size set on one of several whole rows or columns goes on all of them.
-        if
-          col
-          and rect.r1 == 1
-          and rect.r2 >= s.rows
-          and d.index >= rect.c1
-          and d.index <= rect.c2
-        then
-          lo, hi = rect.c1, rect.c2
-        elseif
-          not col
-          and rect.c1 == 1
-          and rect.c2 >= s.cols
-          and d.index >= rect.r1
-          and d.index <= rect.r2
-        then
-          lo, hi = rect.r1, rect.r2
-        end
-        G.change (col and 'Column width' or 'Row height', function (_, sh)
-          if col then
-            sh:set_widths (lo, hi, size)
-          else
-            sh:set_heights (lo, hi, size)
-          end
-        end)
-      end
-    elseif d.kind == 'fill' then
-      G.set_box ('target', nil)
-      local target = d.target
-      if target then
-        local src = G.sel_rect ()
-        local done = G.change ('Fill', function (_, sh)
-          return ops.fill (sh, src, target)
-        end) --[[@as Sheet.Rect?]]
-        G.select (done or target)
-      end
-    elseif d.kind == 'move' then
-      G.set_box ('target', nil)
-      local target = d.target
-      local src = G.sel_rect ()
-      if target and (target.r1 ~= src.r1 or target.c1 ~= src.c1) then
-        G.change ('Move', function (_, sh)
-          local taken = sh:copy (src)
-          taken.cut = true
-          sh:paste (target.r1, target.c1, taken)
-        end)
-        G.drop_clip ()
-        G.select (target)
-      end
-    elseif d.kind == 'chart' then
-      local now, id = d.now, d.chart
-      drag_style:set ('')
-      if now and id and d.box then
-        local b = d.box --[[@as Sheet.GridBox]]
-        local box = now --[[@as Sheet.GridBox]]
-        if box.x ~= b.x or box.y ~= b.y or box.w ~= b.w or box.h ~= b.h then
-          G.change ('Move chart', function (_, sh)
-            ops.update_chart (sh, id, {
-              x = math.floor (box.x + 0.5),
-              y = math.floor (box.y + 0.5),
-              w = math.floor (box.w + 0.5),
-              h = math.floor (box.h + 0.5),
-            })
-          end)
-        end
-      end
-    end
-    G.place_boxes ()
-    return nil
-  end)
-
-  ---True when a point lies in the button area at the right of a cell.
-  ---@param x number
-  ---@param row integer
-  ---@param col integer
-  ---@return boolean
-  local function on_button (x, row, col)
-    local rect = G.cell_rect (row, col)
-    return rect ~= nil and x >= rect.right - calc.BUTTON_W and x <= rect.right
-  end
-
-  ---Opens the filter menu of a column, or the dropdown of a list cell, when a click lands on
-  ---its button. Returns true when it did.
-  ---@param x number
-  ---@param row integer
-  ---@param col integer
-  ---@return boolean
-  local function press_button (x, row, col)
-    local s = G.sheet ()
-    if not s then
-      return false
-    end
-    local f = s.filter
-    if
-      f
-      and row == f.rect.r1
-      and col >= f.rect.c1
-      and col <= f.rect.c2
-      and on_button (x, row, col)
-    then
-      local rect = G.cell_rect (row, col) --[[@as Proteus.Rect]]
-      local bx = rect.right - calc.BUTTON_W
-      env.emit ('filter_menu', col, {
-        x = bx,
-        y = rect.top,
-        w = calc.BUTTON_W,
-        h = rect.h,
-        left = bx,
-        top = rect.top,
-        right = rect.right,
-        bottom = rect.bottom,
-      })
-      return true
-    end
-    if ops.dropdown (s, row, col) and on_button (x, row, col) then
-      G.open_dropdown (row, col)
-      return true
-    end
-    return false
-  end
-
-  local last_fill = 0
-  -- When a double press on the fill handle last filled, so the browser's double-click that
-  -- follows, now over another cell, does not start an edit there.
-  local filled_at = 0
-
-  G.scroll:on ('mouseenter', function ()
-    G.srect = nil
-    return nil
-  end)
-
-  G.scroll:on ('mousedown', function (ev)
-    local s = G.sheet ()
-    if not s or not G.geo then
-      return nil
-    end
-    G.srect = nil
-    local item = ev.item or ''
-    local x, y = ev.x or 0, ev.y or 0
-    G.tip:style ('display', 'none')
-    -- Charts.
-    local chart_id, handle = string.match (item, '^chart:(.-):(%a+)$')
-    if not chart_id then
-      chart_id = string.match (item, '^chart:(.+)$')
-    end
-    if chart_id then
-      if G.edit then
-        G.finish_edit (0, 0)
-      end
-      local spec = ops.chart_by_id (s, chart_id)
-      if spec and ev.button == 0 then
-        G.select_chart (chart_id)
-        local d = start_drag ('chart', ev)
-        d.chart = chart_id
-        d.handle = handle or 'move'
-        d.box = { x = spec.x, y = spec.y, w = spec.w, h = spec.h }
-        d.row, d.col = math.floor (x), math.floor (y)
-      elseif spec then
-        G.select_chart (chart_id)
-      end
-      G.focus ()
-      return 'prevent'
-    end
-    local hit = G.hit_at (x, y) --[[@as Sheet.GridHit]]
-    if ev.button == 2 then
-      -- A right-click outside the selection selects what is under it first.
-      if G.edit then
-        return nil
-      end
-      local rect = G.sel_rect ()
-      if hit.zone == 'cell' and not inside (rect, hit.row, hit.col) then
-        G.select_cell (hit.row, hit.col)
-      elseif
-        hit.zone == 'col'
-        and not (
-          hit.col >= rect.c1
-          and hit.col <= rect.c2
-          and rect.r1 == 1
-          and rect.r2 >= s.rows
-        )
-      then
-        select_cols (hit.col)
-      elseif
-        hit.zone == 'row'
-        and not (
-          hit.row >= rect.r1
-          and hit.row <= rect.r2
-          and rect.c1 == 1
-          and rect.c2 >= s.cols
-        )
-      then
-        select_rows (hit.row)
-      end
-      G.focus ()
-      return 'prevent'
-    end
-    if ev.button ~= 0 then
-      return nil
-    end
-    local csize = tonumber (string.match (item, '^csize:(%d+)$'))
-    local rsize = tonumber (string.match (item, '^rsize:(%d+)$'))
-    if csize or rsize then
-      if G.edit then
-        G.finish_edit (0, 0)
-      end
-      local d = start_drag (csize and 'csize' or 'rsize', ev)
-      d.index = math.floor (csize or rsize --[[@as number]])
-      d.start = csize and x or y
-      d.size = csize and s:width (d.index) or s:height (d.index)
-      drag_to (x, y)
-      return 'prevent'
-    end
-    if item == 'fill' and not G.edit then
-      -- The handle hides while it is dragged, so a double-click never reaches it. A second
-      -- press soon after the first counts as one instead.
-      local now = app.util.now ()
-      if now - last_fill < 400 then
-        last_fill = 0
-        filled_at = now
-        G.fill_to_end ()
-        return 'prevent'
-      end
-      last_fill = now
-      start_drag ('fill', ev)
-      return 'prevent'
-    end
-    if item == 'move' and not G.edit then
-      local d = start_drag ('move', ev)
-      d.row, d.col = hit.row, hit.col
-      d.last = hit.row .. ',' .. hit.col
-      return 'prevent'
-    end
-    if G.edit then
-      if
-        hit.zone == 'cell'
-        and G.point_at (
-          hit.row,
-          hit.col,
-          ev.shift == true and G.edit.point ~= nil
-        )
-      then
-        local d = start_drag ('point', ev)
-        d.last = hit.row .. ',' .. hit.col
-        return 'prevent'
-      end
-      if not G.finish_edit (0, 0) then
-        return 'prevent'
-      end
-    end
-    if hit.zone == 'corner' then
-      G.select ({ r1 = 1, c1 = 1, r2 = s.rows, c2 = s.cols })
-    elseif hit.zone == 'col' then
-      select_cols (hit.col, ev.shift)
-      local d = start_drag ('cols', ev)
-      d.last = hit.row .. ',' .. hit.col
-    elseif hit.zone == 'row' then
-      select_rows (hit.row, ev.shift)
-      local d = start_drag ('rows', ev)
-      d.last = hit.row .. ',' .. hit.col
-    elseif not ev.shift and press_button (x, hit.row, hit.col) then
-      G.select_cell (hit.row, hit.col)
-    else
-      G.select_cell (hit.row, hit.col, ev.shift)
-      local d = start_drag ('cells', ev)
-      d.last = hit.row .. ',' .. hit.col
-    end
-    G.focus ()
-    return 'prevent'
-  end)
-
-  G.scroll:on ('dblclick', function (ev)
-    local s = G.sheet ()
-    if not s then
-      return nil
-    end
-    local item = ev.item or ''
-    local chart_id = string.match (item, '^chart:([^:]+)')
-    if chart_id then
-      open_chart (chart_id)
-      return 'prevent'
-    end
-    if item == 'fill' or app.util.now () - filled_at < 600 then
-      return 'prevent'
-    end
-    local csize = tonumber (string.match (item, '^csize:(%d+)$'))
-    if csize then
-      local rect = G.sel_rect ()
-      local cols = { math.floor (csize) } ---@type integer[]
-      if
-        rect.r1 == 1
-        and rect.r2 >= s.rows
-        and csize >= rect.c1
-        and csize <= rect.c2
-      then
-        cols = {}
-        for c = rect.c1, rect.c2 do
-          cols[#cols + 1] = c
-        end
-      end
-      G.autofit (cols)
-      return 'prevent'
-    end
-    local rsize = tonumber (string.match (item, '^rsize:(%d+)$'))
-    if rsize then
-      G.autofit_row ({ math.floor (rsize) })
-      return 'prevent'
-    end
-    local hit = G.hit_at (ev.x or 0, ev.y or 0)
-    if hit and hit.zone == 'cell' and not G.edit then
-      if press_button (ev.x or 0, hit.row, hit.col) then
-        return 'prevent'
-      end
-      G.select_cell (hit.row, hit.col)
-      G.begin_edit ('cell', s:edit_text (G.sel.r, G.sel.c), false)
-      return 'prevent'
-    end
-    return nil
-  end)
-
-  -- Notes show beside their cell while the pointer rests on it.
-  local tip_cell = ''
-  local cancel_tip = nil ---@type fun()?
-  G.scroll:on ('mousemove', function (ev)
-    if G.drag then
-      return nil
-    end
-    local s = G.sheet ()
-    local hit = s and G.hit_at (ev.x or 0, ev.y or 0)
-    local key = ''
-    local note = nil ---@type string?
-    if
-      s
-      and hit
-      and hit.zone == 'cell'
-      and hit.past_x == 0
-      and hit.past_y == 0
-    then
-      local m = s:merge_at (hit.row, hit.col)
-      local r, c = hit.row, hit.col
-      if m then
-        r, c = m.r1, m.c1
-      end
-      note = s:note (r, c)
-      if note then
-        key = r .. ',' .. c
-      end
-    end
-    if key == tip_cell then
-      return nil
-    end
-    tip_cell = key
-    if cancel_tip then
-      cancel_tip ()
-      cancel_tip = nil
-    end
-    G.tip:style ('display', 'none')
-    if note and hit then
-      local text = note
-      local row, col = hit.row, hit.col
-      cancel_tip = app.timer.after (250, function ()
-        cancel_tip = nil
-        local rect = G.cell_rect (row, col)
-        if not rect or G.drag or G.edit then
-          return
-        end
-        G.tip:text (text)
-        G.tip:style ({
-          display = 'block',
-          left = (rect.right + 6) .. 'px',
-          top = rect.top .. 'px',
-        })
-      end)
-    end
-    return nil
-  end)
-
-  G.scroll:on ('mouseleave', function ()
-    tip_cell = ''
-    if cancel_tip then
-      cancel_tip ()
-      cancel_tip = nil
-    end
-    G.tip:style ('display', 'none')
-    return nil
-  end)
-
-  -- Keys -----------------------------------------------------------------------------------
-
-  ---Keys on the grid while no cell is being edited. Shortcuts that belong to commands reach
-  ---core.keys first.
-  ---@param ev Proteus.DomEvent
-  ---@return Proteus.EventResult
-  function G.grid_key (ev)
-    local s = G.sheet ()
-    if not s or ev.composing then
-      return nil
-    end
-    local key = ev.key or ''
-    local mod = ev.ctrl == true or ev.meta == true
-    if G.chart_id then
-      if key == 'Delete' or key == 'Backspace' then
-        delete_chart ()
-        return 'prevent'
-      end
-      if key == 'Escape' then
-        G.select_chart (nil)
-        return 'prevent'
-      end
-      if not mod and #key == 1 then
-        G.select_chart (nil)
-      end
-    end
-    local dir = ARROWS[key]
-    if dir then
-      if
-        key == 'ArrowDown'
-        and ev.alt
-        and ops.dropdown (s, G.sel.r, G.sel.c)
-      then
-        G.open_dropdown (G.sel.r, G.sel.c)
-        return 'prevent'
-      end
-      G.move (dir[1], dir[2], ev.shift == true, mod)
-      return 'prevent'
-    end
-    if key == 'Enter' then
-      if mod then
-        return 'prevent'
-      end
-      local text = s:edit_text (G.sel.r, G.sel.c)
-      if
-        not ev.shift
-        and text ~= ''
-        and G.sel_rect ().r1 == G.sel_rect ().r2
-      then
-        G.begin_edit ('cell', text, false)
-      else
-        G.move (ev.shift and -1 or 1, 0)
-      end
-      return 'prevent'
-    end
-    if key == 'Tab' then
-      G.move (0, ev.shift and -1 or 1)
-      return 'prevent'
-    end
-    if key == 'Home' then
-      if mod then
-        -- A1 may sit in a frozen pane, where it shows at any scroll, so scroll back too.
-        G.scroll:set ('scrollLeft', 0)
-        G.scroll:set ('scrollTop', 0)
-        read_scroll ()
-        G.select_cell (1, 1, ev.shift)
-        G.draw ()
-      else
-        G.select_cell (G.sel.r, 1, ev.shift)
-      end
-      return 'prevent'
-    end
-    if key == 'End' and mod then
-      local rows, cols = s:used ()
-      G.select_cell (math.max (1, rows), math.max (1, cols), ev.shift)
-      return 'prevent'
-    end
-    if (key == 'PageDown' or key == 'PageUp') and not mod then
-      local geo = G.geo
-      local page = 20
-      if geo then
-        local first, last = calc.seen_rows (geo, G.sy, G.vh)
-        page = math.max (1, last - first - 1)
-      end
-      local sign = key == 'PageDown' and 1 or -1
-      local target = math.max (
-        1,
-        math.min (s.rows, (ev.shift and G.sel.er or G.sel.r) + sign * page)
-      )
-      if not ev.shift then
-        G.scroll:set (
-          'scrollTop',
-          math.max (0, G.sy + sign * (G.vh - HEAD_H - (geo and geo.fh or 0)))
-        )
-        read_scroll ()
-      end
-      G.select_cell (target, ev.shift and G.sel.ec or G.sel.c, ev.shift)
-      return 'prevent'
-    end
-    if key == 'F2' then
-      G.begin_edit ('cell', s:edit_text (G.sel.r, G.sel.c), false)
-      return 'prevent'
-    end
-    if key == 'Delete' or key == 'Backspace' then
-      G.clear ()
-      return 'prevent'
-    end
-    if key == 'Escape' then
-      G.drop_clip ()
-      return 'prevent'
-    end
-    if key == ' ' and (ev.shift or mod) and not ev.alt then
-      if mod then
-        select_cols (G.sel.c, false, true)
-      else
-        select_rows (G.sel.r, false, true)
-      end
-      return 'prevent'
-    end
-    if mod and string.lower (key) == 'v' and ev.shift then
-      G.paste_mode = { only = 'values' }
-    end
-    -- Anything else types into the waiting editor box. Ctrl+V pastes into it.
-    return nil
-  end
+  ---The parts of the grid that only its own modules use.
+  ---@class Sheet.GridKit
+  local kit = {
+    drag_style = drag_style,
+    read_scroll = read_scroll,
+    map_y = map_y,
+    scroll_rect = scroll_rect,
+    select_cols = select_cols,
+    select_rows = select_rows,
+    open_chart = open_chart,
+    delete_chart = delete_chart,
+  }
+  local mouse_mod = require ('sheet_grid_mouse') --[[@as Sheet.GridMouseModule]]
+  local keys_mod = require ('sheet_grid_keys') --[[@as Sheet.GridKeysModule]]
+  mouse_mod.install (G, kit)
+  keys_mod.install (G, kit)
 
   -- The other parts ------------------------------------------------------------------------
 

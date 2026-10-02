@@ -1,0 +1,23 @@
+local css = require ('api_css') --[[@as string]]
+
+test ('api_css holds the styles of each part of the screen', function ()
+  ok (type (css) == 'string')
+  for _, class in ipairs ({
+    'api',
+    'api-editor',
+    'api-kv',
+    'api-res',
+    'api-list',
+    'api-hrow',
+    'api-env-msg',
+  }) do
+    ok (css:find ('.' .. class .. ' ', 1, true), 'no rule for .' .. class)
+  end
+end)
+
+test ('api_css uses no selector a restricted plugin loses', function ()
+  -- The app drops these from a restricted plugin's CSS, so a rule with one would never apply.
+  for _, pattern in ipairs ({ ':has%(', ':host%-context%(', ' of ' }) do
+    ok (not css:find (pattern), 'the CSS uses ' .. pattern)
+  end
+end)
