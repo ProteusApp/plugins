@@ -10,10 +10,10 @@
 -- A folder named when the app starts opens first, as in `proteus C:\code\app` or
 -- `proteus --folder C:\code\app`. Otherwise the folder that was open last opens again.
 --
--- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins, and a
--- copy of any file that wins over the workspace and builtin ones. The kernel mounts it before
--- any plugin loads, so this plugin tells the kernel which folder is open. A `.proteus` folder
--- can run code, so it stays off until the user trusts the folder.
+-- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins of its
+-- own and profiles. The kernel mounts it before any plugin loads, so this plugin tells the
+-- kernel which folder is open. A `.proteus` folder can run code, so it stays off until the
+-- user trusts the folder.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
 
@@ -41,7 +41,7 @@ local EXCLUDE = {
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.0.0',
+  version = '1.0.1',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
@@ -342,7 +342,7 @@ return {
         return
       end
       notify.warn (
-        'This folder has a .proteus folder. It can change settings and run plugins, so it stays off until you trust the folder.',
+        'This folder has a .proteus folder. It can change settings and add plugins, and a plugin you then allow a permission such as process gets full access to this computer. It stays off until you trust the folder.',
         { timeout = 0, action = { label = 'Trust Folder', run = trust } }
       )
     end

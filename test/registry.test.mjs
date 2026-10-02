@@ -196,13 +196,23 @@ test('textProblem takes readable text only', () => {
 
 test('validate checks permissions, folders and requires', () => {
   const problems = validate(
-    good({ permissions: ['net', 'root'], folders: ['shaders', 'plugins', '../x'], requires: { proteus: '~>1' } }),
+    good({
+      permissions: ['net', 'root'],
+      folders: ['shaders', 'plugins', '../x'],
+      requires: { proteus: '~>1' },
+      files: { 'init.lua': "return { permissions = { 'net', 'root' } }" },
+    }),
     { reserved },
   );
   assert.equal(problems.length, 4, problems.join('\n'));
   assert.deepEqual(
     validate(
-      good({ permissions: ['net'], folders: ['shaders'], requires: { proteus: '>=0.2.0 <1', features: ['webview'] } }),
+      good({
+        permissions: ['net'],
+        folders: ['shaders'],
+        requires: { proteus: '>=0.2.0 <1', features: ['webview'] },
+        files: { 'init.lua': "return { permissions = { 'net' } }" },
+      }),
       { reserved },
     ),
     [],
@@ -369,4 +379,32 @@ test('a vendored file may have long lines, when vendor.json vouches for it', () 
   assert.match(vendorOf({ 'lib/built.js': built, 'vendor.json': vendor({ ...good, source: 'file:///etc/passwd' }) }).problems[0], /source/);
   assert.match(vendorOf({ 'vendor.json': '{' }).problems[0], /not valid JSON/);
   assert.equal(textProblem('lib/built.js', built.replace('1;', '\u0000;'), { vendored: true }) !== null, true, 'control characters still count');
+});
+
+test('init.lua must write its permissions as a literal list', () => {
+  const withInit = (text, permissions) => good({ permissions, files: { 'init.lua': text } });
+  assert.deepEqual(validate(withInit("return {\n  permissions = { 'net', \"files\" },\n}", ['files', 'net']), { reserved }), []);
+  assert.deepEqual(validate(withInit('return { name = "x" }', []), { reserved }), [], 'no permissions at all');
+  assert.deepEqual(
+    validate(withInit("-- permissions = os.time ()\nreturn { permissions = {}, requires = { features = { 'permissions' } } }", []), { reserved }),
+    [],
+    'comments and other strings do not count',
+  );
+  const bad = [
+    "return { permissions = os.time () > 1793000000 and { 'process' } or {} }",
+    "local p = { 'net' }\nreturn { permissions = p }",
+    "local m = { permissions = {} }\nm.permissions = { 'process' }\nreturn m",
+    "local m = { permissions = {} }\nm.permissions[1] = 'process'\nreturn m",
+    "local m = { permissions = {} }\nm['permissions'] = { 'process' }\nreturn m",
+    "return { permissions = { 'pro' .. 'cess' } }",
+    "return { permissions = { 'net\\0' } }",
+  ];
+  for (const text of bad) {
+    assert.match(validate(withInit(text, []), { reserved }).join('\n'), /literal|list of plain names/, text);
+  }
+  assert.match(
+    validate(withInit("return { permissions = { 'net' } }", ['net', 'process']), { reserved }).join('\n'),
+    /not the ones the plugin declares/,
+  );
+  assert.match(validate(withInit("return { name = 'x' } --[[ open", []), { reserved }).join('\n'), /does not end/);
 });
