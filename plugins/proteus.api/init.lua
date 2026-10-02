@@ -574,11 +574,13 @@ return {
     local function kv_grid (get, changed, files)
       local el = ui.div ({ class = 'api-kv' })
 
+      -- Each row is an element of its own, so a new blank row can be added after the one
+      -- being typed in without drawing the rows again, which would move the cursor.
       ---@param i integer
       ---@param r Http.Row
       ---@param with_files boolean
-      ---@return string
-      local function row_html (i, r, with_files)
+      ---@return Proteus.El
+      local function row_el (i, r, with_files)
         local n = tostring (i)
         local value ---@type string
         if r.file_name then
@@ -613,9 +615,7 @@ return {
             .. icon (r.file_name and 'type' or 'paperclip')
             .. '</button>'
         end
-        return '<div class="api-kv-row'
-          .. (r.on and '' or ' off')
-          .. '"><input type="checkbox" title="Send this row" data-item="'
+        local html = '<input type="checkbox" title="Send this row" data-item="'
           .. n
           .. ':on"'
           .. (r.on and ' checked' or '')
@@ -630,7 +630,11 @@ return {
           .. n
           .. ':del">'
           .. icon ('x')
-          .. '</button></div>'
+          .. '</button>'
+        return ui.div ({
+          class = 'api-kv-row' .. (r.on and '' or ' off'),
+          html = html,
+        })
       end
 
       ---@return boolean
@@ -642,17 +646,19 @@ return {
         local rows = get ()
         local wf = with_files ()
         el:class ('files', wf)
-        local parts = {
-          '<div class="api-kv-head"><span></span><span>Key</span><span>Value</span><span></span>'
-            .. (wf and '<span></span>' or '')
-            .. '</div>',
-        }
+        local kids = {
+          ui.div ({
+            class = 'api-kv-head',
+            html = '<span></span><span>Key</span><span>Value</span><span></span>'
+              .. (wf and '<span></span>' or ''),
+          }),
+        } ---@type Proteus.El[]
         for i, r in ipairs (rows) do
-          parts[#parts + 1] = row_html (i, r, wf)
+          kids[#kids + 1] = row_el (i, r, wf)
         end
-        parts[#parts + 1] =
-          row_html (#rows + 1, { key = '', value = '', on = true }, false)
-        el:html (table.concat (parts))
+        kids[#kids + 1] =
+          row_el (#rows + 1, { key = '', value = '', on = true }, false)
+        el:set_children (kids)
       end
 
       el:on ('input', function (ev)
@@ -670,11 +676,7 @@ return {
           rows[i] = r
           -- The blank row now holds text, so a new blank row goes after it. Adding it
           -- without a redraw keeps the cursor where it is.
-          el:call (
-            'insertAdjacentHTML',
-            'beforeend',
-            row_html (i + 1, { key = '', value = '', on = true }, false)
-          )
+          el:append (row_el (i + 1, { key = '', value = '', on = true }, false))
         end
         if field == 'key' then
           r.key = ev.value or ''

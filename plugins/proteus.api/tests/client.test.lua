@@ -123,6 +123,12 @@ function El:widget (method, arg)
     self.code = arg
   end
 end
+-- The kernel refuses a restricted plugin the DOM methods that reach past its elements.
+function El:call (method)
+  if method == 'insertAdjacentHTML' or method == 'setAttribute' then
+    error ('a restricted plugin may not call ' .. method)
+  end
+end
 ---Runs the element's handler for an event.
 ---@param name string
 ---@param ev? table
@@ -594,4 +600,16 @@ test ('searching the list reads no file again', function ()
   search:fire ('input', { value = 'r1' })
   search:fire ('input', { value = 'r12' })
   eq (world.reads, before)
+end)
+
+test ('typing in the blank row of a grid adds a row', function ()
+  local world = start ()
+  new_request (world, 'https://x.io')
+  local grid = find (world, 'api-kv', 2)
+  grid:fire ('input', { item = '1:key', value = 'Accept' })
+  grid:fire ('input', { item = '1:value', value = 'text/csv' })
+  grid:fire ('input', { item = '2:key', value = 'X-Two' })
+  run (world, 'api.send')
+  eq (world.fetches[1].request.headers.Accept, 'text/csv')
+  eq (world.fetches[1].request.headers['X-Two'], '')
 end)
