@@ -1,52 +1,21 @@
 -- log_filter: the logic behind proteus.logs, kept apart from the screen so the tests reach it.
--- It finds the level and the time of a line, filters lines by words, regular expressions,
--- levels and times, turns ANSI colour codes into HTML, finds JSON inside a line, holds lines
--- in a ring of fixed size, and merges several sources by time. It draws nothing and calls no
--- host function. Regular expressions are in log_regex.lua, and times in log_time.lua.
+-- It draws a line as HTML, with its colours and the filter's matches, and finds JSON inside a
+-- line. It draws nothing on its own and calls no host function. The rest lives in modules of
+-- its own, and this one hands out all of it, so the plugin and the tests need only this one:
+-- log_text holds small text helpers, log_ansi the colour codes, log_level a line's level,
+-- log_query the filter, log_ring the lines and the ring that holds them, and log_sources where
+-- lines come from. Regular expressions are in log_regex.lua, and times in log_time.lua.
 
 local ansi = require ('log_ansi') --[[@as Logs.AnsiModule]]
 local ll = require ('log_level') --[[@as Logs.LevelModule]]
 local lq = require ('log_query') --[[@as Logs.QueryModule]]
 local lr = require ('log_ring') --[[@as Logs.RingModule]]
+local ls = require ('log_sources') --[[@as Logs.SourcesModule]]
 local tx = require ('log_text') --[[@as Logs.TextModule]]
 
-local escape, trim, sentence, group, clip, split_lines =
-  tx.escape, tx.trim, tx.sentence, tx.group, tx.clip, tx.split_lines
+local escape, clip = tx.escape, tx.clip
 local parse_ansi, strip_ansi = ansi.parse_ansi, ansi.strip_ansi
-local LEVELS, detect_level, zero_levels =
-  ll.LEVELS, ll.detect_level, ll.zero_levels
-local parse_query, is_empty, has_time, matches, matches_line, highlight =
-  lq.parse_query,
-  lq.is_empty,
-  lq.has_time,
-  lq.matches,
-  lq.matches_line,
-  lq.highlight
-local make_line, ring, find_line, index_of, classify, scan, newest, merge =
-  lr.make_line,
-  lr.ring,
-  lr.find_line,
-  lr.index_of,
-  lr.classify,
-  lr.scan,
-  lr.newest,
-  lr.merge
-
----@alias Logs.State
----| 'running' # The program runs.
----| 'stopped' # Stopped from the app.
----| 'exited' # The program ended by itself.
----| 'failed' # The program could not start.
----| 'pasted' # Text from the clipboard, which does not grow.
-
----Where lines come from: a file to follow, a command to run, or pasted text.
----@class Logs.SourceSpec
----@field kind 'file'|'command'|'paste'
----@field path? string The full path of a file.
----@field command? string The command line of a command.
----@field cwd? string The folder a command runs in.
----@field name? string The name of pasted text.
----@field whole? boolean For a file, read from its first line rather than its last thousand.
+local highlight = lq.highlight
 
 ---@class Logs.FilterModule
 ---@field LEVELS Logs.Level[] Every level, worst first.
@@ -376,235 +345,46 @@ local function pretty_json (text)
   return table.concat (out)
 end
 
----------------------------------------------------------------------------------------------
--- Sources
----------------------------------------------------------------------------------------------
-
----The program and arguments that follow a file: the last thousand lines, or with `whole`
----every line from the first, then each new one.
----@param path string
----@param os_name string
----@param whole? boolean
----@return string program
----@return string[] args
-local function follow_command (path, os_name, whole)
-  if os_name == 'windows' then
-    -- PowerShell ends a quoted string at any of its four single quotes, so each is doubled.
-    -- It also writes in the console code page unless told to use UTF-8.
-    local quoted = path:gsub ("'", "''"):gsub ('\226\128[\152-\155]', '%0%0')
-    return 'powershell',
-      {
-        '-NoProfile',
-        '-Command',
-        '[Console]::OutputEncoding = [Text.Encoding]::UTF8; '
-          .. "Get-Content -LiteralPath '"
-          .. quoted
-          .. "'"
-          .. (whole and '' or ' -Tail 1000')
-          .. ' -Wait -Encoding UTF8',
-      }
-  end
-  return 'tail', { '-n', whole and '+1' or '1000', '-F', path }
-end
-
----The program and arguments that run a command line through the shell.
----@param line string
----@param os_name string
----@return string program
----@return string[] args
-local function shell_command (line, os_name)
-  if os_name == 'windows' then
-    return 'cmd', { '/c', line }
-  end
-  return 'sh', { '-c', line }
-end
-
----@param spec Logs.SourceSpec
----@return string
-local function source_name (spec)
-  if spec.kind == 'file' then
-    local path = spec.path or ''
-    return path:match ('[^/\\]+$') or path
-  end
-  if spec.kind == 'command' then
-    local line = trim (spec.command or '')
-    if #line > 60 then
-      return clip (line, 57) .. '…'
-    end
-    return line
-  end
-  return spec.name or 'Pasted text'
-end
-
----A longer description of a source, for a tooltip.
----@param spec Logs.SourceSpec
----@return string
-local function source_title (spec)
-  if spec.kind == 'file' then
-    return (spec.path or '') .. (spec.whole and '\nthe whole file' or '')
-  end
-  if spec.kind == 'command' then
-    local cwd = spec.cwd
-    return (spec.command or '') .. (cwd and ('\nin ' .. cwd) or '')
-  end
-  return spec.name or 'Pasted text'
-end
-
----@param state Logs.State
----@param code? integer
----@return string
-local function state_label (state, code)
-  if state == 'running' then
-    return 'Running'
-  elseif state == 'stopped' then
-    return 'Stopped'
-  elseif state == 'exited' then
-    return code and ('Exited with code ' .. code) or 'Exited'
-  elseif state == 'failed' then
-    return 'Failed to start'
-  end
-  return 'Pasted'
-end
-
----Two specs with the same key are the same source.
----@param spec Logs.SourceSpec
----@return string
-local function spec_key (spec)
-  return table.concat ({
-    spec.kind,
-    spec.path or spec.command or spec.name or '',
-    spec.cwd or '',
-    spec.whole and 'whole' or '',
-  }, '\n')
-end
-
----A copy of a spec with only the fields that are saved.
----@param spec Logs.SourceSpec
----@return Logs.SourceSpec
-local function copy_spec (spec)
-  return {
-    kind = spec.kind,
-    path = spec.path,
-    command = spec.command,
-    cwd = spec.cwd,
-    whole = spec.whole,
-  }
-end
-
----A new list of recent sources with `spec` first and no repeats.
----@param list Logs.SourceSpec[]
----@param spec Logs.SourceSpec
----@param max integer
----@return Logs.SourceSpec[]
-local function remember (list, spec, max)
-  local key = spec_key (spec)
-  ---@type Logs.SourceSpec[]
-  local out = { copy_spec (spec) }
-  for _, other in ipairs (list) do
-    if #out >= max then
-      break
-    end
-    if spec_key (other) ~= key then
-      out[#out + 1] = other
-    end
-  end
-  return out
-end
-
----Saved specs, with anything malformed left out.
----@param value any
----@return Logs.SourceSpec[]
-local function clean_specs (value)
-  ---@type Logs.SourceSpec[]
-  local out = {}
-  if type (value) ~= 'table' then
-    return out
-  end
-  for _, v in
-    ipairs (value --[[@as table<string, any>[] ]])
-  do
-    if type (v) == 'table' then
-      local path, command, cwd = v.path, v.command, v.cwd
-      if v.kind == 'file' and type (path) == 'string' and path ~= '' then
-        out[#out + 1] =
-          { kind = 'file', path = path, whole = v.whole == true or nil }
-      elseif
-        v.kind == 'command'
-        and type (command) == 'string'
-        and command:match ('%S')
-      then
-        out[#out + 1] = {
-          kind = 'command',
-          command = command,
-          cwd = type (cwd) == 'string' and cwd ~= '' and cwd or nil,
-        }
-      end
-    end
-  end
-  return out
-end
-
----Saved level names, with anything unknown left out.
----@param value any
----@return Logs.Level[]
-local function clean_levels (value)
-  ---@type Logs.Level[]
-  local out = {}
-  if type (value) ~= 'table' then
-    return out
-  end
-  for _, v in
-    ipairs (value --[[@as any[] ]])
-  do
-    for _, level in ipairs (LEVELS) do
-      if v == level then
-        out[#out + 1] = level
-      end
-    end
-  end
-  return out
-end
-
 ---@type Logs.FilterModule
 local M = {
-  LEVELS = LEVELS,
-  parse_query = parse_query,
-  is_empty = is_empty,
-  detect_level = detect_level,
-  matches = matches,
-  highlight = highlight,
-  strip_ansi = strip_ansi,
-  parse_ansi = parse_ansi,
-  escape = escape,
+  LEVELS = ll.LEVELS,
+  parse_query = lq.parse_query,
+  is_empty = lq.is_empty,
+  detect_level = ll.detect_level,
+  matches = lq.matches,
+  highlight = lq.highlight,
+  strip_ansi = ansi.strip_ansi,
+  parse_ansi = ansi.parse_ansi,
+  escape = tx.escape,
   render_line = render_line,
   row_html = row_html,
-  clip = clip,
+  clip = tx.clip,
   find_json = find_json,
   pretty_json = pretty_json,
-  make_line = make_line,
-  matches_line = matches_line,
-  ring = ring,
-  find_line = find_line,
-  index_of = index_of,
-  zero_levels = zero_levels,
-  classify = classify,
-  scan = scan,
-  merge = merge,
-  newest = newest,
-  has_time = has_time,
-  split_lines = split_lines,
-  trim = trim,
-  sentence = sentence,
-  group = group,
-  follow_command = follow_command,
-  shell_command = shell_command,
-  source_name = source_name,
-  source_title = source_title,
-  state_label = state_label,
-  spec_key = spec_key,
-  remember = remember,
-  clean_specs = clean_specs,
-  clean_levels = clean_levels,
+  make_line = lr.make_line,
+  matches_line = lq.matches_line,
+  ring = lr.ring,
+  find_line = lr.find_line,
+  index_of = lr.index_of,
+  zero_levels = ll.zero_levels,
+  classify = lr.classify,
+  scan = lr.scan,
+  merge = lr.merge,
+  newest = lr.newest,
+  has_time = lq.has_time,
+  split_lines = tx.split_lines,
+  trim = tx.trim,
+  sentence = tx.sentence,
+  group = tx.group,
+  follow_command = ls.follow_command,
+  shell_command = ls.shell_command,
+  source_name = ls.source_name,
+  source_title = ls.source_title,
+  state_label = ls.state_label,
+  spec_key = ls.spec_key,
+  remember = ls.remember,
+  clean_specs = ls.clean_specs,
+  clean_levels = ls.clean_levels,
 }
 
 return M

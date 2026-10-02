@@ -44,6 +44,7 @@
     "log_query.lua",
     "log_regex.lua",
     "log_ring.lua",
+    "log_sources.lua",
     "log_text.lua",
     "log_time.lua",
     "tests/ansi.test.lua",
@@ -52,6 +53,7 @@
     "tests/query.test.lua",
     "tests/regex.test.lua",
     "tests/ring.test.lua",
+    "tests/sources.test.lua",
     "tests/text.test.lua",
     "tests/time.test.lua",
     "tests/viewer.test.lua"
