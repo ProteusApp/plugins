@@ -2,7 +2,7 @@
   "id": "proteus.git",
   "name": "Git",
   "description": "Stage, commit, branch and browse the history of a Git repository.",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.shell",
@@ -17,7 +17,8 @@
     "proteus.core.keys",
     "proteus.ui.menus",
     "proteus.ui.tabs",
-    "proteus.code.project"
+    "proteus.code.project",
+    "proteus.core.settings"
   ],
   "permissions": [
     "files",
@@ -27,7 +28,8 @@
   "requires": {
     "proteus": ">=0.3.1",
     "features": [
-      "permissions"
+      "permissions",
+      "highlight"
     ]
   },
   "author": {

@@ -4,7 +4,7 @@ A Git client for any folder that holds a repository. It runs the real `git` prog
 
 ## What it does
 
-- **Changes.** The Changes view lists staged, changed and new files. Stage, unstage or discard a file, or a single hunk in its diff. A click on an added or removed line's numbers picks it, and **Stage Lines** (or **Unstage Lines**) beside its hunk stages only the picked lines. A new file is staged whole, since Git has no earlier version to add part of it to. Where a removed line is followed by the line that replaced it, the words that changed are marked on both. **Toggle Side-by-Side Diff** shows the old file on the left and the new one on the right, and the client remembers the choice. Git reads each path as a file name, never a pattern, so discarding a file called `*.log` leaves the other `.log` files alone.
+- **Changes.** The Changes view lists staged, changed and new files. Stage, unstage or discard a file, or a single hunk in its diff. A click on an added or removed line's numbers picks it, and **Stage Lines** (or **Unstage Lines**) beside its hunk stages only the picked lines. A new file is staged whole, since Git has no earlier version to add part of it to. Where a removed line is followed by the line that replaced it, the words that changed are marked on both. **Toggle Side-by-Side Diff** shows the old file on the left and the new one on the right, and the client remembers the choice. The lines of a diff take the colours the code editor gives the file's language, and the theme's colours, with the changed words still marked. The **Color diffs by language** setting (`git.highlight`) turns that off. Git reads each path as a file name, never a pattern, so discarding a file called `*.log` leaves the other `.log` files alone.
 - **Commits.** Write a message and commit, or amend the last commit.
 - **Merge, rebase, cherry-pick, revert and reset.** **Merge Branch…** merges another branch into the current one, and **Rebase onto Branch…** replays the current branch's own commits on top of another. A commit's menu in the History view cherry-picks it, reverts it, resets the current branch to it (soft, mixed, or hard after a question) or starts a branch there. One that stops at conflicts shows a bar above the Changes list with **Continue**, **Abort** and, for a rebase, **Skip**. Continue on a merge commits with the message in the box, or Git's own when it is empty. None of them opens an editor: Git takes the message it wrote.
 - **Conflicts.** Files with conflicts gather under **Merge Changes**. A click shows the conflict with a bar that says what each side did, and offers **Accept Current** (the current branch's version), **Accept Incoming** (the version coming in), **Mark Resolved** and **Open File**. A side that deleted the file deletes it. Mark Resolved asks first when the file still holds conflict markers. The same actions are in the file's menu.
@@ -35,7 +35,7 @@ Every command also turns off the settings that run a program without being asked
 
 ## What it needs
 
-Git on the PATH. In a browser it shows that it needs the desktop app.
+Git on the PATH, and Proteus 0.3.1 or newer, which gives every plugin `app.util.highlight` (the feature `highlight`) for the colours. In a browser it shows that it needs the desktop app.
 
 ## Permissions
 
