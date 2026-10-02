@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -39,12 +39,19 @@
       "files": [
         "README.md",
         "api_core.lua",
+        "api_css.lua",
+        "api_editor.lua",
+        "api_envs.lua",
+        "api_history.lua",
+        "api_list.lua",
+        "api_response.lua",
         "init.lua",
         "tests/api_core.test.lua",
-        "tests/client.test.lua"
+        "tests/client.test.lua",
+        "tests/css.test.lua"
       ],
-      "commit": "cddba7907192a82b237703af87dfbc1d3da1f570",
-      "updated": "2026-10-02T17:04:37Z"
+      "commit": "e16ee2e2a9ca1a5b1c5e7bd9bdebf2288a66af5d",
+      "updated": "2026-10-02T17:07:13Z"
     },
     {
       "id": "view.aseprite",
@@ -826,7 +833,7 @@
       "id": "proteus.logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -858,17 +865,34 @@
       "files": [
         "README.md",
         "init.lua",
+        "log_ansi.lua",
         "log_filter.lua",
+        "log_level.lua",
+        "log_query.lua",
         "log_regex.lua",
+        "log_ring.lua",
+        "log_sources.lua",
+        "log_text.lua",
         "log_time.lua",
+        "logs_commands.lua",
+        "logs_css.lua",
+        "logs_detail.lua",
+        "logs_list.lua",
+        "logs_sources.lua",
+        "tests/ansi.test.lua",
+        "tests/css.test.lua",
+        "tests/level.test.lua",
         "tests/logs.test.lua",
         "tests/query.test.lua",
         "tests/regex.test.lua",
+        "tests/ring.test.lua",
+        "tests/sources.test.lua",
+        "tests/text.test.lua",
         "tests/time.test.lua",
         "tests/viewer.test.lua"
       ],
-      "commit": "087fc5470e63759009a859cb57bf63600cf85ada",
-      "updated": "2026-10-02T07:02:09Z"
+      "commit": "a3439e55ac119ee8b663b367eac0fe5cf58451c4",
+      "updated": "2026-10-02T07:51:22Z"
     },
     {
       "id": "lang.luau-lsp",
