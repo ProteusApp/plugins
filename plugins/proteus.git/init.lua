@@ -7,8 +7,9 @@
 -- in a tab that can close, and the standalone app's toolbar and keys stay out of the way. It
 -- sends each file's Git state as the `git:status` event, which colours the file tree.
 --
--- git_parse holds the parsing, the command lines and the HTML, so its tests reach them. This
--- file holds the screen, the commands and the calls to git.
+-- git_parse holds the parsing, and hands out the command lines from git_args, the HTML from
+-- git_html and the paths from git_paths, so the tests reach all of them. This file holds the
+-- screen, the commands and the calls to git.
 
 local blame = require ('git_blame') --[[@as Git.BlameModule]]
 local graph = require ('git_graph') --[[@as Git.GraphModule]]
@@ -197,7 +198,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.3.0',
+  version = '1.3.1',
   requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
