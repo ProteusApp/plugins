@@ -648,6 +648,49 @@ test ('inserting and deleting columns moves styles, widths and more', function (
   eq (s.filter and s.filter.columns, { [1] = { values = { 'Rent', 'Food' } } })
 end)
 
+test (
+  'undo keeps only what an insert or a delete moved, and plays it back exactly',
+  function ()
+    local s = busy_sheet ()
+    -- A long column of numbers below everything, which only moves.
+    for row = 30, 2029 do
+      s:put (row, 1, { text = tostring (row) })
+    end
+    local start = m.to_data (s)
+    s:delete_rows (6, 3)
+    local deleted = m.to_data (s)
+    s:insert_cols (2, 2)
+    local inserted = m.to_data (s)
+    local book = s.book
+    -- The delete keeps the cells of its three rows and the formulas it rewrote, not the
+    -- thousands of cells that only moved.
+    local step = book.done[#book.done - 1]
+    local shift = assert (step.changes[1].shift, 'a shift')
+    local kept = 0
+    for _ in pairs (assert (shift.band, 'a band').cells) do
+      kept = kept + 1
+    end
+    ok (kept > 0 and kept <= 9, 'band cells ' .. kept)
+    local rewritten = 0
+    for _ in pairs (shift.texts) do
+      rewritten = rewritten + 1
+    end
+    ok (rewritten <= 3, 'rewritten ' .. rewritten)
+    eq (step.changes[1].before.cells, nil)
+    book:undo ()
+    eq (m.to_data (s), deleted)
+    book:undo ()
+    eq (m.to_data (s), start)
+    eq (shown (s, 'B11'), '150')
+    book:redo ()
+    eq (m.to_data (s), deleted)
+    book:redo ()
+    eq (m.to_data (s), inserted)
+    eq (text (s, 'D8'), '=SUM(D5:D7)')
+    eq (shown (s, 'D8'), '100')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Paste and paste special
 ---------------------------------------------------------------------------------------------

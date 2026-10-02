@@ -308,6 +308,41 @@ function M.install (grid)
     return (tonumber (G.measurer:get ('offsetWidth')) or 8) - 8
   end
 
+  -- Wrapped texts already measured, by width, font and text.
+  local wrap_cache = {} ---@type table<string, number>
+  local wrap_count = 0
+
+  ---The height a text needs when it wraps in a column, measured once for each width, font
+  ---and text. Rows grow by this as wrapped text is typed.
+  ---@param text string
+  ---@param style Sheet.Style
+  ---@param width number
+  ---@return number
+  function G.measure_wrap (text, style, width)
+    local css = font_css (style)
+    local key = width .. '\0' .. css .. '\0' .. text
+    local hit = wrap_cache[key]
+    if hit then
+      return hit
+    end
+    G.measurer:html (
+      '<div style="width:'
+        .. math.max (1, width - 9)
+        .. 'px;white-space:pre-wrap;overflow-wrap:anywhere;'
+        .. css
+        .. '">'
+        .. calc.escape (text)
+        .. '</div>'
+    )
+    local h = tonumber (G.measurer:get ('offsetHeight')) or 0
+    if wrap_count >= 2000 then
+      wrap_cache, wrap_count = {}, 0
+    end
+    wrap_cache[key] = h
+    wrap_count = wrap_count + 1
+    return h
+  end
+
   ---The widest of several texts, each in its own font, measured with one element.
   ---@param items Sheet.FitCell[]
   ---@return number

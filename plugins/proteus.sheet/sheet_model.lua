@@ -64,16 +64,9 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field columns table<integer, Sheet.FilterColumn>
 ---@field hidden table<integer, boolean>
 
----Everything a sheet holds, kept by undo around an insert or a delete.
----@class Sheet.SheetState
----@field cells table<integer, Sheet.Cell>
----@field row_styles table<integer, Sheet.Style>
----@field col_styles table<integer, Sheet.Style>
----@field widths table<integer, number>
----@field heights table<integer, number>
----@field hidden_rows table<integer, boolean>
----@field hidden_cols table<integer, boolean>
----@field notes table<integer, string>
+---What the rows or columns an insert or a delete moves past hold besides cells: the lists a
+---sheet keeps and its size. Undo keeps them before and after.
+---@class Sheet.SheetShape
 ---@field merges Sheet.Rect[]
 ---@field filter? Sheet.LiveFilter
 ---@field rules Sheet.Rule[]
@@ -83,6 +76,25 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field cols integer
 ---@field freeze_rows integer
 ---@field freeze_cols integer
+
+---What deleted rows or columns held, by their places before the delete, so undo puts it back.
+---@class Sheet.Band
+---@field cells table<integer, Sheet.CellState>
+---@field notes table<integer, string>
+---@field styles table<integer, Sheet.Style> Row or column styles.
+---@field sizes table<integer, number> Heights or widths.
+---@field hidden table<integer, boolean>
+
+---An insert or a delete, as undo keeps it: the move itself, the formulas on the sheet whose
+---text it changed, and what the deleted rows or columns held. It holds only what the move
+---changes, never a copy of the whole sheet.
+---@class Sheet.Shift
+---@field axis 'row'|'col'
+---@field at integer
+---@field count integer Positive inserts before `at`, negative deletes from `at` on.
+---@field texts table<integer, string> Formula texts after the move, by their new places.
+---@field old_texts table<integer, string> The same formulas' texts before, by their old places.
+---@field band? Sheet.Band
 
 ---Cells taken by a copy or a cut.
 ---@class Sheet.Clip
@@ -144,6 +156,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field merge_index? table<integer, Sheet.Rect>
 ---@field merge_list? Sheet.Rect[] The list the merge index was built from.
 ---@field layout_cache? Sheet.Layout
+---@field touched table<integer, boolean>|true Cells written since the grid last asked, by key, or true when anything may have changed.
+---@field tall? Sheet.TallRows The rows grown for their text, kept by the grid's drawing.
 local Sheet = {}
 Sheet.__index = Sheet
 
@@ -191,7 +205,15 @@ end
 
 ---@return Sheet.Watch
 function M.new_watch ()
-  return { points = {}, big = {}, by_col = {}, spills = {}, blocked = {} }
+  return {
+    points = {},
+    cols = {},
+    rows = {},
+    big = {},
+    by_col = {},
+    spills = {},
+    blocked = {},
+  }
 end
 
 ---------------------------------------------------------------------------------------------
@@ -816,6 +838,7 @@ function M.blank (book, name, rows, cols)
   self.validation = {}
   self.charts = {}
   self.watch = M.new_watch ()
+  self.touched = true
   return self
 end
 
@@ -1573,8 +1596,22 @@ function Sheet:put (row, col, st)
     self.cells[key] = cell
     self.book:cell_changed (self, row, col, old, cell)
   end
+  local touched = self.touched
+  if touched ~= true then
+    touched[key] = true
+  end
   self:grow (row, col)
   self.book:touch ()
+end
+
+---The cells written since the last call, by key, or true when anything may have changed,
+---such as after an insert, a load or a new column width. The grid grows rows for their text
+---by this, so an edit looks at the cells it wrote rather than at the whole sheet.
+---@return table<integer, boolean>|true
+function Sheet:take_touched ()
+  local touched = self.touched
+  self.touched = {}
+  return touched
 end
 
 ---Sets a field, or one entry of a map field when `key` is given, without recording it.
@@ -1589,6 +1626,10 @@ function Sheet:put_prop (field, key, value)
     local map = t[field] --[[@as table<any, any>]]
     map[key] = value
   end
+  if field ~= 'notes' and field ~= 'name' then
+    -- Sizes, row and column styles and the lists may change how tall any row needs to be.
+    self.touched = true
+  end
   if field == 'name' then
     self.book:names_changed ()
   elseif field == 'rows' or field == 'cols' then
@@ -1599,19 +1640,11 @@ function Sheet:put_prop (field, key, value)
   self.book:touch ()
 end
 
----Everything the sheet holds, by reference. An insert or a delete builds new tables rather
----than changing these, so the state stays as it was for undo.
----@return Sheet.SheetState
-function Sheet:snapshot ()
+---The lists and the size of the sheet, by reference. An insert or a delete builds new lists
+---rather than changing these, so the shape stays as it was for undo.
+---@return Sheet.SheetShape
+function Sheet:shape ()
   return {
-    cells = self.cells,
-    row_styles = self.row_styles,
-    col_styles = self.col_styles,
-    widths = self.widths,
-    heights = self.heights,
-    hidden_rows = self.hidden_rows,
-    hidden_cols = self.hidden_cols,
-    notes = self.notes,
     merges = self.merges,
     filter = self.filter,
     rules = self.rules,
@@ -1624,17 +1657,9 @@ function Sheet:snapshot ()
   }
 end
 
----Puts back everything a snapshot holds, without recording it.
----@param st Sheet.SheetState
-function Sheet:put_state (st)
-  self.cells = st.cells
-  self.row_styles = st.row_styles
-  self.col_styles = st.col_styles
-  self.widths = st.widths
-  self.heights = st.heights
-  self.hidden_rows = st.hidden_rows
-  self.hidden_cols = st.hidden_cols
-  self.notes = st.notes
+---Puts back the lists and the size a shape holds, without recording it.
+---@param st Sheet.SheetShape
+function Sheet:put_shape (st)
   self.merges = st.merges
   self.filter = st.filter
   self.rules = st.rules
@@ -1644,8 +1669,143 @@ function Sheet:put_state (st)
   self.cols = st.cols
   self.freeze_rows = st.freeze_rows
   self.freeze_cols = st.freeze_cols
+  self.touched = true
   self.book.full = true
   self.book:touch ()
+end
+
+---Moves every cell, note, style, size and hidden mark past `at` by `count` rows or columns,
+---without recording it, and returns what the deleted ones held. A cell keeps its text and
+---its parsed formula, so nothing is read again. Formula texts change apart, in `put_texts`.
+---@param axis 'row'|'col'
+---@param at integer
+---@param count integer
+---@return Sheet.Band?
+function Sheet:move_band (axis, at, count)
+  local is_row = axis == 'row'
+  ---@type Sheet.Band?
+  local band = count < 0
+      and { cells = {}, notes = {}, styles = {}, sizes = {}, hidden = {} }
+    or nil
+  local cells = {} ---@type table<integer, Sheet.Cell>
+  for key, cell in pairs (self.cells) do
+    local pos = is_row and cell.row or cell.col
+    local np = moved_to (pos, at, count)
+    if np then
+      if is_row then
+        cell.row = np
+      else
+        cell.col = np
+      end
+      cells[cell.row * KEY + cell.col] = cell
+    elseif band then
+      band.cells[key] = { text = cell.text, style = cell.style }
+    end
+  end
+  self.cells = cells
+  local notes = {} ---@type table<integer, string>
+  for key, text in pairs (self.notes) do
+    local row = math.floor (key / KEY)
+    local col = key - row * KEY
+    local np = moved_to (is_row and row or col, at, count)
+    if np then
+      if is_row then
+        notes[np * KEY + col] = text
+      else
+        notes[row * KEY + np] = text
+      end
+    elseif band then
+      band.notes[key] = text
+    end
+  end
+  self.notes = notes
+  ---@generic T
+  ---@param map table<integer, T>
+  ---@param lost? table<integer, T>
+  ---@return table<integer, T>
+  local function shift_map (map, lost)
+    local out = {} ---@type table<integer, any>
+    for k, v in pairs (map) do
+      local nk = moved_to (k, at, count)
+      if nk then
+        out[nk] = v
+      elseif lost then
+        lost[k] = v
+      end
+    end
+    return out
+  end
+  if is_row then
+    self.row_styles = shift_map (self.row_styles, band and band.styles)
+    self.heights = shift_map (self.heights, band and band.sizes)
+    self.hidden_rows = shift_map (self.hidden_rows, band and band.hidden)
+  else
+    self.col_styles = shift_map (self.col_styles, band and band.styles)
+    self.widths = shift_map (self.widths, band and band.sizes)
+    self.hidden_cols = shift_map (self.hidden_cols, band and band.hidden)
+  end
+  self.touched = true
+  self.book.full = true
+  self.book:touch ()
+  return band
+end
+
+---Puts back what deleted rows or columns held, after undo inserted them again.
+---@param axis 'row'|'col'
+---@param band Sheet.Band
+function Sheet:put_band (axis, band)
+  local clock = self.book.clock
+  for key, st in pairs (band.cells) do
+    local row = math.floor (key / KEY)
+    local col = key - row * KEY
+    self.cells[key] = make_cell (row, col, st.text, st.style, clock)
+  end
+  for key, text in pairs (band.notes) do
+    self.notes[key] = text
+  end
+  local styles = axis == 'row' and self.row_styles or self.col_styles
+  local sizes = axis == 'row' and self.heights or self.widths
+  local hidden = axis == 'row' and self.hidden_rows or self.hidden_cols
+  for k, v in pairs (band.styles) do
+    styles[k] = v
+  end
+  for k, v in pairs (band.sizes) do
+    sizes[k] = v
+  end
+  for k, v in pairs (band.hidden) do
+    hidden[k] = v
+  end
+  self.book.full = true
+  self.book:touch ()
+end
+
+---Gives formula cells new texts, by place, without recording it.
+---@param texts table<integer, string>
+function Sheet:put_texts (texts)
+  local clock = self.book.clock
+  for key, text in pairs (texts) do
+    local cell = self.cells[key]
+    if cell then
+      self.cells[key] = make_cell (cell.row, cell.col, text, cell.style, clock)
+    end
+  end
+  self.book.full = true
+end
+
+---Plays an insert or a delete forward, or backward with `back`, without recording it.
+---@param shift Sheet.Shift
+---@param back boolean
+function Sheet:play_shift (shift, back)
+  if back then
+    self:move_band (shift.axis, shift.at, -shift.count)
+    if shift.band then
+      self:put_band (shift.axis, shift.band)
+    end
+    self:put_texts (shift.old_texts)
+  else
+    shift.band = self:move_band (shift.axis, shift.at, shift.count)
+    self:put_texts (shift.texts)
+  end
 end
 
 ---------------------------------------------------------------------------------------------
@@ -2441,7 +2601,6 @@ function Sheet:reshape (axis, at, count)
   end
   local name = self.name
   local opts = { sheet = name, own = name }
-  local clock = self.book.clock
   local is_row = axis == 'row'
   ---@param pos integer
   ---@return integer?
@@ -2461,57 +2620,33 @@ function Sheet:reshape (axis, at, count)
     end
     return out
   end
-  local before = self:snapshot ()
-  local after = self:snapshot ()
+  local before = self:shape ()
+  local after = self:shape ()
 
-  local cells = {} ---@type table<integer, Sheet.Cell>
-  for _, cell in pairs (self.cells) do
-    local row, col = cell.row, cell.col
-    local nr, nc = row, col ---@type integer?, integer?
-    if is_row then
-      nr = move (row)
-    else
-      nc = move (col)
-    end
-    if nr and nc then
-      local text = cell.text
-      if cell.formula then
-        text = formula.adjust (text, axis, at, count, opts)
+  -- The formulas on this sheet whose text the move changes. The rest keep their text.
+  local texts, old_texts = {}, {} ---@type table<integer, string>, table<integer, string>
+  for key, cell in pairs (self.cells) do
+    if cell.formula then
+      local row, col = cell.row, cell.col
+      local nr, nc = row, col ---@type integer?, integer?
+      if is_row then
+        nr = move (row)
+      else
+        nc = move (col)
       end
-      local moved = cell
-      if text ~= cell.text or nr ~= row or nc ~= col then
-        moved = make_cell (nr, nc, text, cell.style, clock)
+      if nr and nc then
+        local text = formula.adjust (cell.text, axis, at, count, opts)
+        if text ~= cell.text then
+          texts[nr * KEY + nc] = text
+          old_texts[key] = cell.text
+        end
       end
-      cells[nr * KEY + nc] = moved
     end
   end
-  after.cells = cells
-
-  local notes = {} ---@type table<integer, string>
-  for key, text in pairs (self.notes) do
-    local row = math.floor (key / KEY)
-    local col = key - row * KEY
-    local nr, nc = row, col ---@type integer?, integer?
-    if is_row then
-      nr = move (row)
-    else
-      nc = move (col)
-    end
-    if nr and nc then
-      notes[nr * KEY + nc] = text
-    end
-  end
-  after.notes = notes
 
   if is_row then
-    after.row_styles = shift_map (self.row_styles)
-    after.heights = shift_map (self.heights)
-    after.hidden_rows = shift_map (self.hidden_rows)
     after.rows = math.max (1, self.rows + count)
   else
-    after.col_styles = shift_map (self.col_styles)
-    after.widths = shift_map (self.widths)
-    after.hidden_cols = shift_map (self.hidden_cols)
     after.cols = math.max (1, self.cols + count)
   end
 
@@ -2577,8 +2712,23 @@ function Sheet:reshape (axis, at, count)
 
   local word = is_row and 'rows' or 'columns'
   self:begin ({ label = (count > 0 and 'Insert ' or 'Delete ') .. word })
-  self.book:log ({ kind = 'state', sheet = self, before = before, after = after })
-  self:put_state (after)
+  ---@type Sheet.Shift
+  local shift = {
+    axis = axis,
+    at = at,
+    count = count,
+    texts = texts,
+    old_texts = old_texts,
+  }
+  self.book:log ({
+    kind = 'shift',
+    sheet = self,
+    shift = shift,
+    before = before,
+    after = after,
+  })
+  self:play_shift (shift, false)
+  self:put_shape (after)
   self.book:rewrite_formulas (function (text, own)
     return formula.adjust (
       text,
@@ -3612,6 +3762,7 @@ function Sheet:load (data)
     chart.w = tonumber (chart.w) or 480
     chart.h = tonumber (chart.h) or 300
   end
+  self.touched = true
 end
 
 ---@param map table<integer, any>

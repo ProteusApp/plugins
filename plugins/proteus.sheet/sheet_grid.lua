@@ -4,8 +4,9 @@
 -- sheet_grid_tabs.lua the sheet tabs along the bottom. init.lua builds the controller from the
 -- functions here.
 --
--- The grid is one HTML table, drawn from sheet_grid_draw.lua. Only rows near the view are
--- drawn in a long sheet. The boxes over the cells, such as the selection and the active cell,
+-- The grid is one HTML table, drawn from sheet_grid_draw.lua. Only the rows and columns near
+-- the view are drawn, and each row is its own element, written again only when its cells
+-- changed, so an edit rewrites the rows it touched rather than the whole table. The boxes over the cells, such as the selection and the active cell,
 -- are placed by arithmetic from the running sums of the row heights and column widths. Every
 -- box sits in four layers, one per pane of the frozen rows and columns, and each layer sticks
 -- or scrolls with its pane. So moving the selection rewrites one small style element, and
@@ -96,6 +97,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field srect? Proteus.Rect Where the scrolling box sits in the window.
 ---@field drawn_first integer
 ---@field drawn_last integer
+---@field drawn_cfirst integer The first scrolling column drawn.
+---@field drawn_clast integer The last column drawn.
 ---@field view_opts Sheet.ViewOptions
 ---@field chart_id? string
 ---@field drag? Sheet.GridDrag
@@ -126,6 +129,8 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@field sel_rect fun(): Sheet.Rect
 ---@field cur_rect fun(): Sheet.Rect
 ---@field draw fun()
+---@field needs_draw fun(): boolean
+---@field measure_wrap? Sheet.MeasureWrap
 ---@field place fun()
 ---@field place_boxes fun()
 ---@field reveal fun(row: integer, col: integer)
@@ -190,11 +195,15 @@ local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 ---@class Sheet.GridModule
 local M = {}
 
--- A sheet with more rows than this draws only the rows near the view, plus a margin.
-local DRAW_ALL = 300
+-- A sheet with more rows than this draws only the rows near the view, plus a margin. Every
+-- sheet does, since only the rows that change are written again.
+local DRAW_ALL = 0
 local MARGIN = 60
 -- How close the view may come to the edge of the drawn rows before they are drawn again.
 local SLACK = 20
+-- The same for columns.
+local COL_MARGIN = 8
+local COL_SLACK = 3
 -- How many reference outlines can show at once.
 local REF_BOXES = 12
 local HEAD_W, HEAD_H = calc.HEAD_W, calc.HEAD_H
@@ -244,7 +253,7 @@ local CSS = [[
 .sheet-grid-t thead th.sheet-grid-fc, .sheet-grid-t tr.sheet-grid-fr > th { z-index: 13; }
 .sheet-grid-t thead th.sheet-grid-corner { left: 0; z-index: 14; }
 .sheet-grid-t thead th.sheet-grid-hid { box-shadow: inset 3px 0 0 -1px var(--fg-faint); }
-.sheet-grid-t tr.sheet-grid-pad td { padding: 0; border: 0; background: none; }
+.sheet-grid-t tr.sheet-grid-pad td, .sheet-grid-t td.sheet-grid-cp { padding: 0; border: 0; background: none; }
 .sheet-grid-nogrid .sheet-grid-t td { border-right-color: transparent; border-bottom-color: transparent; }
 .sheet-grid-cs { position: absolute; top: 0; right: -1px; width: 5px; height: 100%; cursor: col-resize; }
 .sheet-grid-rs { position: absolute; left: 0; bottom: -1px; height: 5px; width: 100%; cursor: row-resize; }
@@ -370,6 +379,8 @@ function M.new (app, env)
     vh = 600,
     drawn_first = 1,
     drawn_last = 0,
+    drawn_cfirst = 1,
+    drawn_clast = 0,
     view_opts = { gridlines = true, formulas = false },
     styles = draw.new_styles (),
     ref_css = '',
@@ -434,7 +445,17 @@ function M.new (app, env)
     G.pop,
   })
   G.holder = ui.div ({ class = 'sheet-grid-hold', G.edbox })
-  G.host = ui.div ({ class = 'sheet-grid-host' })
+  -- The table, with one element per drawn row, kept by key so a row is written only when it
+  -- changed.
+  local tcols = ui.h ('colgroup', {})
+  local thead = ui.h ('thead', {})
+  local tbody = ui.h ('tbody', {})
+  local tbl = ui.h ('table', { class = 'sheet-grid-t', tcols, thead, tbody })
+  local drawn = {} ---@type Sheet.GridDrawn
+  local row_els = {} ---@type table<string, Proteus.El>
+  local row_order = {} ---@type string[]
+  local table_done = { width = -1, cols = '', head = '' }
+  G.host = ui.div ({ class = 'sheet-grid-host', tbl })
   G.canvas = ui.div ({ class = 'sheet-grid-canvas', panes, G.holder, G.host })
   G.scroll = ui.div ({ class = 'sheet-grid-scroll', G.canvas })
   G.guide = ui.div ({ class = 'sheet-grid-guide' })
@@ -519,7 +540,8 @@ function M.new (app, env)
       or #grown.tops ~= #lay.tops
     then
       grown.sheet, grown.stamp, grown.model = s, s.book.stamp, lay.tops
-      grown.tops = draw.grow_tops (lay.tops, draw.auto_heights (s))
+      grown.tops =
+        draw.grow_tops (lay.tops, draw.auto_heights (s, G.measure_wrap))
     end
     G.geo = calc.geometry (grown.tops, lay.lefts, fr, fc)
     return G.geo
@@ -595,8 +617,107 @@ function M.new (app, env)
 
   -- Drawing --------------------------------------------------------------------------------
 
-  ---Draws the table again: the rows near the view, the classes of new looks, and the CSS that
-  ---places the frozen panes.
+  ---Empties the table, so the next draw writes every row.
+  local function clear_table ()
+    for _, el in pairs (row_els) do
+      el:remove ()
+    end
+    drawn, row_els, row_order = {}, {}, {}
+    table_done = { width = -1, cols = '', head = '' }
+    tcols:html ('')
+    thead:html ('')
+  end
+
+  ---Writes the parts of the table that changed: its width, its columns, its header, and the
+  ---rows whose class, style or cells changed. Rows that left the view go.
+  ---@param parts Sheet.GridParts
+  local function write_table (parts)
+    if parts.width ~= table_done.width then
+      table_done.width = parts.width
+      tbl:style ('width', parts.width .. 'px')
+    end
+    if parts.cols ~= table_done.cols then
+      table_done.cols = parts.cols
+      tcols:html (parts.cols)
+    end
+    if parts.head ~= table_done.head then
+      table_done.head = parts.head
+      thead:html (parts.head)
+    end
+    local diff = draw.diff_rows (drawn, row_order, parts.rows)
+    for _, key in ipairs (diff.drop) do
+      local el = row_els[key]
+      if el then
+        el:remove ()
+      end
+      row_els[key], drawn[key] = nil, nil
+    end
+    for _, part in ipairs (diff.write) do
+      local el = row_els[part.key]
+      local had = drawn[part.key]
+      if not el then
+        el = ui.h ('tr', {})
+        row_els[part.key] = el
+      end
+      if not had or had.class ~= part.class then
+        if part.class then
+          el:attr ('class', part.class)
+        else
+          el:unattr ('class')
+        end
+      end
+      if not had or had.style ~= part.style then
+        if part.style then
+          el:attr ('style', part.style)
+        else
+          el:unattr ('style')
+        end
+      end
+      if not had or had.html ~= part.html then
+        el:html (part.html)
+      end
+      drawn[part.key] = part
+    end
+    if diff.moved then
+      -- Rows that stay keep their elements. When they are still in order, as after a scroll
+      -- or an edit, only the new rows go in, each before the row that follows it. Otherwise
+      -- every row moves to its place.
+      local was = {} ---@type table<string, integer>
+      for i, key in ipairs (row_order) do
+        was[key] = i
+      end
+      local last, sorted = 0, true
+      for _, key in ipairs (diff.order) do
+        local at = was[key]
+        if at then
+          if at < last then
+            sorted = false
+            break
+          end
+          last = at
+        end
+      end
+      if sorted then
+        local ref = nil ---@type Proteus.El?
+        for i = #diff.order, 1, -1 do
+          local key = diff.order[i]
+          local el = row_els[key]
+          if not was[key] then
+            tbody:insert_before (el, ref)
+          end
+          ref = el
+        end
+      else
+        for _, key in ipairs (diff.order) do
+          tbody:append (row_els[key])
+        end
+      end
+    end
+    row_order = diff.order
+  end
+
+  ---Draws the table again: the rows and columns near the view, the classes of new looks, and
+  ---the CSS that places the frozen panes. Only the rows that changed reach the screen.
   function G.draw ()
     local s = G.sheet ()
     if not s then
@@ -605,17 +726,21 @@ function M.new (app, env)
     read_view ()
     local geo = make_geo () --[[@as Sheet.GridGeo]]
     local first, last = calc.draw_rows (geo, G.sy, G.vh, MARGIN, DRAW_ALL)
+    local cfirst, clast = calc.draw_cols (geo, G.sx, G.vw, COL_MARGIN)
     G.drawn_first, G.drawn_last = first, last
-    local ok, html = pcall (draw.table_html, s, geo, {
+    local ok, parts = pcall (draw.table_parts, s, geo, {
       first = first,
       last = last,
+      col_first = cfirst,
+      col_last = clast,
       formulas = G.view_opts.formulas,
       styles = G.styles,
     })
     if not ok then
-      env.say ('error', 'The sheet could not be drawn: ' .. tostring (html))
+      env.say ('error', 'The sheet could not be drawn: ' .. tostring (parts))
       return
     end
+    G.drawn_cfirst, G.drawn_clast = parts.col_first, parts.col_last
     if G.styles.stamp ~= written.cells then
       written.cells = G.styles.stamp
       cell_style:set (draw.styles_css (G.styles))
@@ -625,7 +750,7 @@ function M.new (app, env)
       written.frame = frame
       frame_style:set (frame)
     end
-    G.host:html (html)
+    write_table (parts)
     G.area:class ('sheet-grid-nogrid', not G.view_opts.gridlines)
     draw_charts ()
     G.place ()
@@ -821,6 +946,24 @@ function M.new (app, env)
     env.emit ('selection', G.sel.r, G.sel.c)
   end
 
+  ---True when the view came near the edge of the rows or columns drawn.
+  ---@return boolean
+  function G.needs_draw ()
+    local geo = G.geo
+    if not geo then
+      return false
+    end
+    return calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
+      or calc.needs_cols (
+        geo,
+        G.sx,
+        G.vw,
+        G.drawn_cfirst,
+        G.drawn_clast,
+        COL_SLACK
+      )
+  end
+
   ---Scrolls so a cell shows, and draws more rows when it lies past the ones drawn.
   ---@param row integer
   ---@param col integer
@@ -842,21 +985,15 @@ function M.new (app, env)
     if ny ~= G.sy then
       G.scroll:set ('scrollTop', ny)
       G.sy = ny
-      if
-        calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-      then
-        G.draw ()
-      end
+    end
+    if G.needs_draw () then
+      G.draw ()
     end
   end
 
   G.scroll:on ('scroll', function ()
     read_scroll ()
-    local geo = G.geo
-    if
-      geo
-      and calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-    then
+    if G.needs_draw () then
       G.draw ()
     end
     G.tip:style ('display', 'none')
@@ -1131,7 +1268,7 @@ function M.new (app, env)
       G.sheet_shown ()
     else
       G.geo = nil
-      G.host:html ('')
+      clear_table ()
       G.tabs_draw ()
     end
   end
@@ -1568,9 +1705,7 @@ function M.new (app, env)
         G.scroll:set ('scrollTop', math.max (0, G.sy + dy))
       end
       read_scroll ()
-      if
-        calc.needs_rows (geo, G.sy, G.vh, G.drawn_first, G.drawn_last, SLACK)
-      then
+      if G.needs_draw () then
         G.draw ()
       end
       dd.last = nil
