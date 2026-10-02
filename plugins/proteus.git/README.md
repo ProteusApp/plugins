@@ -4,7 +4,7 @@ A Git client for any folder that holds a repository. It runs the real `git` prog
 
 ## What it does
 
-- **Changes.** The Changes view lists staged, changed and new files. Stage, unstage or discard a file, or a single hunk in its diff.
+- **Changes.** The Changes view lists staged, changed and new files. Stage, unstage or discard a file, or a single hunk in its diff. Git reads each path as a file name, never a pattern, so discarding a file called `*.log` leaves the other `.log` files alone.
 - **Commits.** Write a message and commit, or amend the last commit.
 - **Branches and remotes.** Switch or create a branch, and fetch, pull and push. The status bar shows the branch and the commits to push and to pull.
 - **History.** The History view lists the last 200 commits, and a click shows a commit's diff.

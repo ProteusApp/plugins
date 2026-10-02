@@ -793,6 +793,14 @@ end
 -- Command lines
 ---------------------------------------------------------------------------------------------
 
+---What every git command starts with. With `--literal-pathspecs` Git reads each path as a
+---file name, not a pattern, so discarding a file called `*.log` never deletes the other `.log`
+---files, and staging `f[1].txt` never stages `f1.txt`.
+---@return string[]
+function M.base_args ()
+  return { '--literal-pathspecs', '-c', 'core.quotepath=false' }
+end
+
 ---Zero bytes separate the entries, so paths come back exactly as they are, with no quoting.
 ---@return string[]
 function M.status_args ()

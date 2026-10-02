@@ -817,6 +817,8 @@ test (
 ---------------------------------------------------------------------------------------------
 
 test ('command lines', function ()
+  -- Paths are names, never patterns, so a file called *.log stands for itself alone.
+  eq (m.base_args (), { '--literal-pathspecs', '-c', 'core.quotepath=false' })
   eq (m.status_args (), {
     'status',
     '--porcelain=v1',

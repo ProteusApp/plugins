@@ -136,7 +136,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
@@ -264,7 +264,7 @@ return {
     ---@param opts? { cwd?: string, stdin?: string }
     ---@param cb fun(res: Proteus.RunResult?, err: string?)
     local function git (args, opts, cb)
-      local full = { '-c', 'core.quotepath=false' }
+      local full = m.base_args ()
       for _, a in ipairs (args) do
         full[#full + 1] = a
       end
