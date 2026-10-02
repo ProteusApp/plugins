@@ -41,6 +41,12 @@ Authors take back what they sent from Proteus, with **Withdraw from the Registry
 - A submission still in review: Proteus closes its issue. The workflow then closes the pull request and deletes its branch. A maintainer closing an issue leaves the pull request alone.
 - A listed plugin or profile: Proteus opens an issue titled `Removal request: <id>`, or `Profile removal request: <id>`. When the person who opened it is the author `proteus.json` names, the workflow opens a pull request that deletes the folder and keeps the id with them in `removed.json`, and anyone else gets a comment saying no. Approve it like a submission, with `/approve` on the issue or by merging.
 
+## Keep up with the app
+
+`types/` holds copies of the app's `lua/types`, which the type check reads. Copy them again when the app changes its types. With ProteusApp/app checked out beside the registry at `../app`, `npm test` also holds `reserved.json` to every plugin, profile and old id the app ships, and runs the contracts and the tests that need the app's `lib/` modules. The check workflow cannot, since the app's repository is private, so run them before merging a change that touches them.
+
+`luals-baseline.json` lists the type problems the plugins had when the type check came in: under `types` those found with `types/`, which the workflow holds, and under `app` those found with an app checkout. The check fails on any other. When a change fixes some, `node scripts/luals.mjs --update` takes them off. A pull request that adds to the list needs a reason.
+
 ## Set up the repository
 
 The workflows need four things, set once.

@@ -3,7 +3,7 @@
 
 import { LuaFactory } from 'wasmoon';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 // Only what a restricted plugin sees in Proteus: no io, os.execute, package or debug.
 export const SANDBOX = `
@@ -48,7 +48,12 @@ function __sandbox (read_own, lenient)
     local path = name:gsub ('%.', '/') .. '.lua'
     local src = read_own (path)
     if not src and lenient then return stub end
-    if not src then error ("module '" .. name .. "' not found in the plugin's folder", 2) end
+    if not src and __no_app then
+      -- It may be one of the app's lib/ modules, which only an app checkout has. NEEDS_APP
+      -- tells scripts/lua-test.mjs to skip the test rather than fail it.
+      error ("module '" .. name .. "' is not in the plugin's folder, and there is no app checkout for the app's lib/ (NEEDS_APP)", 2)
+    end
+    if not src then error ("module '" .. name .. "' not found in the plugin's folder or the app's lib/", 2) end
     local chunk = assert (load (src, '@' .. path, 't', env))
     local value = chunk (name)
     if value == nil then value = true end
@@ -100,11 +105,29 @@ function __declared (src, path)
 end
 `;
 
+/**
+ * A ProteusApp/app checkout, for the app's lua/lib and lua/types: the one PROTEUS_APP names,
+ * or else one beside the registry at ../app. Null when there is none, as in the check
+ * workflow, since the app's repository is private. PROTEUS_APP set to a folder without the
+ * app means none, which is how to run the checks as the workflow does.
+ */
+export const APP = (() => {
+  const named = process.env.PROTEUS_APP;
+  const candidate = named ? resolve(named) : resolve(import.meta.dirname, '..', '..', 'app');
+  return existsSync(join(candidate, 'lua', 'lib')) ? candidate : null;
+})();
+
+/** Why the checks that need the app are skipped, or null when there is an app checkout. */
+export const NO_APP = APP
+  ? null
+  : 'there is no ProteusApp/app checkout (set PROTEUS_APP, or put it beside the registry at ../app)';
+
 const factory = new LuaFactory();
 
 /** A fresh Lua state with the sandbox helpers. */
 export async function engine() {
   const lua = await factory.createEngine({ enableProxy: false, injectObjects: false });
+  lua.global.set('__no_app', APP === null);
   lua.doStringSync(SANDBOX);
   return lua;
 }

@@ -24,10 +24,12 @@
 //   plugin_ids()               every plugin id, sorted
 //   load_plugin(id)            the table a plugin's init.lua returns, loaded as Proteus does
 //
-// The app's lua/lib comes from a ProteusApp/app checkout: PROTEUS_APP names it, or else it sits
-// beside the registry at ../app. Without one the contracts are skipped, and say why.
+// The app's lua/lib comes from a ProteusApp/app checkout: PROTEUS_APP names it, or it sits
+// beside the registry at ../app. The app's repository is private, so the check workflow has
+// none. Without one, the contracts and each test that requires one of the app's lib/ modules
+// are skipped, with the reason printed.
 
-import { declaredOf, engine, reader } from './lua.mjs';
+import { APP, NO_APP, declaredOf, engine, reader } from './lua.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -35,8 +37,6 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const ROOT = resolve(import.meta.dirname, '..');
-// PROTEUS_APP, when set, is the only place looked at, so PROTEUS_APP=/nonexistent runs without.
-const APP = [process.env.PROTEUS_APP ?? resolve(ROOT, '..', 'app')].find((d) => d && existsSync(join(d, 'lua', 'lib')));
 const APP_LIB = APP ? resolve(APP, 'lua', 'lib') : null;
 
 /** Reads a file of a plugin's own folder, then of the app's lua/lib, as Proteus's require does. */
@@ -93,16 +93,20 @@ end
 
 function __run_tests ()
   local passed, failed, lines = 0, 0, {}
+  local skipped = 0
   for _, t in ipairs (tests) do
     local good, err = xpcall (t.fn, debug.traceback)
     if good then
       passed = passed + 1
+    elseif tostring (err):find ('(NEEDS_APP)', 1, true) then
+      -- It needs one of the app's lib/ modules, and there is no app checkout.
+      skipped = skipped + 1
     else
       failed = failed + 1
       lines[#lines + 1] = '  FAIL ' .. t.name .. '\\n    ' .. tostring (err):gsub ('\\n', '\\n    ')
     end
   end
-  return passed, failed, table.concat (lines, '\\n')
+  return passed, failed, table.concat (lines, '\\n'), skipped
 end
 `;
 
@@ -203,6 +207,7 @@ end
 
 let failed = 0;
 let passed = 0;
+let skipped = 0;
 
 for (const [root, kind, main] of [
   ['plugins', 'plugin', 'init.lua'],
@@ -252,14 +257,21 @@ for (const [root, kind, main] of [
       const shown = relative(ROOT, file);
       try {
         await t.doString(readFileSync(file, 'utf8'));
-        const [p, f, r] = t.doStringSync('local p, f, r = __run_tests () return { p, f, r }');
+        const [p, f, r, s] = t.doStringSync('local p, f, r, s = __run_tests () return { p, f, r, s }');
         passed += p;
         failed += f;
-        console.log(`${f === 0 ? 'ok  ' : 'FAIL'} ${shown}  (${p} passed, ${f} failed)`);
+        console.log(`${f === 0 ? 'ok  ' : 'FAIL'} ${shown}  (${p} passed, ${f} failed${s > 0 ? `, ${s} skipped: ${NO_APP}` : ''})`);
+        skipped += s;
         if (r) console.log(r);
       } catch (err) {
-        failed += 1;
-        console.log(`FAIL ${shown}: ${err.message}`);
+        if (String(err.message).includes('(NEEDS_APP)')) {
+          // A module it requires at the top is one of the app's, and there is no checkout.
+          skipped += 1;
+          console.log(`skip ${shown}: ${NO_APP}`);
+        } else {
+          failed += 1;
+          console.log(`FAIL ${shown}: ${err.message}`);
+        }
       }
       t.global.close();
     }
@@ -270,10 +282,10 @@ for (const [root, kind, main] of [
 const contractDir = join(ROOT, 'contracts');
 const contracts = existsSync(contractDir) ? readdirSync(contractDir).filter((n) => n.endsWith('.test.lua') && n.includes(filter)).sort() : [];
 if (contracts.length > 0 && !APP_LIB) {
-  const where = process.env.PROTEUS_APP ? `PROTEUS_APP (${process.env.PROTEUS_APP})` : resolve(ROOT, '..', 'app');
+  skipped += contracts.length;
   console.log(
-    `skip ${contracts.map((n) => `contracts/${n}`).join(', ')}: no app checkout with lua/lib at ${where}. ` +
-      'They need the app: put ProteusApp/app beside the registry at ../app, or set PROTEUS_APP.',
+    `skip ${contracts.map((n) => `contracts/${n}`).join(', ')}: they need the app's lua/lib, and ${NO_APP}. ` +
+      'Run them locally before a pull request that changes a theme or an icon pack.',
   );
 }
 const pluginIds = existsSync(join(ROOT, 'plugins'))
@@ -311,10 +323,11 @@ for (const name of APP_LIB ? contracts : []) {
   const shown = relative(ROOT, file);
   try {
     await t.doString(readFileSync(file, 'utf8'));
-    const [p, f, r] = t.doStringSync('local p, f, r = __run_tests () return { p, f, r }');
+    const [p, f, r, s] = t.doStringSync('local p, f, r, s = __run_tests () return { p, f, r, s }');
     passed += p;
     failed += f;
-    console.log(`${f === 0 ? 'ok  ' : 'FAIL'} ${shown}  (${p} passed, ${f} failed)`);
+    console.log(`${f === 0 ? 'ok  ' : 'FAIL'} ${shown}  (${p} passed, ${f} failed${s > 0 ? `, ${s} skipped: ${NO_APP}` : ''})`);
+        skipped += s;
     if (r) console.log(r);
   } catch (err) {
     failed += 1;
@@ -323,5 +336,5 @@ for (const name of APP_LIB ? contracts : []) {
   t.global.close();
 }
 
-console.log(`\n${passed} passed, ${failed} failed`);
+console.log(`\n${passed} passed, ${failed} failed${skipped > 0 ? `, ${skipped} skipped` : ''}`);
 process.exitCode = failed === 0 ? 0 : 1;
