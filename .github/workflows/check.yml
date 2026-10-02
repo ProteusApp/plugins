@@ -56,3 +56,23 @@ jobs:
         run: |
           selene plugins profiles
           selene --config tests.selene.toml plugins/*/tests
+      # Shader code from the Shader Builder's compiler and examples goes through real compilers:
+      # glslangValidator for GLSL ES and naga for WGSL. Tests reach them through shader_check.
+      - name: Cache naga
+        id: naga
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/naga
+          key: naga-cli-30.0.1-${{ runner.os }}
+      - name: Install glslang and naga
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends glslang-tools
+          if [ ! -x "$HOME/.cargo/bin/naga" ]; then
+            cargo install naga-cli --version 30.0.1 --locked
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Shaders compile
+        env:
+          SHADER_TOOLS: required
+        run: node scripts/lua-test.mjs shader

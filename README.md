@@ -69,4 +69,6 @@ A restricted plugin names its services, events, commands and settings after the 
 
 `npm ci`, then `npm test` runs the scripts' tests and `scripts/lua-test.mjs`, which loads each `init.lua` as Proteus does, compares what it declares with `proteus.json`, and runs every plugin's `tests/*.test.lua`. `npm run check` holds every folder to the rules. `node scripts/manifest.mjs plugins/<id> --author <login>:<id>` writes the `proteus.json` of a folder added by hand. The check workflow runs all of this on each pull request, with pinned StyLua and selene releases.
 
+A test can compile shader code with real compilers through `shader_check (lang, stage, source)`: glslangValidator for GLSL ES and naga for WGSL. Without them installed, those checks are left out. The check workflow installs both and sets `SHADER_TOOLS=required`, so there a missing compiler fails the test.
+
 `REVIEWING.md` covers the maintainers' side: the review checklist and how the repository is set up.

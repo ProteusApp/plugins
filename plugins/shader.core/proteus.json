@@ -33,6 +33,7 @@
     "shader_nodes.lua",
     "shader_source.lua",
     "shader_types.lua",
+    "tests/build.test.lua",
     "tests/core.test.lua",
     "tests/examples.test.lua",
     "tests/format.test.lua",
