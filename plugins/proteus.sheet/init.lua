@@ -40,7 +40,7 @@ local CSS = [[
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- Import, Export and opening a file in place read and write CSV and Excel files anywhere on
   -- disk, and Paste reads the clipboard. The Excel reader runs here in Lua, so it needs the
