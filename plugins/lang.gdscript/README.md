@@ -27,6 +27,8 @@ godot --path <project folder> --editor --headless --lsp-port 6005
 
 It tries the port once a second until Godot answers, and stops Godot when Proteus closes or the plugin stops. Godot's output goes to its log in the Tools panel.
 
+Godot runs a project's tool scripts when it opens it. So in the Code Editor the plugin starts Godot only on a project inside the open folder, and only once you trust that folder (**File: Trust This Folder**). Connecting to a Godot you started yourself works either way.
+
 This needs Godot 4.2 or newer, since older versions need a window for the language server. The first start on a large project can take a while, because Godot scans and imports its files first. Godot without a window is less tested than the editor itself, so opening the project in the Godot editor stays the more reliable way.
 
 The plugin looks for `godot` or `godot4` on the PATH. On Windows, Godot usually has a longer name, such as `Godot_v4.3-stable_win64.exe`. Put its full path in `gdscript.godot_path`.

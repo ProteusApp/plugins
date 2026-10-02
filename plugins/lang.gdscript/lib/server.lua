@@ -326,6 +326,13 @@ function M.install (ctx, tool)
       )
       return
     end
+    if not godot.may_start (folder, ctx.folder, ctx.folder_trusted, app.os) then
+      give_up (
+        'stopped',
+        'Godot starts on this project once you trust the folder (File: Trust This Folder), since Godot runs its tool scripts. Opening the project in the Godot editor yourself works too.'
+      )
+      return
+    end
     spawned = true
     tool.set_state ('starting', 'looking for Godot')
     find_godot (function (program)

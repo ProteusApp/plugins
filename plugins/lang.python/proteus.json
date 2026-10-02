@@ -2,7 +2,7 @@
   "id": "lang.python",
   "name": "Python",
   "description": "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",
@@ -48,6 +48,7 @@
     "tests/config.test.lua",
     "tests/edits.test.lua",
     "tests/launch.test.lua",
+    "tests/python.test.lua",
     "tests/venv.test.lua"
   ]
 }

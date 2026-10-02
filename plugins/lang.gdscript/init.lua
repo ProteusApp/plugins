@@ -29,13 +29,15 @@ local server_module = require ('lib.server') --[[@as LangGdscript.ServerModule]]
 ---@field settings Proteus.Settings
 ---@field editor Proteus.Editor
 ---@field to_disk fun(doc: Proteus.DocInfo): string A document's full path.
+---@field folder? string The folder open in the Code Editor.
+---@field folder_trusted boolean True when the user trusts that folder, so Godot may start on a project in it.
 ---@field notify fun(text: string) A warning, when ui.notify runs.
 
 ---@type Proteus.Plugin
 return {
   name = 'GDScript',
   description = "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
-  version = '1.0.2',
+  version = '1.1.0',
   requires = {
     proteus = '>=0.3.0',
     features = { 'permissions', 'languages', 'tcp' },
@@ -83,12 +85,24 @@ return {
     })
 
     local workspace = disk.normalize (app.kernel.launch.workspace or '')
+    local open = app.try_use ('project')
+    local folder = open and open.root () or nil
+    local folder_trusted = false
+    if folder and open then
+      if open.trusted then
+        folder_trusted = open.trusted ()
+      else
+        folder_trusted = app.kernel.project ().trusted == true
+      end
+    end
 
     ---@type LangGdscript.Context
     local ctx = {
       app = app,
       settings = settings,
       editor = editor,
+      folder = folder,
+      folder_trusted = folder_trusted,
       to_disk = function (doc)
         return doc.external and disk.normalize (doc.path)
           or disk.join (workspace, doc.path)

@@ -2,7 +2,7 @@
   "id": "lang.gdscript",
   "name": "GDScript",
   "description": "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.core.settings",

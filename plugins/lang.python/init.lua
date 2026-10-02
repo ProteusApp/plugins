@@ -28,6 +28,7 @@ local pyright_module = require ('lib.pyright') --[[@as LangPython.PyrightModule]
 local python_module = require ('lib.python') --[[@as LangPython.PythonModule]]
 local ruff_module = require ('lib.ruff') --[[@as LangPython.RuffModule]]
 local select_module = require ('lib.select') --[[@as LangPython.SelectModule]]
+local venv = require ('lib.venv') --[[@as LangPython.VenvModule]]
 
 ---A document, open or in front, as far as finding its folder goes.
 ---@class LangPython.DocPath
@@ -41,6 +42,7 @@ local select_module = require ('lib.select') --[[@as LangPython.SelectModule]]
 ---@field editor Proteus.Editor
 ---@field python LangPython.Python
 ---@field desktop boolean True in the desktop app, which can run programs.
+---@field untrusted boolean True while the folder open in the Code Editor is not trusted. Its `.venv` Python and its node_modules run nothing until then.
 ---@field full_path fun(doc: LangPython.DocPath): string A document's full path on disk.
 ---@field root_for fun(doc: LangPython.DocPath?): string? The open folder, or else the file's folder.
 ---@field first_doc fun(): Proteus.DocInfo? The first open Python file.
@@ -51,7 +53,7 @@ local select_module = require ('lib.select') --[[@as LangPython.SelectModule]]
 return {
   name = 'Python',
   description = "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
-  version = '1.1.1',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- basedpyright, Ruff and Python are programs it runs, on files anywhere on disk. The
   -- tools registry downloads Ruff for it.
@@ -104,6 +106,8 @@ return {
     })
 
     local editor = app.use ('editor')
+    local untrusted =
+      venv.untrusted (app.try_use ('project'), app.kernel.project ())
     local workspace = disk.normalize (app.kernel.launch.workspace or '')
 
     ---@param doc LangPython.DocPath
@@ -118,8 +122,9 @@ return {
       app = app,
       settings = settings,
       editor = editor,
-      python = python_module.new (app, settings),
+      python = python_module.new (app, settings, untrusted),
       desktop = app.platform == 'tauri',
+      untrusted = untrusted,
       full_path = full_path,
       root_for = function (doc)
         local project = app.try_use ('project')

@@ -24,6 +24,8 @@ The plugin takes the first Python it finds:
 
 **Select Interpreter** lists the virtual environments in the project and the Pythons on the PATH. It also takes any other path, and **Find automatically** forgets the pick.
 
+In the Code Editor, a folder you have not trusted runs none of its own programs, since a `.venv` Python or a basedpyright in its `node_modules` could be anything. Until you trust it (**File: Trust This Folder**), step 3 is skipped and basedpyright comes from outside the folder. A Python you pick with **Select Interpreter** still counts.
+
 ## Project settings
 
 basedpyright reads `pyrightconfig.json`, or `[tool.basedpyright]` in `pyproject.toml`. Their type checking mode wins over the `python.type_checking` setting. Ruff reads `ruff.toml`, `.ruff.toml`, or `[tool.ruff]` in `pyproject.toml`, for its problems and for formatting.
