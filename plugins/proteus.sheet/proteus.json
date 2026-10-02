@@ -55,6 +55,7 @@
     "sheet_fn_text.lua",
     "sheet_format.lua",
     "sheet_formula.lua",
+    "sheet_formula_lex.lua",
     "sheet_grid.lua",
     "sheet_grid_act.lua",
     "sheet_grid_calc.lua",
