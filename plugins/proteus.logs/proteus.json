@@ -47,6 +47,7 @@
     "log_sources.lua",
     "log_text.lua",
     "log_time.lua",
+    "logs_commands.lua",
     "logs_css.lua",
     "logs_detail.lua",
     "logs_list.lua",
