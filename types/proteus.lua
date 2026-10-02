@@ -29,11 +29,12 @@
 ---@field folders? string[] Workspace folders the plugin writes its files in, such as `'shaders'`. Folders the app ships, such as `plugins` and `data`, cannot be claimed.
 ---@field exports? string[] Folders right inside the plugin, such as `'wam'`, that any plugin's web view may load with `mounts`.
 ---@field requires? Proteus.Requires The Proteus version and features the plugin needs.
+---@field themes? Proteus.ThemeSpec[] Color themes, registered with `proteus.core.themes` when the plugin starts and removed when it stops. A theme plugin can be this list and nothing else.
 ---@field activate? fun(app: Proteus.App) Runs when the plugin starts.
 ---@field deactivate? fun(app: Proteus.App) Runs when the plugin stops, before its cleanup functions.
 
 ---@alias Proteus.Permission
----| 'net' # Sends HTTP requests and opens web pages in the browser.
+---| 'net' # Sends HTTP requests, opens web pages in the browser and connects to servers on this computer.
 ---| 'clipboard' # Reads the clipboard, and pastes.
 ---| 'midi' # Hears MIDI keyboards: notes and controls, never SysEx, and nothing sent back.
 ---| 'files' # Reads and writes files anywhere on disk. Amounts to full access.
@@ -55,6 +56,8 @@
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
+---| 'theme-data' # `themes` in a plugin's table, `extends` in a theme, and the ANSI, diff, tag, info and hint theme variables.
+---| 'file-kinds' # `kinds` in an icon pack, and `icons.add_kind`: the kinds of files every pack draws.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -129,6 +132,7 @@ function PluginFiles.list (rel) end
 ---| 'settings:changed' # Receives the setting key and its new value.
 ---| 'settings:defined' # Receives the setting key.
 ---| 'themes:applied' # Receives the theme id.
+---| 'system:color_scheme' # The system switched between light and dark. Receives `'light'` or `'dark'`.
 ---| 'tabs:changed' # Receives the active tab id, or nil.
 ---| 'views:shown' # Receives the view id.
 ---| 'shell:visibility' # Receives the dock name and whether it shows.
@@ -140,8 +144,9 @@ function PluginFiles.list (rel) end
 ---| 'editor:changed' # Receives the Proteus.DocInfo of an edited document. A restricted plugin needs `files`.
 ---| 'editor:closed' # Receives the closed document's path. A restricted plugin needs `files` to hear about a file outside the workspace.
 ---| 'editor:dirty' # A document gained or lost unsaved edits. Receives its path and true while it has them. A restricted plugin needs `files` to hear about a file outside the workspace.
----| 'nodal:changed' # The Nodal document changed. Receives the new Nodal.Snapshot.
+---| 'nodal:changed' # The Nodal document changed, or the values of the app running in the Preview did. Receives the new Nodal.Snapshot.
 ---| 'nodal:selected' # The Nodal selection changed. Receives the node id, or nil.
+---| 'nodal:debug' # The Nodal watch list or breakpoints changed.
 
 ---The table each plugin receives in `activate`. Everything a plugin does goes through it.
 ---@class Proteus.App
@@ -160,7 +165,7 @@ function PluginFiles.list (rel) end
 ---@field window Proteus.Window
 ---@field system Proteus.System
 ---@field process Proteus.Process Runs programs such as language servers.
----@field net Proteus.Net Sends HTTP requests.
+---@field net Proteus.Net Sends HTTP requests and connects to servers on this computer.
 ---@field kernel Proteus.Kernel Lists, starts and reloads plugins, and switches profiles.
 ---@field trusted boolean True when the plugin ships with the app, or is a workspace edit of one. Every other plugin is restricted to its `permissions`.
 ---@field permissions Proteus.Permission[] The permissions the plugin runs with. A trusted plugin has them all.
@@ -837,6 +842,11 @@ function System.clipboard (text) end
 ---@param cb fun(text: string?, err: string?)
 function System.clipboard_read (cb) end
 
+---Whether the system is set to light or dark. The `system:color_scheme` event tells when it
+---changes.
+---@return 'light'|'dark'
+function System.color_scheme () end
+
 ---Pastes the clipboard into whatever has focus.
 function System.paste () end
 
@@ -906,6 +916,7 @@ function System.create_launcher (name, profile, cb) end
 ---@field permissions string[] What it asks for.
 ---@field folders string[] Workspace folders it writes in.
 ---@field requires Proteus.Requires
+---@field themes? Proteus.ThemeSpec[] A copy of the themes it lists as data.
 
 ---@class Proteus.ProfileInfo
 ---@field id string

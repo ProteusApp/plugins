@@ -1,8 +1,9 @@
 -- theme.gruvbox: Warm retro color themes from the Gruvbox palette by Pavel Pertsev (MIT):
 -- Gruvbox Dark and Gruvbox Light.
 --
--- It registers its themes with core.themes. Pick one with View > Choose Color Theme, or the
--- `theme` setting. Every color is a CSS variable, so the whole app changes at once.
+-- It lists its themes as data, and core.themes registers them. Pick one with View > Choose
+-- Color Theme, or the `theme` setting. Every color is a CSS variable, so the whole app changes
+-- at once.
 
 ---Every theme this plugin adds.
 ---@type Proteus.ThemeSpec[]
@@ -31,11 +32,11 @@ local THEMES = {
       ['shadow'] = '0 8px 30px rgba(0,0,0,.45)',
       ['editor-bg'] = '#282828',
       ['editor-line'] = 'rgba(235,219,178,.04)',
-      ['syn-keyword'] = '#fb4934',
+      ['syn-keyword'] = '#fb5642',
       ['syn-string'] = '#b8bb26',
       ['syn-number'] = '#d3869b',
       ['syn-constant'] = '#d3869b',
-      ['syn-comment'] = '#928374',
+      ['syn-comment'] = '#9b8d7f',
       ['syn-function'] = '#fabd2f',
       ['syn-operator'] = '#fe8019',
       ['syn-property'] = '#83a598',
@@ -55,7 +56,7 @@ local THEMES = {
       ['bg-active'] = '#d5c4a1',
       ['fg'] = '#3c3836',
       ['fg-muted'] = '#665c54',
-      ['fg-faint'] = '#a89984',
+      ['fg-faint'] = '#948774',
       ['border'] = '#e2d3ab',
       ['accent'] = '#076678',
       ['accent-fg'] = '#fbf1c7',
@@ -68,14 +69,14 @@ local THEMES = {
       ['editor-bg'] = '#fbf1c7',
       ['editor-line'] = 'rgba(60,56,54,.05)',
       ['syn-keyword'] = '#9d0006',
-      ['syn-string'] = '#79740e',
+      ['syn-string'] = '#746f0d',
       ['syn-number'] = '#8f3f71',
       ['syn-constant'] = '#8f3f71',
-      ['syn-comment'] = '#928374',
-      ['syn-function'] = '#b57614',
+      ['syn-comment'] = '#786b5f',
+      ['syn-function'] = '#966211',
       ['syn-operator'] = '#af3a03',
       ['syn-property'] = '#076678',
-      ['syn-builtin'] = '#427b58',
+      ['syn-builtin'] = '#407755',
       ['radius'] = '4px',
     },
   },
@@ -85,14 +86,9 @@ local THEMES = {
 return {
   name = 'Gruvbox themes',
   description = 'Retro groove colors, warm and easy on the eyes, in a dark and a light theme.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.2.0', features = { 'permissions', 'theme-data' } },
   permissions = {},
   depends = { 'core.themes' },
-  activate = function (app)
-    local themes = app.use ('themes')
-    for _, theme in ipairs (THEMES) do
-      themes.register (theme)
-    end
-  end,
+  themes = THEMES,
 }

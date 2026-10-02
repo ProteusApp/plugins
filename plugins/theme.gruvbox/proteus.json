@@ -2,7 +2,7 @@
   "id": "theme.gruvbox",
   "name": "Gruvbox themes",
   "description": "Retro groove colors, warm and easy on the eyes, in a dark and a light theme.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "core.themes"
   ],
@@ -12,7 +12,8 @@
   "requires": {
     "proteus": ">=0.2.0",
     "features": [
-      "permissions"
+      "permissions",
+      "theme-data"
     ]
   },
   "author": {
@@ -22,7 +23,6 @@
   "issue": null,
   "files": [
     "README.md",
-    "init.lua",
-    "tests/theme.test.lua"
+    "init.lua"
   ]
 }

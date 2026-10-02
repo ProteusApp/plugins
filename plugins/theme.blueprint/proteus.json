@@ -2,7 +2,7 @@
   "id": "theme.blueprint",
   "name": "Blueprint theme",
   "description": "White lines on Prussian blue drafting paper, with a measured grid behind the code.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "core.themes"
   ],
@@ -12,7 +12,8 @@
   "requires": {
     "proteus": ">=0.2.0",
     "features": [
-      "permissions"
+      "permissions",
+      "theme-data"
     ]
   },
   "author": {
@@ -22,7 +23,6 @@
   "issue": null,
   "files": [
     "README.md",
-    "init.lua",
-    "tests/theme.test.lua"
+    "init.lua"
   ]
 }

@@ -48,6 +48,7 @@ A restricted plugin names its services, events, commands and settings after the 
 - What `init.lua` declares matches `proteus.json`: name, description, version, `depends`, `optional`, `permissions`, `folders` and `requires`. The marketplace reads `proteus.json` before an install, and Proteus runs what `init.lua` says, so they must agree.
 - Every plugin in `depends`, or in a profile's `plugins`, ships with Proteus or is listed here.
 - The Lua passes StyLua and selene with this repository's `stylua.toml` and `selene.toml`, and the plugin's tests pass.
+- A theme meets the app's theme contract: it sets only variables Proteus knows, and its text stands out from what it sits on as WCAG AA asks, 4.5 to 1 for text and code and 3 to 1 for faint text and status colors. An icon pack gives a look to every kind of file in the app's `lib/file_kinds.lua`, in colors that reach 3 to 1 on every theme. `contracts/` checks both.
 - A plugin holds up to 200 files and 2 MB, with no file over 512 KB and no folder more than three deep.
 - A file copied from a published package, such as a library's built JavaScript, is listed in the plugin's `vendor.json` with its `source` (`npm:<package>@<version>/<path>`), `license` and `sha256`. The check compares each hash with the file, and `node scripts/vendor.mjs verify plugins/<id>` compares it with the published package. Its lines may be as long as the build made them, since the reviewer checks where it came from rather than reading it. It is still text: no control characters and no characters that reorder text.
 
@@ -58,6 +59,7 @@ A restricted plugin names its services, events, commands and settings after the 
 | `plugins/<id>/` | One plugin's files, plus `proteus.json`, which the registry writes |
 | `profiles/<id>/` | One profile's `profile.lua`, plus `proteus.json` with `"kind": "profile"` |
 | `plugins/<id>/tests/` | The plugin's own tests, `*.test.lua`, which the check runs |
+| `contracts/` | Tests that hold every plugin of one kind to the app's rules: every theme to the theme contract, and every icon pack to the kinds of files it must draw |
 | `plugins/<id>/handbook/` | Pages the plugin adds to the Handbook, as Markdown. The `handbook` plugin's `handbook/writing-pages.md` explains them. |
 | `index.json` | Every approved plugin in `plugins`, and every profile in `profiles`, with the commit to install it from |
 | `reserved.json` | Ids that belong to the plugins and profiles shipped with Proteus |
@@ -67,6 +69,6 @@ A restricted plugin names its services, events, commands and settings after the 
 
 ## Test and check locally
 
-`npm ci`, then `npm test` runs the scripts' tests and `scripts/lua-test.mjs`, which loads each `init.lua` as Proteus does, compares what it declares with `proteus.json`, and runs every plugin's `tests/*.test.lua`. `npm run check` holds every folder to the rules. `node scripts/manifest.mjs plugins/<id> --author <login>:<id>` writes the `proteus.json` of a folder added by hand. The check workflow runs all of this on each pull request, with pinned StyLua and selene releases.
+`npm ci`, then `npm test` runs the scripts' tests and `scripts/lua-test.mjs`, which loads each `init.lua` as Proteus does, compares what it declares with `proteus.json`, runs every plugin's `tests/*.test.lua`, and runs the contracts. A test's `require` finds the app's `lua/lib` modules, such as `theme_contract`, in a checkout of ProteusApp/app beside this one at `../app`, or where `PROTEUS_APP` points. Without one the contracts are skipped, except in the check workflow, which clones the app. `npm run check` holds every folder to the rules. `node scripts/manifest.mjs plugins/<id> --author <login>:<id>` writes the `proteus.json` of a folder added by hand. The check workflow runs all of this on each pull request, with pinned StyLua and selene releases.
 
 `REVIEWING.md` covers the maintainers' side: the review checklist and how the repository is set up.
