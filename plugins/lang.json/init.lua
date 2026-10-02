@@ -74,7 +74,10 @@ return {
       program = 'vscode-json-language-server',
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
-      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = 'vscode-json-language-server' },
+      npm = {
+        packages = { 'vscode-langservers-extracted@4.10.0' },
+        bin = 'vscode-json-language-server',
+      },
       languages = { 'json' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = { 'json.enabled', 'json.schema_catalog', 'json.validate' },

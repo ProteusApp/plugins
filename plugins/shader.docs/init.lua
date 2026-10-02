@@ -463,7 +463,10 @@ return {
         -- Nothing can ask, so what is here stays, and the next save writes over the file.
         d.saved = text
         mark (d)
-        warn (d.title .. ' changed outside the builder. The shader here stays as it is.')
+        warn (
+          d.title
+            .. ' changed outside the builder. The shader here stays as it is.'
+        )
         return
       end
       picker.pick ({

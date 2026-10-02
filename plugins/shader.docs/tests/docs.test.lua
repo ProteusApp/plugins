@@ -40,9 +40,8 @@ local core = {
   build = core_require ('shader_build'),
 }
 
-local plugin = assert (
-  load (read ('plugins/shader.docs/init.lua'), '@shader.docs', 't', _G)
-) () --[[@as Proteus.Plugin]]
+local plugin =
+  assert (load (read ('plugins/shader.docs/init.lua'), '@shader.docs', 't')) () --[[@as Proteus.Plugin]]
 
 ---@class DocsTest.Run
 ---@field api Shader.Docs
@@ -273,7 +272,7 @@ test ('a file changed outside loads, or asks when there are edits', function ()
   run.emit ('fs:changed', PATH)
   run.flush ()
   eq (#run.asked, 1, 'one question at a time')
-  assert (run.pending).on_pick ({ value = 'load' })
+  assert (run.pending, 'it asks again').on_pick ({ value = 'load' })
   eq (d.history.doc.name, 'Third')
   run.api.undo (PATH)
   eq (d.history.doc.name, 'Mine', 'undo brings back the edits')
