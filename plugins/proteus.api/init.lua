@@ -14,6 +14,7 @@ local CSS = require ('api_css') --[[@as string]]
 local core = require ('api_core') --[[@as ApiApp.Core]]
 local envs_m = require ('api_envs') --[[@as ApiApp.EnvsModule]]
 local history_m = require ('api_history') --[[@as ApiApp.HistoryModule]]
+local list_m = require ('api_list') --[[@as ApiApp.ListModule]]
 
 local DIR = 'data/proteus.api'
 local ENV_PATH = DIR .. '/environments.json'
@@ -90,6 +91,7 @@ local FOLDER_AUTH_OPTIONS = {
 ---@field views Proteus.Views
 ---@field status? Proteus.Status
 ---@field picker? Proteus.Picker
+---@field notify? Proteus.Notify
 ---@field toolbar? Proteus.Toolbar
 ---@field menus? Proteus.Menus
 ---@field DIR string The folder the requests live in.
@@ -97,18 +99,56 @@ local FOLDER_AUTH_OPTIONS = {
 ---@field envs Http.Envs
 ---@field env_problem? string What is wrong with the environments file, if anything.
 ---@field history Http.HistoryEntry[] The requests sent, newest first.
+---@field docs table<string, ApiApp.Doc> The open requests, by key.
+---@field fresh string[] Keys of new requests, oldest first.
+---@field current? ApiApp.Doc The request the editor shows.
+---@field file_cache table<string, ApiApp.FileInfo> What the list read from each saved file.
+---@field list_timer? fun() Cancels the redraw of the list that is waiting.
+---@field url_in Proteus.El The address field.
+---@field au table<string, Proteus.El> The controls of the sign-ins.
+---@field none_new Proteus.El The buttons shown while no request is open.
+---@field none_import Proteus.El
+---@field none_collection Proteus.El
+---@field st_count? Proteus.StatusItem The count of saved requests in the status bar.
+---@field tokens table<string, ApiApp.Token> Tokens got for OAuth 2 sign-ins, by `http.oauth_key`.
 ---@field env_code? Proteus.El The editor of the environments file, once it is made.
 ---@field env_timer? fun() Cancels the check of the environments text that is waiting.
 ---@field say fun(text: string)
 ---@field complain fun(text: string)
+---@field icon fun(name: string, size?: integer): string
+---@field stem fun(path: string): string
+---@field folder_of fun(path: string): string
+---@field path_for fun(folder: string, name: string): string
+---@field read_request fun(path: string): Http.Request?, string?
+---@field doc_at fun(path: string): ApiApp.Doc?
+---@field forget fun(doc: ApiApp.Doc)
+---@field schedule_list fun()
+---@field schedule_drafts fun()
+---@field render_head fun()
+---@field effective_auth fun(doc: ApiApp.Doc): Http.Auth, string?
+---@field token_key fun(auth: Http.Auth): string
 ---@field change_files fun(what: string, fn: fun()): boolean
 ---@field load_envs fun()
 ---@field show fun(doc: ApiApp.Doc?)
 ---@field add_new fun(req: Http.Request, folder: string): ApiApp.Doc
----@field badge fun(method: string): string
 ---@field render_env fun() From api_envs.
 ---@field edit_envs fun()
 ---@field choose_env fun()
+---@field render_list fun() From api_list.
+---@field badge fun(method: string): string
+---@field walk fun(dir: string, depth: integer, out: Http.ListItem[])
+---@field save fun(doc?: ApiApp.Doc)
+---@field new_request fun(folder: string)
+---@field open_folder_auth fun(folder: string)
+---@field copy_curl fun(doc: ApiApp.Doc)
+---@field import_curl fun()
+---@field import_collection fun()
+---@field new_folder fun(parent: string)
+---@field rename fun(path: string)
+---@field duplicate fun(path: string)
+---@field delete fun(path: string)
+---@field search Proteus.El The search field of the Requests view.
+---@field requests_side Proteus.El The Requests view.
 ---@field render_history fun() From api_history.
 ---@field clear_history fun()
 ---@field history_side Proteus.El The History view.
@@ -183,19 +223,14 @@ return {
 
     local docs = {} ---@type table<string, ApiApp.Doc>
     local fresh = {} ---@type string[] Keys of new requests, oldest first.
-    local current = nil ---@type ApiApp.Doc?
     local new_count = 0
     local send_count = 0
     local writing = 0
-    local query = ''
-    local saved_count = 0
-    local folded = app.store.get ('folded', {}) ---@type table<string, boolean>
     local pane = app.store.get ('pane', 'params') ---@type string
     local res_view = app.store.get ('res_view', 'body') ---@type string
     local raw = app.store.get ('raw', false) == true
     local top_px = app.store.get ('split', nil) ---@type number?
     local file_cache = {} ---@type table<string, ApiApp.FileInfo>
-    local list_timer = nil ---@type fun()?
     local drafts_timer = nil ---@type fun()?
     local tab = nil ---@type Proteus.Tab?
 
@@ -217,12 +252,16 @@ return {
       picker = picker,
       toolbar = toolbar,
       menus = menus,
+      notify = notify,
       DIR = DIR,
       ENV_PATH = ENV_PATH,
       say = say,
       complain = complain,
       envs = assert (http.parse_envs (nil)),
       history = {},
+      docs = docs,
+      fresh = fresh,
+      file_cache = file_cache,
     }
     local ctx = shared --[[@as ApiApp.Ctx]]
 
@@ -242,6 +281,8 @@ return {
     local function path_for (folder, name)
       return core.path_for (DIR, folder, name)
     end
+    ctx.icon, ctx.stem, ctx.folder_of, ctx.path_for =
+      icon, stem, folder_of, path_for
 
     ---@param path string
     ---@return Http.Request?
@@ -350,7 +391,7 @@ return {
         local doc = docs[key]
         if doc then
           list[#list + 1] = { folder = doc.folder, req = doc.req }
-          if doc == current then
+          if doc == ctx.current then
             last_new = #list
           end
         end
@@ -364,7 +405,7 @@ return {
       app.store.set ('drafts', list)
       app.store.set (
         'last',
-        current and not current.folder_auth and current.path or nil
+        ctx.current and not ctx.current.folder_auth and ctx.current.path or nil
       )
       app.store.set ('last_new', last_new)
     end
@@ -376,9 +417,9 @@ return {
     end
 
     local function schedule_list ()
-      if not list_timer then
-        list_timer = app.timer.after (40, function ()
-          list_timer = nil
+      if not ctx.list_timer then
+        ctx.list_timer = app.timer.after (40, function ()
+          ctx.list_timer = nil
           render_list ()
         end)
       end
@@ -396,7 +437,7 @@ return {
 
     ---Marks the open request changed, and works out whether it differs from its file.
     local function touch ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -603,9 +644,9 @@ return {
     end
 
     local params_grid = kv_grid (function ()
-      return current and current.req.params or {}
+      return ctx.current and ctx.current.req.params or {}
     end, function ()
-      local doc = current
+      local doc = ctx.current
       if doc then
         doc.req.url = http.url_with_params (doc.req.url, doc.req.params)
         url_in:value (doc.req.url)
@@ -613,7 +654,7 @@ return {
       end
     end)
     local headers_grid = kv_grid (function ()
-      return current and current.req.headers or {}
+      return ctx.current and ctx.current.req.headers or {}
     end, touch)
 
     ---Asks the user for a file in the system's dialog. `done` gets the one picked.
@@ -638,12 +679,12 @@ return {
 
     local form_grid = kv_grid (
       function ()
-        return current and current.req.form or {}
+        return ctx.current and ctx.current.req.form or {}
       end,
       touch,
       {
         on = function ()
-          return current ~= nil and current.req.body_mode == 'multipart'
+          return ctx.current ~= nil and ctx.current.req.body_mode == 'multipart'
         end,
         pick = function (row, done)
           local key = row.key ~= '' and row.key or 'the form'
@@ -669,7 +710,7 @@ return {
       language = 'json',
       text = '',
       on_change = function ()
-        local doc = current
+        local doc = ctx.current
         if doc then
           doc.req.body = body_code:widget ('get_text')
           touch ()
@@ -691,7 +732,7 @@ return {
       language = 'json',
       text = '',
       on_change = function ()
-        local doc = current
+        local doc = ctx.current
         if doc then
           doc.req.variables = bx.vars_code:widget ('get_text')
           touch ()
@@ -1010,7 +1051,7 @@ return {
       if not st_result then
         return
       end
-      local doc = current
+      local doc = ctx.current
       local r = doc and doc.result
       if doc and doc.pending then
         st_result.set ('Sending…')
@@ -1074,7 +1115,7 @@ return {
     -- Drawing the editor ------------------------------------------------------------------
 
     render_head = function ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1096,7 +1137,7 @@ return {
     end
 
     local function paint_method ()
-      local meth = current and current.req.method or 'GET'
+      local meth = ctx.current and ctx.current.req.method or 'GET'
       method_sel:set ('className', 'api-method api-m-' .. meth:lower ())
     end
 
@@ -1107,7 +1148,7 @@ return {
     end
 
     render_tabs = function ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1149,7 +1190,7 @@ return {
     end
 
     local function show_pane ()
-      local shown = current and current.folder_auth and 'auth' or pane
+      local shown = ctx.current and ctx.current.folder_auth and 'auth' or pane
       for id, el in pairs (panes) do
         el:show (id == shown)
       end
@@ -1190,7 +1231,7 @@ return {
     end
 
     local function render_body ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1228,7 +1269,7 @@ return {
     end
 
     local function render_token ()
-      local doc = current
+      local doc = ctx.current
       if not doc or doc.req.auth.mode ~= 'oauth2' then
         return
       end
@@ -1249,7 +1290,7 @@ return {
     end
 
     local function render_auth ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1309,7 +1350,7 @@ return {
     end
 
     local function render_options ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1320,7 +1361,7 @@ return {
     end
 
     local function render_send ()
-      local waiting = current ~= nil and current.pending ~= nil
+      local waiting = ctx.current ~= nil and ctx.current.pending ~= nil
       send_btn:html (
         icon (waiting and 'x' or 'send')
           .. '<span>'
@@ -1367,7 +1408,7 @@ return {
     end
 
     local function render_response ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1495,7 +1536,7 @@ return {
     end
 
     fill_editor = function ()
-      local doc = current
+      local doc = ctx.current
       editor:show (doc ~= nil)
       none:show (doc == nil)
       render_status ()
@@ -1546,7 +1587,7 @@ return {
     end
 
     show = function (doc)
-      current = doc
+      ctx.current = doc
       fill_editor ()
       render_list ()
       schedule_drafts ()
@@ -1555,7 +1596,7 @@ return {
     -- Editing -----------------------------------------------------------------------------
 
     method_sel:on ('change', function (ev)
-      local doc = current
+      local doc = ctx.current
       if doc and ev.value then
         doc.req.method = ev.value
         paint_method ()
@@ -1566,7 +1607,7 @@ return {
     end)
 
     url_in:on ('input', function (ev)
-      local doc = current
+      local doc = ctx.current
       if doc then
         doc.req.url = ev.value or ''
         doc.req.params = http.sync_params (doc.req.params, doc.req.url)
@@ -1580,7 +1621,7 @@ return {
       if
         ev.item
         and panes[ev.item]
-        and not (current and current.folder_auth)
+        and not (ctx.current and ctx.current.folder_auth)
       then
         pane = ev.item
         app.store.set ('pane', pane)
@@ -1591,7 +1632,7 @@ return {
     end)
 
     body_modes:on ('click', function (ev)
-      local doc = current
+      local doc = ctx.current
       local mode = ev.item
       if doc and mode and mode ~= doc.req.body_mode then
         doc.req.body_mode = mode --[[@as Http.BodyMode]]
@@ -1603,7 +1644,7 @@ return {
     end)
 
     auth_modes:on ('click', function (ev)
-      local doc = current
+      local doc = ctx.current
       local mode = ev.item
       if doc and mode and mode ~= doc.req.auth.mode then
         doc.req.auth.mode = mode --[[@as Http.AuthMode]]
@@ -1617,7 +1658,7 @@ return {
     ---@param set fun(auth: Http.Auth, text: string)
     local function auth_field (el, set)
       el:on ('input', function (ev)
-        local doc = current
+        local doc = ctx.current
         if doc then
           set (doc.req.auth, ev.value or '')
           touch ()
@@ -1660,7 +1701,7 @@ return {
     end)
 
     au.place_seg:on ('click', function (ev)
-      local doc = current
+      local doc = ctx.current
       if doc and (ev.item == 'header' or ev.item == 'query') then
         doc.req.auth.place = ev.item --[[@as 'header'|'query']]
         render_auth ()
@@ -1669,7 +1710,7 @@ return {
       return nil
     end)
     au.grant_seg:on ('click', function (ev)
-      local doc = current
+      local doc = ctx.current
       if doc and (ev.item == 'client_credentials' or ev.item == 'password') then
         doc.req.auth.grant = ev.item --[[@as 'client_credentials'|'password']]
         render_auth ()
@@ -1679,13 +1720,13 @@ return {
     end)
 
     bx.file_pick:on ('click', function ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return nil
       end
       pick_file ('File to send', function (grant)
         doc.req.file = { id = grant.id, name = grant.name }
-        if doc == current then
+        if doc == ctx.current then
           render_body ()
         end
         touch ()
@@ -1694,7 +1735,7 @@ return {
     end)
 
     op.timeout_in:on ('input', function (ev)
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return nil
       end
@@ -1710,7 +1751,7 @@ return {
       return nil
     end)
     op.redirects_in:on ('change', function (ev)
-      local doc = current
+      local doc = ctx.current
       if doc then
         doc.req.redirects = ev.checked == true
         render_tabs ()
@@ -1728,7 +1769,7 @@ return {
     end)
 
     local function format_body ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return
       end
@@ -1812,7 +1853,7 @@ return {
     end
 
     local function send ()
-      local doc = current
+      local doc = ctx.current
       if not doc or doc.folder_auth then
         return
       end
@@ -1881,7 +1922,7 @@ return {
         }, HISTORY_MAX)
         app.store.set ('history', ctx.history)
         render_history ()
-        if doc == current then
+        if doc == ctx.current then
           render_send ()
           render_response ()
           render_auth ()
@@ -1962,7 +2003,7 @@ return {
     end
 
     au.token_btn:on ('click', function ()
-      local doc = current
+      local doc = ctx.current
       if not doc then
         return nil
       end
@@ -1996,7 +2037,7 @@ return {
 
     sum:on ('click', function (ev)
       local item = ev.item
-      local doc = current
+      local doc = ctx.current
       if not item or not doc then
         return nil
       end
@@ -2020,771 +2061,27 @@ return {
       return nil
     end)
 
-    -- Saving and managing requests --------------------------------------------------------
+    -- Saving, managing and listing requests ------------------------------------------------
 
-    ---@param doc ApiApp.Doc
-    ---@param path string
-    ---@return boolean
-    local function write_doc (doc, path)
-      doc.req.name = stem (path)
-      local text = http.encode_request (doc.req)
-      if
-        not change_files ('Could not save "' .. doc.req.name .. '"', function ()
-          app.fs.write (path, text)
-        end)
-      then
-        return false
-      end
-      if doc.key ~= path then
-        forget (doc)
-        doc.key = path
-        doc.path = path
-        doc.folder = folder_of (path)
-        docs[path] = doc
-      end
-      file_cache[path] = nil
-      doc.saved = text
-      doc.dirty = false
-      if doc == current then
-        render_head ()
-      end
-      schedule_list ()
-      schedule_drafts ()
-      return true
-    end
-
-    ---@param doc? ApiApp.Doc
-    local function save (doc)
-      doc = doc or current
-      if not doc then
-        return
-      end
-      if doc.folder_auth and doc.path then
-        local folder_doc = doc
-        local path = doc.path --[[@as string]]
-        local text = http.encode_folder (folder_doc.req.auth)
-        if
-          change_files ('Could not save the folder sign-in', function ()
-            app.fs.write (path, text)
-          end)
-        then
-          folder_doc.saved = text
-          folder_doc.dirty = false
-          if folder_doc == current then
-            render_head ()
-          end
-          say ('Saved the folder sign-in.')
-        end
-        return
-      end
-      local target = doc
-      if target.path then
-        if write_doc (target, target.path) then
-          say ('Saved "' .. target.req.name .. '".')
-        end
-        return
-      end
-      local at_top = target.folder == ''
-      ---@param text string
-      ---@return string?
-      local function problem (text)
-        local name, err = http.check_name (text, at_top)
-        if not name then
-          return err
-        end
-        if app.fs.exists (path_for (target.folder, name)) then
-          return 'A request with that name is already there.'
-        end
-        return nil
-      end
-      ---@param text string
-      local function finish (text)
-        local name = http.check_name (text, at_top)
-        if name and write_doc (target, path_for (target.folder, name)) then
-          say ('Saved "' .. name .. '".')
-          render_list ()
-        end
-      end
-      local suggestion = target.req.name ~= '' and target.req.name
-        or http.suggest_name (target.req)
-      if not picker then
-        finish (http.unique_name (suggestion, function (name)
-          return app.fs.exists (path_for (target.folder, name))
-        end))
-        return
-      end
-      picker.input ({
-        prompt = 'Name this request',
-        value = suggestion,
-        validate = problem,
-        on_submit = finish,
-      })
-    end
-
-    ---@param path string
-    local function open_path (path)
-      local doc = doc_at (path)
-      if doc then
-        show (doc)
-      end
-    end
-
-    ---Opens a folder's sign-in, which its requests set to From folder use.
-    ---@param folder string A path under data/proteus.api, or '' for the top.
-    local function open_folder_auth (folder)
-      local path = core.folder_files (DIR, folder)[1]
-      local doc = docs[path]
-      if not doc then
-        local auth = http.parse_folder (app.fs.read (path))
-        local req = http.normalize ({})
-        req.auth = auth
-        doc = {
-          key = path,
-          path = path,
-          folder = folder,
-          req = req,
-          saved = http.encode_folder (auth),
-          dirty = false,
-          folder_auth = true,
-        }
-        docs[path] = doc
-      end
-      show (doc)
-    end
-
-    au.inherit_edit:on ('click', function ()
-      local doc = current
-      if doc then
-        open_folder_auth (doc.folder)
-      end
-      return nil
-    end)
-
-    ---@param folder string
-    local function new_request (folder)
-      show (add_new (http.normalize ({}), folder))
-      url_in:focus ()
-    end
-
-    ---@param doc ApiApp.Doc
-    local function copy_curl (doc)
-      if doc.folder_auth then
-        return
-      end
-      local auth = effective_auth (doc)
-      local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
-      app.system.clipboard (
-        http.to_curl (http.build (doc.req, http.env_vars (ctx.envs), {
-          auth = auth,
-          token = kept and kept.token or nil,
-        }))
-      )
-      say ('Copied the request as a curl command.')
-    end
-
-    local function import_curl ()
-      if not picker then
-        return
-      end
-      picker.input ({
-        prompt = 'Paste a curl command',
-        placeholder = "curl 'https://example.com' -H 'Accept: application/json'",
-        validate = function (text)
-          local _, err = http.from_curl (text)
-          return err
-        end,
-        on_submit = function (text)
-          local req, _, notes = http.from_curl (text)
-          if req then
-            show (add_new (req, ''))
-            say ('Opened the curl command as a new request.')
-            -- What the request leaves out, such as a file the command sends.
-            for _, note in ipairs (notes or {}) do
-              if notify then
-                notify.warn (note)
-              else
-                app.warn (note)
-              end
-            end
-          end
-        end,
-      })
-    end
-
-    ---Writes what an import read into a folder of its own, with its folder sign-ins, and adds
-    ---an environment for its variables.
-    ---@param imported Http.Import
-    ---@param source string The file's name.
-    local function write_import (imported, source)
-      local into = http.unique_name (imported.name, function (n)
-        return app.fs.exists (DIR .. '/' .. n) or n:lower () == 'environments'
-      end)
-      local base = DIR .. '/' .. into
-      local count = 0
-      local wrote = change_files ('Could not import ' .. source, function ()
-        for _, f in ipairs (imported.folders) do
-          local dir = base .. (f.folder ~= '' and ('/' .. f.folder) or '')
-          app.fs.write (
-            dir .. '/' .. core.FOLDER_FILE,
-            http.encode_folder (f.auth)
-          )
-        end
-        for _, item in ipairs (imported.requests) do
-          local dir = base .. (item.folder ~= '' and ('/' .. item.folder) or '')
-          local name = http.unique_name (item.request.name, function (n)
-            return app.fs.exists (dir .. '/' .. n .. '.json')
-          end)
-          item.request.name = name
-          app.fs.write (
-            dir .. '/' .. name .. '.json',
-            http.encode_request (item.request)
-          )
-          count = count + 1
-        end
-      end)
-      if not wrote then
-        render_list ()
-        return
-      end
-      local notes = {} ---@type string[]
-      local seen = {} ---@type table<string, boolean>
-      for _, note in ipairs (imported.notes) do
-        if not seen[note] then
-          seen[note] = true
-          notes[#notes + 1] = note
-        end
-      end
-      if next (imported.variables) then
-        local text, name = http.add_environment (
-          app.fs.read (ENV_PATH),
-          into,
-          imported.variables
-        )
-        if
-          text
-          and change_files ('Could not save the environments', function ()
-            app.fs.write (ENV_PATH, text)
-          end)
-        then
-          load_envs ()
-          notes[#notes + 1] = 'Its variables are in the new environment "'
-            .. tostring (name)
-            .. '". Choose it to use them.'
-        elseif not text then
-          notes[#notes + 1] = 'Its variables were not added, since the environments file has a problem. '
-            .. tostring (name)
-        end
-      end
-      folded[base] = nil
-      app.store.set ('folded', folded)
-      render_list ()
-      say (
-        'Imported '
-          .. (count == 1 and '1 request' or (count .. ' requests'))
-          .. ' into "'
-          .. into
-          .. '".'
-      )
-      for _, note in ipairs (notes) do
-        if notify then
-          notify.warn (note)
-        else
-          app.warn (note)
-        end
-      end
-    end
-
-    ---Imports a Postman collection, an OpenAPI or Swagger description, an Insomnia export or
-    ---a HAR file the user picks.
-    local function import_collection ()
-      local ok, err = pcall (app.grants.open, {
-        title = 'Import a Collection',
-        filters = {
-          {
-            name = 'Collections, API descriptions and HAR files',
-            extensions = { 'json', 'yaml', 'yml', 'har' },
-          },
-        },
-      }, function (picked, why)
-        if why then
-          complain ('Could not show the file picker. ' .. why)
-          return
-        end
-        local grant = picked and picked[1]
-        if not grant then
-          return
-        end
-        app.grants.read (grant.id, function (text, read_err)
-          -- The file is read once, so the client lets it go.
-          app.grants.forget (grant.id)
-          if not text then
-            complain (
-              'Could not read ' .. grant.name .. '. ' .. tostring (read_err)
-            )
-            return
-          end
-          local imported, problem = http.import (text)
-          if not imported then
-            complain (
-              'Could not import ' .. grant.name .. '. ' .. tostring (problem)
-            )
-            return
-          end
-          write_import (imported, grant.name)
-        end)
-      end)
-      if not ok then
-        complain ('Could not show the file picker. ' .. tostring (err))
-      end
-    end
-
-    ---@param path string
-    local function rename (path)
-      if not picker then
-        return
-      end
-      local folder = folder_of (path)
-      picker.input ({
-        prompt = 'Rename "' .. stem (path) .. '"',
-        value = stem (path),
-        validate = function (text)
-          local name, err = http.check_name (text, folder == '')
-          if not name then
-            return err
-          end
-          local to = path_for (folder, name)
-          if to ~= path and app.fs.exists (to) then
-            return 'A request with that name is already there.'
-          end
-          return nil
-        end,
-        on_submit = function (text)
-          local name = http.check_name (text, folder == '')
-          local to = name and path_for (folder, name)
-          if not name or not to or to == path then
-            return
-          end
-          if
-            not change_files ('Could not rename the request', function ()
-              app.fs.rename (path, to)
-            end)
-          then
-            return
-          end
-          file_cache[path] = nil
-          -- The name inside the file changes too.
-          local on_disk = read_request (to)
-          local text_now = on_disk and http.encode_request (on_disk)
-          if text_now then
-            change_files ('Could not rename the request', function ()
-              app.fs.write (to, text_now)
-            end)
-          end
-          local doc = docs[path]
-          if doc then
-            docs[path] = nil
-            doc.key = to
-            doc.path = to
-            doc.req.name = name
-            doc.saved = text_now or ''
-            doc.dirty = http.encode_request (doc.req) ~= doc.saved
-            docs[to] = doc
-            if doc == current then
-              render_head ()
-            end
-          end
-          schedule_drafts ()
-          render_list ()
-        end,
-      })
-    end
-
-    ---@param path string
-    local function duplicate (path)
-      local req, err = read_request (path)
-      if not req then
-        complain ('Could not read "' .. stem (path) .. '". ' .. tostring (err))
-        return
-      end
-      local folder = folder_of (path)
-      local name = http.unique_name (stem (path), function (n)
-        return app.fs.exists (path_for (folder, n))
-      end)
-      local to = path_for (folder, name)
-      req.name = name
-      if
-        change_files ('Could not copy the request', function ()
-          app.fs.write (to, http.encode_request (req))
-        end)
-      then
-        open_path (to)
-      end
-    end
-
-    ---@param path string
-    local function delete (path)
-      local function go ()
-        if
-          not change_files ('Could not delete the request', function ()
-            app.fs.remove (path)
-          end)
-        then
-          return
-        end
-        file_cache[path] = nil
-        local doc = docs[path]
-        docs[path] = nil
-        if doc and doc == current then
-          show (nil)
-        else
-          render_list ()
-        end
-        schedule_drafts ()
-      end
-      if picker then
-        picker.confirm ({
-          message = 'Delete "' .. stem (path) .. '"?',
-          yes = 'Delete',
-          on_yes = go,
-        })
-      else
-        go ()
-      end
-    end
-
-    ---@param doc ApiApp.Doc
-    local function discard (doc)
-      local function go ()
-        forget (doc)
-        if doc == current then
-          show (nil)
-        else
-          render_list ()
-        end
-        schedule_drafts ()
-      end
-      if picker then
-        picker.confirm ({
-          message = 'Discard this request? It was never saved.',
-          yes = 'Discard',
-          on_yes = go,
-        })
-      else
-        go ()
-      end
-    end
-
-    ---@param parent string A folder under data/proteus.api, or '' for the top.
-    local function new_folder (parent)
-      if not picker then
-        return
-      end
-      ---@param name string
-      ---@return string
-      local function folder_path (name)
-        return DIR .. '/' .. (parent ~= '' and (parent .. '/') or '') .. name
-      end
-      picker.input ({
-        prompt = parent == '' and 'New folder' or ('New folder in ' .. parent),
-        placeholder = 'Folder name',
-        validate = function (text)
-          local name, err = http.check_name (text, false)
-          if not name then
-            return err
-          end
-          if app.fs.exists (folder_path (name)) then
-            return 'Something with that name is already there.'
-          end
-          return nil
-        end,
-        on_submit = function (text)
-          local name = http.check_name (text, false)
-          if not name then
-            return
-          end
-          local path = folder_path (name)
-          if
-            change_files ('Could not make the folder', function ()
-              app.fs.mkdir (path)
-            end)
-          then
-            folded[path] = nil
-            if parent ~= '' then
-              folded[DIR .. '/' .. parent] = nil
-            end
-            app.store.set ('folded', folded)
-            render_list ()
-          end
-        end,
-      })
-    end
-
-    none_new:on ('click', function ()
-      new_request ('')
-      return nil
-    end)
-    none_import:on ('click', function ()
-      import_curl ()
-      return nil
-    end)
-    none_collection:on ('click', function ()
-      import_collection ()
-      return nil
-    end)
-
-    -- The request list --------------------------------------------------------------------
-
-    local search = ui.input ({
-      class = 'api-search',
-      placeholder = 'Search requests',
-      spellcheck = false,
-    })
-    local list = ui.div ({ class = 'api-list' })
-    local list_empty_text = ui.div ({ 'No saved requests' })
-    local list_empty_btn = ui.button ({
-      'New Request',
-      icon = 'file-plus',
-      variant = 'primary',
-      onclick = function ()
-        new_request ('')
-        return nil
-      end,
-    })
-    local list_empty =
-      ui.div ({ class = 'api-empty', list_empty_text, list_empty_btn })
-    local list_box = ui.div ({ class = 'api-list-box', list, list_empty })
-    local requests_side = ui.div ({
-      class = 'api-side',
-      ui.div ({
-        class = 'api-side-bar',
-        search,
-        ui.button ({
-          variant = 'ghost',
-          class = 'api-side-btn',
-          title = 'New Request (Ctrl+N)',
-          ui.icon ('file-plus', 15),
-          onclick = function ()
-            new_request ('')
-            return nil
-          end,
-        }),
-        ui.button ({
-          variant = 'ghost',
-          class = 'api-side-btn',
-          title = 'New Folder',
-          ui.icon ('folder-plus', 15),
-          onclick = function ()
-            new_folder ('')
-            return nil
-          end,
-        }),
-      }),
-      list_box,
-    })
-
-    search:on ('input', function (ev)
-      query = ev.value or ''
-      render_list ()
-      return nil
-    end)
-
-    ---@param dir string
-    ---@param depth integer
-    ---@param out Http.ListItem[]
-    local function walk (dir, depth, out)
-      for _, e in ipairs (app.fs.list (dir)) do
-        if e.dir then
-          out[#out + 1] = {
-            path = e.path,
-            name = e.name,
-            dir = true,
-            depth = depth,
-            method = '',
-            url = '',
-          }
-          walk (e.path, depth + 1, out)
-        elseif
-          e.name:find ('%.json$')
-          and not core.hidden (e.name)
-          and not (depth == 0 and e.name == 'environments.json')
-        then
-          -- A file is read once, and again only after it changes, so a search that redraws
-          -- the list on each key reads nothing.
-          local info = file_cache[e.path]
-          if not info then
-            local req =
-              http.normalize ((http.json_decode (app.fs.read (e.path) or '')))
-            info = { method = req.method, url = req.url }
-            file_cache[e.path] = info
-          end
-          out[#out + 1] = {
-            path = e.path,
-            name = stem (e.path),
-            dir = false,
-            depth = depth,
-            method = info.method,
-            url = info.url,
-          }
-        end
-      end
-    end
-
-    ---@param method string
-    ---@return string
-    local function badge (method)
-      return '<span class="api-badge api-m-'
-        .. method:lower ()
-        .. '">'
-        .. http.method_short (method)
-        .. '</span>'
-    end
-
-    ---@param item string
-    ---@param method string
-    ---@param name string
-    ---@param url string
-    ---@param depth integer
-    ---@param active boolean
-    ---@param dirty boolean
-    ---@param untitled boolean
-    ---@return string
-    local function row_html (
-      item,
-      method,
-      name,
-      url,
-      depth,
-      active,
-      dirty,
-      untitled
-    )
-      return '<div class="api-row'
-        .. (active and ' on' or '')
-        .. '" data-item="'
-        .. esc (item)
-        .. '" title="'
-        .. esc (method .. ' ' .. url)
-        .. '" style="padding-left:'
-        .. (8 + depth * 16)
-        .. 'px">'
-        .. badge (method)
-        .. '<span class="api-rname'
-        .. (untitled and ' untitled' or '')
-        .. '">'
-        .. esc (name)
-        .. '</span>'
-        .. (dirty and '<span class="api-dot" title="Unsaved changes"></span>' or '')
-        .. '</div>'
-    end
-
-    render_list = function ()
-      if list_timer then
-        list_timer ()
-        list_timer = nil
-      end
-      local items = {} ---@type Http.ListItem[]
-      walk (DIR, 0, items)
-      saved_count = 0
-      for _, it in ipairs (items) do
-        if not it.dir then
-          saved_count = saved_count + 1
-        end
-      end
-      local shown = http.visible_items (items, folded, query)
-      local parts = {} ---@type string[]
-
-      local drafts = {} ---@type ApiApp.Doc[]
-      for _, key in ipairs (fresh) do
-        local doc = docs[key]
-        if
-          doc
-          and http.matches ({
-            name = doc.req.name,
-            method = doc.req.method,
-            url = doc.req.url,
-          }, query)
-        then
-          drafts[#drafts + 1] = doc
-        end
-      end
-      if #drafts > 0 then
-        parts[#parts + 1] = '<div class="api-group">Not saved</div>'
-        for _, doc in ipairs (drafts) do
-          parts[#parts + 1] = row_html (
-            'd:' .. doc.key,
-            doc.req.method,
-            doc.req.name ~= '' and doc.req.name or 'Untitled',
-            doc.req.url,
-            0,
-            doc == current,
-            true,
-            doc.req.name == ''
-          )
-        end
-        if #shown > 0 then
-          parts[#parts + 1] = '<div class="api-group">Saved</div>'
-        end
-      end
-
-      for _, it in ipairs (shown) do
-        if it.dir then
-          local open = query ~= '' or not folded[it.path]
-          parts[#parts + 1] = '<div class="api-folder" data-item="'
-            .. esc ('f:' .. it.path)
-            .. '" style="padding-left:'
-            .. (4 + it.depth * 16)
-            .. 'px">'
-            .. icon (open and 'chevron-down' or 'chevron-right')
-            .. icon (open and 'folder-open' or 'folder')
-            .. '<span class="api-rname">'
-            .. esc (it.name)
-            .. '</span></div>'
-        else
-          local doc = docs[it.path]
-          local changed = doc and doc.dirty and doc or nil
-          parts[#parts + 1] = row_html (
-            'r:' .. it.path,
-            changed and changed.req.method or it.method,
-            it.name,
-            changed and changed.req.url or it.url,
-            it.depth,
-            current ~= nil and current.key == it.path,
-            changed ~= nil,
-            false
-          )
-        end
-      end
-
-      list:html (table.concat (parts))
-      list_empty:show (#parts == 0)
-      list_empty_text:text (
-        query ~= '' and 'Nothing matches' or 'No saved requests'
-      )
-      list_empty_btn:show (query == '')
-      if st_count then
-        st_count.set (
-          saved_count == 1 and '1 request' or (saved_count .. ' requests')
-        )
-      end
-    end
-
-    list:on ('click', function (ev)
-      local kind, rest = (ev.item or ''):match ('^(%a):(.*)$')
-      if kind == 'f' and rest then
-        folded[rest] = (not folded[rest]) or nil
-        app.store.set ('folded', folded)
-        render_list ()
-      elseif kind == 'r' and rest then
-        open_path (rest)
-      elseif kind == 'd' and rest and docs[rest] then
-        show (docs[rest])
-      end
-      return nil
-    end)
+    ctx.url_in, ctx.au = url_in, au
+    ctx.none_new, ctx.none_import = none_new, none_import
+    ctx.none_collection, ctx.st_count = none_collection, st_count
+    ctx.read_request, ctx.doc_at, ctx.forget = read_request, doc_at, forget
+    ctx.schedule_list, ctx.schedule_drafts = schedule_list, schedule_drafts
+    ctx.render_head, ctx.effective_auth = render_head, effective_auth
+    ctx.show, ctx.add_new = show, add_new
+    ctx.tokens, ctx.token_key = tokens, token_key
+    list_m.attach (ctx)
+    render_list = ctx.render_list
+    local walk, save, new_request = ctx.walk, ctx.save, ctx.new_request
+    local open_folder_auth, copy_curl = ctx.open_folder_auth, ctx.copy_curl
+    local import_curl, import_collection =
+      ctx.import_curl, ctx.import_collection
+    local new_folder, rename = ctx.new_folder, ctx.rename
+    local duplicate, delete = ctx.duplicate, ctx.delete
 
     -- History -----------------------------------------------------------------------------
 
-    ctx.badge, ctx.show, ctx.add_new = badge, show, add_new
     history_m.attach (ctx)
     render_history = ctx.render_history
     local clear_history = ctx.clear_history
@@ -2847,13 +2144,13 @@ return {
         local auth = http.parse_folder (app.fs.read (path))
         doc.req.auth = auth
         doc.saved = http.encode_folder (auth)
-        if doc == current then
+        if doc == ctx.current then
           fill_editor ()
         end
       elseif doc and not doc.dirty then
         if not app.fs.exists (path) then
           docs[path] = nil
-          if doc == current then
+          if doc == ctx.current then
             show (nil)
           end
         else
@@ -2861,7 +2158,7 @@ return {
           if req then
             doc.req = req
             doc.saved = http.encode_request (req)
-            if doc == current then
+            if doc == ctx.current then
               fill_editor ()
             end
           end
@@ -2877,7 +2174,7 @@ return {
       title = 'Requests',
       icon = 'folder',
       order = 1,
-      content = requests_side,
+      content = ctx.requests_side,
     })
     views.add ('left', {
       id = 'api.history',
@@ -2890,124 +2187,6 @@ return {
       end,
     })
 
-    if menus then
-      menus.attach (list_box, function (ev)
-        local kind, rest = (ev.item or ''):match ('^(%a):(.*)$')
-        if kind == 'r' and rest then
-          local path = rest
-          return {
-            {
-              label = 'Open',
-              icon = 'file-text',
-              run = function ()
-                open_path (path)
-              end,
-            },
-            {
-              label = 'Rename',
-              icon = 'pencil',
-              run = function ()
-                rename (path)
-              end,
-            },
-            {
-              label = 'Duplicate',
-              icon = 'copy-plus',
-              run = function ()
-                duplicate (path)
-              end,
-            },
-            {
-              label = 'Copy as curl',
-              icon = 'clipboard-copy',
-              run = function ()
-                local doc = doc_at (path)
-                if doc then
-                  copy_curl (doc)
-                end
-              end,
-            },
-            { separator = true },
-            {
-              label = 'Delete',
-              icon = 'trash-2',
-              danger = true,
-              run = function ()
-                delete (path)
-              end,
-            },
-          }
-        end
-        local doc = kind == 'd' and rest and docs[rest] or nil
-        if doc then
-          local draft = doc
-          return {
-            {
-              label = 'Open',
-              icon = 'file-text',
-              run = function ()
-                show (draft)
-              end,
-            },
-            {
-              label = 'Save',
-              icon = 'save',
-              run = function ()
-                save (draft)
-              end,
-            },
-            {
-              label = 'Copy as curl',
-              icon = 'clipboard-copy',
-              run = function ()
-                copy_curl (draft)
-              end,
-            },
-            { separator = true },
-            {
-              label = 'Discard',
-              icon = 'trash-2',
-              danger = true,
-              run = function ()
-                discard (draft)
-              end,
-            },
-          }
-        end
-        local folder = (kind == 'f' and rest) and rest:sub (#DIR + 2) or ''
-        return {
-          {
-            label = 'New Request',
-            icon = 'file-plus',
-            run = function ()
-              new_request (folder)
-            end,
-          },
-          {
-            label = 'New Folder',
-            icon = 'folder-plus',
-            run = function ()
-              new_folder (folder)
-            end,
-          },
-          {
-            label = folder ~= '' and 'Folder Sign-in…'
-              or 'Sign-in for Every Request…',
-            icon = 'key-round',
-            run = function ()
-              open_folder_auth (folder)
-            end,
-          },
-          { separator = true },
-          {
-            label = 'Import Collection…',
-            icon = 'import',
-            run = import_collection,
-          },
-        }
-      end)
-    end
-
     -- In the editor profile the app sits in a tab, and its keys work only while it shows.
     ---@return boolean
     local function on_screen ()
@@ -3015,11 +2194,11 @@ return {
     end
     ---@return boolean
     local function has_doc ()
-      return current ~= nil and on_screen ()
+      return ctx.current ~= nil and on_screen ()
     end
     ---@return boolean
     local function has_saved ()
-      return current ~= nil and current.path ~= nil and on_screen ()
+      return ctx.current ~= nil and ctx.current.path ~= nil and on_screen ()
     end
 
     local CATEGORY = 'API Client'
@@ -3062,8 +2241,8 @@ return {
         toolbar = 3,
         when = has_doc,
         run = function ()
-          if current then
-            copy_curl (current)
+          if ctx.current then
+            copy_curl (ctx.current)
           end
         end,
       },
@@ -3089,8 +2268,8 @@ return {
         icon = 'key-round',
         when = has_doc,
         run = function ()
-          if current then
-            open_folder_auth (current.folder)
+          if ctx.current then
+            open_folder_auth (ctx.current.folder)
           end
         end,
       },
@@ -3112,8 +2291,8 @@ return {
         icon = 'wand-sparkles',
         when = function ()
           return has_doc ()
-            and current ~= nil
-            and current.req.body_mode == 'json'
+            and ctx.current ~= nil
+            and ctx.current.req.body_mode == 'json'
         end,
         run = format_body,
       },
@@ -3123,7 +2302,7 @@ return {
         icon = 'search',
         run = function ()
           views.show ('api.requests')
-          search:focus ()
+          ctx.search:focus ()
         end,
       },
       {
@@ -3157,8 +2336,8 @@ return {
         icon = 'pencil',
         when = has_saved,
         run = function ()
-          if current and current.path then
-            rename (current.path)
+          if ctx.current and ctx.current.path then
+            rename (ctx.current.path)
           end
         end,
       },
@@ -3168,8 +2347,8 @@ return {
         icon = 'copy-plus',
         when = has_saved,
         run = function ()
-          if current and current.path then
-            duplicate (current.path)
+          if ctx.current and ctx.current.path then
+            duplicate (ctx.current.path)
           end
         end,
       },
@@ -3179,8 +2358,8 @@ return {
         icon = 'trash-2',
         when = has_saved,
         run = function ()
-          if current and current.path then
-            delete (current.path)
+          if ctx.current and ctx.current.path then
+            delete (ctx.current.path)
           end
         end,
       },
