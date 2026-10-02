@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -30,15 +30,21 @@
       "requires": {
         "proteus": ">=0.3.1",
         "features": [
-          "permissions"
+          "permissions",
+          "grants",
+          "grants-read",
+          "http-bodies"
         ]
       },
       "files": [
         "README.md",
-        "init.lua"
+        "api_core.lua",
+        "init.lua",
+        "tests/api_core.test.lua",
+        "tests/client.test.lua"
       ],
-      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
-      "updated": "2026-10-02T16:56:50Z"
+      "commit": "cddba7907192a82b237703af87dfbc1d3da1f570",
+      "updated": "2026-10-02T17:04:37Z"
     },
     {
       "id": "view.aseprite",
@@ -820,7 +826,7 @@
       "id": "proteus.logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -853,10 +859,16 @@
         "README.md",
         "init.lua",
         "log_filter.lua",
-        "tests/logs.test.lua"
+        "log_regex.lua",
+        "log_time.lua",
+        "tests/logs.test.lua",
+        "tests/query.test.lua",
+        "tests/regex.test.lua",
+        "tests/time.test.lua",
+        "tests/viewer.test.lua"
       ],
-      "commit": "81a87889eff2618ef4fdaf075e60c201328cd5cd",
-      "updated": "2026-10-02T05:09:05Z"
+      "commit": "087fc5470e63759009a859cb57bf63600cf85ada",
+      "updated": "2026-10-02T07:02:09Z"
     },
     {
       "id": "lang.luau-lsp",
