@@ -178,27 +178,19 @@ return {
 
     -- Files -------------------------------------------------------------------------------
 
-    ---@param path string
-    ---@return string
-    local function stem (path)
-      return path:match ('([^/]+)%.json$') or path
-    end
+    local stem = core.stem
 
     ---@param path string A file or folder under data/proteus.api.
     ---@return string
     local function folder_of (path)
-      return path:sub (#DIR + 2):match ('^(.*)/[^/]*$') or ''
+      return core.folder_of (DIR, path)
     end
 
     ---@param folder string
     ---@param name string
     ---@return string
     local function path_for (folder, name)
-      return DIR
-        .. '/'
-        .. (folder ~= '' and (folder .. '/') or '')
-        .. name
-        .. '.json'
+      return core.path_for (DIR, folder, name)
     end
 
     ---@param path string
@@ -398,17 +390,6 @@ return {
     local line = ui.div ({ class = 'api-line', method_sel, url_in, send_btn })
     local req_tabs = ui.div ({ class = 'api-tabs' })
 
-    ---@param item string?
-    ---@return integer?
-    ---@return string?
-    local function grid_item (item)
-      local n, field = (item or ''):match ('^(%d+):(%a+)$')
-      if not n then
-        return nil, nil
-      end
-      return math.floor (tonumber (n) or 0), field
-    end
-
     ---@param get fun(): Http.Row[]
     ---@param changed fun()
     ---@param files? ApiApp.FileRows Rows that send files, in Multipart mode.
@@ -504,7 +485,7 @@ return {
       end
 
       el:on ('input', function (ev)
-        local i, field = grid_item (ev.item)
+        local i, field = core.grid_item (ev.item)
         if not i or (field ~= 'key' and field ~= 'value') then
           return nil
         end
@@ -530,7 +511,7 @@ return {
       end)
 
       el:on ('change', function (ev)
-        local i, field = grid_item (ev.item)
+        local i, field = core.grid_item (ev.item)
         local r = i and get ()[i]
         if field ~= 'on' or not r then
           return nil
@@ -542,7 +523,7 @@ return {
       end)
 
       el:on ('click', function (ev)
-        local i, field = grid_item (ev.item)
+        local i, field = core.grid_item (ev.item)
         local rows = get ()
         local r = i and rows[i]
         if not i or not r then
