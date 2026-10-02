@@ -17,6 +17,15 @@ When the `project` service runs, as in the Code Editor, it works on the open fol
 
 `git:status` carries full paths on disk, so a plugin hears it only with the `files` permission.
 
+## Trusted repositories only
+
+A repository's own settings, in `.git/config`, can make Git run programs: hooks when you commit, filters when it reads the status, and more. A folder that arrives as a zip, on a shared drive or on a USB stick brings that file along. So the client runs Git only in a repository you trust.
+
+- In the Code Editor, that is a folder you trust. Until then the Source Control view says so and offers **Trust Folder**, which also lets the folder's `.proteus` files load.
+- On its own, the client asks the first time it opens a repository, and remembers your answer. A repository you clone here is trusted at once, since a clone brings no settings from elsewhere.
+
+Every command also turns off the settings that run a program without being asked for, such as `core.fsmonitor`, whatever the repository says.
+
 ## What it needs
 
 Git on the PATH. In a browser it shows that it needs the desktop app.

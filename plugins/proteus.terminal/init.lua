@@ -71,7 +71,7 @@ return {
   -- as the Code Editor's, which the `project` service hands out, and lets Run Selection read
   -- the editor. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -100,12 +100,15 @@ return {
       type = 'string',
       default = '',
       description = 'The program the default profile runs, such as pwsh, cmd or bash. Empty runs the system shell.',
+      sensitive = true,
     })
     settings.define ('terminal.profiles', {
       title = 'Terminal profiles',
       type = 'json',
       default = {},
       description = 'More programs a terminal can run. Each has a name and a program, and may have args, env and cwd, such as { "name": "Git Bash", "program": "C:/Program Files/Git/bin/bash.exe", "args": ["-l"] }.',
+      -- It names programs to run, so a profile or a project folder cannot set it.
+      sensitive = true,
     })
     settings.define ('terminal.default_profile', {
       title = 'Default terminal profile',

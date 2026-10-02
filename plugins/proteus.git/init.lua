@@ -136,8 +136,8 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.1.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.2.0',
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
   depends = {
@@ -207,6 +207,39 @@ return {
       end
     end
 
+    -- A repository's own settings can make Git run programs, so the client runs git only in a
+    -- folder the user trusts. Inside the Code Editor that is the folder the kernel trusts, and
+    -- the user trusts it once for everything in it. The standalone app keeps its own list of
+    -- the repositories the user chose to trust.
+    local untrusted = embedded
+      and folder ~= nil
+      and app.kernel.project ().trusted ~= true
+    local trusted_repos = {} ---@type string[]
+    local stored_trust = app.store.get ('trusted', nil)
+    if type (stored_trust) == 'table' then
+      for _, p in
+        ipairs (stored_trust --[[@as any[] ]])
+      do
+        if type (p) == 'string' then
+          trusted_repos[#trusted_repos + 1] = p
+        end
+      end
+    else
+      -- Repositories opened before the list existed were the user's choice already.
+      for _, p in ipairs (recent) do
+        trusted_repos[#trusted_repos + 1] = m.folder_key (p, app.os)
+      end
+      app.store.set ('trusted', trusted_repos)
+    end
+
+    ---@param path string
+    local function trust_repo (path)
+      if not m.is_trusted (trusted_repos, path, app.os) then
+        trusted_repos[#trusted_repos + 1] = m.folder_key (path, app.os)
+        app.store.set ('trusted', trusted_repos)
+      end
+    end
+
     ---@type table<string, string>
     local ICONS = {
       stage = app.util.icon ('plus', 15) or '+',
@@ -266,10 +299,7 @@ return {
     ---@param cb fun(res: Proteus.RunResult?, err: string?)
     ---@return Proteus.RunHandle?
     local function git (args, opts, cb)
-      local full = m.base_args ()
-      for _, a in ipairs (args) do
-        full[#full + 1] = a
-      end
+      local full = m.command (args)
       local o = opts or {}
       ---@param res Proteus.RunResult?
       ---@param err string?
@@ -535,13 +565,24 @@ return {
         text = 'Needs the desktop app'
       elseif git_found == false then
         text = 'Git is not installed'
+      elseif untrusted then
+        text = 'Git waits until you trust this folder'
       elseif embedded and not_repo then
         text = 'This folder is not a Git repository'
       elseif embedded then
         text = 'Reading the repository…'
       end
       local button = ''
-      if desktop and git_found and embedded and not_repo then
+      if
+        desktop
+        and git_found
+        and untrusted
+        and project
+        and project.ask_trust
+      then
+        button =
+          '<button class="ui-button" data-item="trust">Trust Folder</button>'
+      elseif desktop and git_found and embedded and not_repo then
         button =
           '<button class="ui-button" data-item="init">Initialize Repository</button>'
       elseif desktop and git_found and not embedded then
@@ -575,6 +616,13 @@ return {
           m.message_html (
             'Git is not installed',
             'Install Git from git-scm.com, then open this app again.'
+          )
+        )
+      elseif untrusted then
+        show_main (
+          m.message_html (
+            'Git waits until you trust this folder',
+            "A repository's own settings can make Git run programs, so Git runs here once you trust the folder."
           )
         )
       elseif not repo then
@@ -821,6 +869,25 @@ return {
     ---@param path string
     ---@param quiet? boolean True at start, where a folder that moved away needs no message.
     local function open_repo (path, quiet)
+      if untrusted then
+        return
+      end
+      if not embedded and not m.is_trusted (trusted_repos, path, app.os) then
+        if quiet then
+          return
+        end
+        confirm (
+          'Trust '
+            .. path
+            .. "? A repository's own settings can make Git run programs, such as hooks when you commit. Trust only a repository from someone you trust.",
+          'Trust and Open',
+          function ()
+            trust_repo (path)
+            open_repo (path)
+          end
+        )
+        return
+      end
       git (
         { 'rev-parse', '--show-toplevel' },
         { cwd = path },
@@ -855,6 +922,7 @@ return {
           not_repo = false
           status, commits, selection, shown_key = nil, {}, nil, nil
           if not embedded then
+            trust_repo (top)
             recent = m.remember (recent, top, MAX_RECENT)
             app.store.set ('recent', recent)
             app.store.set ('reopen', true)
@@ -1239,6 +1307,11 @@ return {
       elseif item == 'init' then
         commands.run ('git.init')
         return true
+      elseif item == 'trust' then
+        if project and project.ask_trust then
+          project.ask_trust ('Git')
+        end
+        return true
       elseif item == 'stage-all' then
         commands.run ('git.stage_all')
         return true
@@ -1515,6 +1588,8 @@ return {
                   if project then
                     project.open (target)
                   else
+                    -- A clone brings no .git/config from elsewhere, so it is safe to open.
+                    trust_repo (target)
                     open_repo (target)
                   end
                 end
@@ -1742,7 +1817,7 @@ return {
         render_side ()
         show_placeholder ()
         if git_found and embedded then
-          if folder then
+          if folder and not untrusted then
             open_repo (folder, true)
           end
         elseif git_found and recent[1] and app.store.get ('reopen', true) then

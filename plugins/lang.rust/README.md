@@ -13,6 +13,8 @@ Rust support for the Proteus code editor, built on rust-analyzer, rustfmt and Ca
 
 The language server starts when the first Rust file opens. A folder with a crate at its top or one level down starts it at once, such as a Tauri app with its crate in `src-tauri`.
 
+In the Code Editor, rust-analyzer and rustfmt wait until you trust the folder (**File: Trust This Folder**). A crate's build scripts and proc macros run while rust-analyzer reads it, and a `rust-toolchain.toml` can name the programs Cargo and rustfmt run, so a folder from somewhere else runs nothing until then. The Cargo panel still runs a job you start yourself.
+
 ## What it needs
 
 Cargo and rustfmt come with Rust from [rustup.rs](https://rustup.rs). rust-analyzer does not need installing. When no working copy is on the PATH, the plugin offers to download the official release, checked against its pinned checksum. rustup's own `rust-analyzer` on the PATH only works after `rustup component add rust-analyzer`, and the plugin tells the two apart.
@@ -28,7 +30,7 @@ The **Tools** panel shows each program's state, version and log, with buttons to
 | `rust.check_command` | `check` | What runs after each save: `check` or `clippy`. |
 | `rust.rustfmt_enabled` | `true` | Formats Rust files with rustfmt. |
 
-A project can set any of them for itself in `.proteus/settings.json`.
+A project can set the others for itself in `.proteus/settings.json`. `rust.analyzer_path` names the program that runs, so only your own choice sets it. A profile or a folder's `.proteus/settings.json` cannot.
 
 ## How it is built
 

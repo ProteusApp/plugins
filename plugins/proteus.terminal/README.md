@@ -18,6 +18,8 @@ The panel is shared, so other plugins may show it, as the Code Editor's folder p
 | `terminal.default_profile` | empty | The name of the profile a new terminal runs. |
 | `terminal.font_size` | `13` | The terminals' font size. |
 
+`terminal.shell` names the program that runs, so only your own choice sets it. A profile or a folder's `.proteus/settings.json` cannot.
+
 ## Permissions
 
 - `process` runs the program in each terminal.
