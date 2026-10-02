@@ -114,6 +114,11 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field col? integer The column of the cell being worked out, for COLUMN() with no argument.
 ---@field spill? fun(row: integer, col: integer, sheet?: string): integer?, integer? The height and width of the block a formula's cell spills, or nil when it spills none.
 ---@field scope? Sheet.Scope The names LET and LAMBDA give, while their part of a formula is worked out.
+---@field hidden? fun(row: integer, sheet?: string): 'filter'|'user'|nil Why a row is hidden: by the filter or by the user.
+---@field subtotal? fun(row: integer, col: integer, sheet?: string): boolean True when a cell holds a SUBTOTAL or an AGGREGATE, which those leave out.
+---@field formula_text? fun(row: integer, col: integer, sheet?: string): string? The formula a cell holds, with its "=", or nil.
+---@field sheet_index? fun(sheet?: string): integer? Where a sheet sits in the book, the formula's own when nil.
+---@field sheet_count? fun(): integer
 
 ---A function the formulas can call. `run` gets the argument trees and works them out as it
 ---needs to. `map` gets the argument values instead, and runs once for each value when an
@@ -993,6 +998,41 @@ end
 ---@type fun(p: Sheet.Parser): Sheet.Node
 local expression
 
+-- The functions formulas can call, by name. The parser checks how many arguments a call
+-- gives, and the evaluator runs them.
+---@type table<string, Sheet.Function>
+local FUNCS = {}
+
+---How many arguments a function takes, in words.
+---@param spec Sheet.Function
+---@return string
+local function arity (spec)
+  if spec.min == spec.max then
+    return spec.min == 1 and '1 argument' or spec.min .. ' arguments'
+  end
+  if spec.max >= MANY then
+    return 'at least '
+      .. spec.min
+      .. (spec.min == 1 and ' argument' or ' arguments')
+  end
+  return spec.min .. ' to ' .. spec.max .. ' arguments'
+end
+
+---A call with as many arguments as its function takes. A wrong count fails as it is typed,
+---rather than giving #VALUE! when the formula is worked out. A name no function has stays,
+---for LET and LAMBDA names, and gives #NAME? later.
+---@param node Sheet.Node
+---@return Sheet.Node
+local function checked (node)
+  local name = node.name or ''
+  local spec = FUNCS[name]
+  local n = #(node.args or {})
+  if spec and (n < spec.min or n > spec.max) then
+    return fail (name .. ' takes ' .. arity (spec) .. ', not ' .. n .. '.')
+  end
+  return node
+end
+
 ---@param p Sheet.Parser
 ---@param name string
 ---@return Sheet.Node
@@ -1000,7 +1040,7 @@ local function call_args (p, name)
   local args = {} ---@type Sheet.Node[]
   if looking_at (p, 'close') then
     p.i = p.i + 1
-    return { kind = 'call', name = name, args = args }
+    return checked ({ kind = 'call', name = name, args = args })
   end
   while true do
     if looking_at (p, 'comma') or looking_at (p, 'close') then
@@ -1017,7 +1057,7 @@ local function call_args (p, name)
       return fail ('A ")" is missing after the arguments of ' .. name .. '.')
     end
   end
-  return { kind = 'call', name = name, args = args }
+  return checked ({ kind = 'call', name = name, args = args })
 end
 
 ---Reads one value of an array constant: a number with an optional sign, text, TRUE, FALSE or
@@ -1736,9 +1776,6 @@ end
 ---------------------------------------------------------------------------------------------
 -- Evaluator
 ---------------------------------------------------------------------------------------------
-
----@type table<string, Sheet.Function>
-local FUNCS = {}
 
 ---@type fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
 local eval
@@ -6465,6 +6502,9 @@ local ERROR_NUMBER = {
   ['#N/A'] = 7,
   ['#ERROR!'] = 8,
   ['#CYCLE!'] = 9,
+  -- Excel gives #SPILL! the 9 this app gives #CYCLE!, so it takes the next free number.
+  ['#SPILL!'] = 10,
+  ['#CALC!'] = 14,
 }
 
 define (
@@ -6923,7 +6963,7 @@ define (
 ---@field total_of fun(list: number[]): number
 ---@field variance fun(list: number[], sample: boolean): number
 ---@field fit fun(ys: number[], xs: number[]): number, number
----@field solve fun(f: fun(x: number): number, guess: number): number?
+---@field solve fun(f: (fun(x: number): number), guess: number): number?
 ---@field date_arg fun(v: Sheet.Value, ctx?: Sheet.Context): number
 ---@field ymd fun(serial: number): integer, integer, integer
 ---@field make_date fun(y: integer, m: integer, d: integer): integer
@@ -6935,6 +6975,21 @@ define (
 ---@field col_name fun(n: integer): string
 ---@field address fun(row: integer, col: integer): string
 ---@field quote_sheet fun(name: string): string
+---@field percentile fun(list: number[], k: number): number
+---@field clean fun(n: number): number
+---@field reference fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.RangeValue?
+---@field pmt fun(rate: number, nper: number, pv: number, fv: number, kind: integer): number
+---@field fv fun(rate: number, nper: number, payment: number, pv: number, kind: integer): number
+---@field ipmt fun(rate: number, per: number, nper: number, pv: number, future: number, kind: integer): number
+---@field is_weekend fun(day: integer): boolean
+---@field chars fun(s: string): string[]
+---@field length fun(s: string): integer
+---@field wildcard fun(text: string, anchored: boolean): string
+---@field format_value fun(v: Sheet.Value, digits?: integer): string
+---@field parse_address fun(text: string): integer?, integer?
+---@field col_number fun(letters: string): integer?
+---@field LAST_ROW integer
+---@field LAST_COL integer
 
 ---@type Sheet.FormulaKit
 local kit = {
@@ -6991,8 +7046,28 @@ local kit = {
   col_name = M.col_name,
   address = M.address,
   quote_sheet = M.quote_sheet,
+  percentile = percentile,
+  clean = clean,
+  reference = reference,
+  pmt = pmt,
+  fv = fv,
+  ipmt = ipmt,
+  is_weekend = is_weekend,
+  chars = chars,
+  length = length,
+  wildcard = wildcard,
+  format_value = M.format_value,
+  parse_address = M.parse_address,
+  col_number = M.col_number,
+  LAST_ROW = LAST_ROW,
+  LAST_COL = LAST_COL,
 }
-for _, name in ipairs ({ 'sheet_fn_arrays' }) do
+for _, name in ipairs ({
+  'sheet_fn_arrays',
+  'sheet_fn_stats',
+  'sheet_fn_finance',
+  'sheet_fn_more',
+}) do
   local add = require (name) --[[@as fun(kit: Sheet.FormulaKit)]]
   add (kit)
 end
@@ -7089,6 +7164,22 @@ function M.volatile (ast)
   local found = false
   walk (ast, function (node)
     if node.kind == 'call' and VOLATILE[node.name or ''] then
+      found = true
+    end
+  end)
+  return found
+end
+
+---True when a formula reads which rows are hidden: it calls SUBTOTAL or AGGREGATE.
+---@param ast Sheet.Node
+---@return boolean
+function M.reads_hidden (ast)
+  local found = false
+  walk (ast, function (node)
+    if
+      node.kind == 'call'
+      and (node.name == 'SUBTOTAL' or node.name == 'AGGREGATE')
+    then
       found = true
     end
   end)

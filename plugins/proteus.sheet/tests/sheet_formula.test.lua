@@ -148,6 +148,19 @@ test ('the tokenizer reads sheet names with and without quotes', function ()
   })
 end)
 
+test ('a call with the wrong count of arguments refuses to parse', function ()
+  eq ({ f.parse ('=ABS(1, 2)') }, { nil, 'ABS takes 1 argument, not 2.' })
+  eq ({ f.parse ('=SUM()') }, { nil, 'SUM takes at least 1 argument, not 0.' })
+  eq ({ f.parse ('=IF(TRUE)') }, { nil, 'IF takes 2 to 3 arguments, not 1.' })
+  eq ({ f.parse ('=PI(1)') }, { nil, 'PI takes 0 arguments, not 1.' })
+  eq (
+    { f.parse ('=ROUND(1.5, 0, )') },
+    { nil, 'ROUND takes 1 to 2 arguments, not 3.' }
+  )
+  -- A name no function has may be a LET name, so it parses.
+  ok (f.parse ('=NOPE(1, 2, 3)'))
+end)
+
 test ('sheet names that do not read refuse to parse', function ()
   for _, bad in ipairs ({
     "='Q1 sales!A1",
@@ -1400,6 +1413,8 @@ test ('NA, TYPE and ERROR.TYPE', function ()
   eq (calc ('=ERROR.TYPE(1/0)'), '2')
   eq (calc ('=ERROR.TYPE("a"+1)'), '3')
   eq (calc ('=ERROR.TYPE(#REF!)'), '4')
+  eq (calc ('=ERROR.TYPE(#SPILL!)'), '10')
+  eq (calc ('=ERROR.TYPE(SEQUENCE(0))'), '14')
   eq (calc ('=ERROR.TYPE(NOPE())'), '5')
   eq (calc ('=ERROR.TYPE(SQRT(-1))'), '6')
   eq (calc ('=ERROR.TYPE(#N/A)'), '7')
@@ -1574,7 +1589,7 @@ test ('LET names values inside a formula', function ()
   -- A name can hold a block of cells, and functions that need a reference take it.
   eq (calc ('=LET(r, C1:C4, ROWS(r) & "/" & MAX(r))', PEOPLE), '4/300')
   eq (calc ('=LET(x, 1, LET(x, 2, x) + x)'), '3')
-  eq (calc ('=LET(x, 1)'), '#VALUE!')
+  eq (calc ('=LET(x, 1, y, 2)'), '#VALUE!')
   eq (calc ('=LET(A1, 1, 2)'), '#VALUE!')
   eq (calc ('=x+1'), '#NAME?')
   eq (calc ('=LET(x, 1/0, 5)'), '#DIV/0!')
@@ -1600,26 +1615,424 @@ test ('LAMBDA makes a function that LET, MAP and their kin call', function ()
 end)
 
 ---------------------------------------------------------------------------------------------
+-- More statistics
+---------------------------------------------------------------------------------------------
+
+test ('the normal distribution', function ()
+  -- Values from Excel's help pages.
+  near ('=NORM.DIST(42, 40, 1.5, TRUE)', 0.9087888, 1e-7)
+  near ('=NORM.DIST(42, 40, 1.5, FALSE)', 0.10934005, 1e-8)
+  near ('=NORMDIST(42, 40, 1.5, TRUE)', 0.9087888, 1e-7)
+  near ('=NORM.INV(0.908789, 40, 1.5)', 42.000002, 1e-6)
+  near ('=NORMINV(0.908789, 40, 1.5)', 42.000002, 1e-6)
+  near ('=NORM.S.DIST(1.333333, TRUE)', 0.908788726, 1e-9)
+  near ('=NORM.S.DIST(1.333333, FALSE)', 0.164010148, 1e-9)
+  near ('=NORMSDIST(1.333333)', 0.908788726, 1e-9)
+  near ('=NORM.S.INV(0.908789)', 1.3333347, 1e-7)
+  near ('=NORMSINV(0.908789)', 1.3333347, 1e-7)
+  -- Far tails keep their digits.
+  near ('=NORM.S.DIST(-10, TRUE)/7.61985302416047E-24', 1, 1e-12)
+  near ('=NORM.S.INV(1E-20)', -9.262340089798408, 1e-11)
+  eq (calc ('=NORM.S.INV(0)'), '#NUM!')
+  eq (calc ('=NORM.DIST(1, 0, 0, TRUE)'), '#NUM!')
+end)
+
+test ("Student's t distribution and the t-test", function ()
+  -- Values from Excel's help pages.
+  near ('=T.DIST(60, 1, TRUE)', 0.99469533, 1e-8)
+  near ('=T.DIST(8, 3, FALSE)', 0.00073691, 1e-8)
+  near ('=T.DIST.2T(1.959999998, 60)', 0.054644930, 1e-9)
+  near ('=T.DIST.RT(1.959999998, 60)', 0.027322465, 1e-9)
+  near ('=T.INV(0.75, 2)', 0.8164966, 1e-7)
+  near ('=T.INV.2T(0.546449, 60)', 0.606533, 1e-6)
+  near ('=T.INV(0.05, 1)', -6.313751515, 1e-8)
+  near (
+    '=T.TEST({3,4,5,8,9,1,2,4,5}, {6,19,3,2,14,4,5,17,1}, 2, 1)',
+    0.196016,
+    1e-6
+  )
+  near (
+    '=TTEST({3,4,5,8,9,1,2,4,5}, {6,19,3,2,14,4,5,17,1}, 2, 1)',
+    0.196016,
+    1e-6
+  )
+  near (
+    '=T.TEST({3,4,5,8,9,1,2,4,5}, {6,19,3,2,14,4,5,17,1}, 1, 2)',
+    0.0959979433801981,
+    1e-12
+  )
+  near (
+    '=T.TEST({3,4,5,8,9,1,2,4,5}, {6,19,3,2,14,4,5,17,1}, 2, 3)',
+    0.202293923368678,
+    1e-12
+  )
+  eq (calc ('=T.DIST.2T(-1, 5)'), '#NUM!')
+  eq (calc ('=T.TEST({1,2}, {3,4}, 3, 1)'), '#NUM!')
+end)
+
+test ('the binomial, Poisson and chi-squared distributions', function ()
+  -- Values from Excel's help pages.
+  near ('=BINOM.DIST(6, 10, 0.5, FALSE)', 0.2050781, 1e-7)
+  near ('=BINOMDIST(6, 10, 0.5, TRUE)', 0.828125, 1e-12)
+  near ('=POISSON.DIST(2, 5, TRUE)', 0.124652, 1e-6)
+  near ('=POISSON.DIST(2, 5, FALSE)', 0.084224, 1e-6)
+  near ('=POISSON(2, 5, TRUE)', 0.124652, 1e-6)
+  near ('=CHISQ.DIST(0.5, 1, TRUE)', 0.52049988, 1e-8)
+  near ('=CHISQ.DIST(2, 3, FALSE)', 0.20755375, 1e-8)
+  near ('=CHISQ.DIST.RT(18.307, 10)', 0.0500006, 1e-7)
+  near ('=CHIDIST(18.307, 10)', 0.0500006, 1e-7)
+  near ('=CHISQ.INV(0.93, 1)', 3.283020287, 1e-8)
+  near ('=CHISQ.INV(0.6, 2)', 1.832581464, 1e-8)
+  near ('=CHISQ.INV.RT(0.050001, 10)', 18.30697346, 1e-7)
+  near ('=CHIINV(0.050001, 10)', 18.30697346, 1e-7)
+  near (
+    '=CHISQ.TEST({58,11,10;35,25,23}, {45.35,17.56,16.09;47.65,18.44,16.91})',
+    0.0003082,
+    1e-7
+  )
+  near (
+    '=CHITEST({58,11,10;35,25,23}, {45.35,17.56,16.09;47.65,18.44,16.91})',
+    0.0003082,
+    1e-7
+  )
+  eq (calc ('=BINOM.DIST(11, 10, 0.5, FALSE)'), '#NUM!')
+  eq (calc ('=CHISQ.DIST(-1, 2, TRUE)'), '#NUM!')
+end)
+
+test ('more summaries of numbers', function ()
+  -- Values from Excel's help pages.
+  near ('=GEOMEAN(4,5,8,7,11,4,3)', 5.476987, 1e-6)
+  near ('=HARMEAN(4,5,8,7,11,4,3)', 5.028376, 1e-6)
+  near ('=SKEW(3,4,5,2,3,4,5,6,4,7)', 0.359543, 1e-6)
+  near ('=SKEW.P(3,4,5,2,3,4,5,6,4,7)', 0.303193, 1e-6)
+  near ('=KURT(3,4,5,2,3,4,5,6,4,7)', -0.151799637, 1e-9)
+  near ('=AVEDEV(4,5,6,7,5,4,3)', 1.020408, 1e-6)
+  eq (calc ('=DEVSQ(4,5,8,7,11,4,3)'), '48')
+  near ('=COVARIANCE.P({3,2,4,5,6}, {9,7,12,15,17})', 5.2, 1e-12)
+  near ('=COVAR({3,2,4,5,6}, {9,7,12,15,17})', 5.2, 1e-12)
+  near ('=COVARIANCE.S({2,4,8}, {5,11,12})', 9.666666667, 1e-9)
+  near ('=RSQ({2,3,9,1,8,7,5}, {6,5,11,7,5,4,4})', 0.05795, 1e-5)
+  eq (calc ('=GEOMEAN(1, -1)'), '#NUM!')
+  eq (calc ('=KURT(1,2,3)'), '#DIV/0!')
+end)
+
+test ('PERCENTILE.EXC, QUARTILE.EXC and PERCENTRANK', function ()
+  local data = '{1,2,3,6,6,6,7,8,9}'
+  -- Values from Excel's help pages.
+  near ('=PERCENTILE.EXC(' .. data .. ', 0.25)', 2.5, 1e-12)
+  eq (calc ('=PERCENTILE.EXC(' .. data .. ', 0.01)'), '#NUM!')
+  near ('=QUARTILE.EXC({6,7,15,36,39,40,41,42,43,47,49}, 1)', 15, 1e-12)
+  near ('=QUARTILE.EXC({6,7,15,36,39,40,41,42,43,47,49}, 3)', 43, 1e-12)
+  near ('=PERCENTRANK.EXC(' .. data .. ', 7)', 0.7, 1e-12)
+  near ('=PERCENTRANK.EXC(' .. data .. ', 5.43)', 0.381, 1e-12)
+  near ('=PERCENTRANK.EXC(' .. data .. ', 5.43, 1)', 0.3, 1e-12)
+  local ranked = '{13,12,11,8,4,3,2,1,1,1}'
+  near ('=PERCENTRANK.INC(' .. ranked .. ', 2)', 0.333, 1e-12)
+  near ('=PERCENTRANK.INC(' .. ranked .. ', 4)', 0.555, 1e-12)
+  near ('=PERCENTRANK.INC(' .. ranked .. ', 8)', 0.666, 1e-12)
+  near ('=PERCENTRANK(' .. ranked .. ', 5)', 0.583, 1e-12)
+  eq (calc ('=PERCENTRANK(' .. ranked .. ', 50)'), '#N/A')
+end)
+
+test ('FREQUENCY counts into bins', function ()
+  -- Excel's help page counts these scores into 1, 2, 4 and 2.
+  eq (
+    rows_of ('=FREQUENCY({79,85,78,85,50,81,95,88,97}, {70,79,89})'),
+    '1;2;4;2'
+  )
+  eq (rows_of ('=FREQUENCY({1,2,3}, {2,1})'), '1;1;1')
+end)
+
+test ('LINEST, TREND and GROWTH fit lines and curves', function ()
+  eq (rows_of ('=LINEST({1,9,5,7}, {0,4,2,3})'), '2,1')
+  eq (rows_of ('=LINEST({3;5;7}, , FALSE)'), '2.428571429,0')
+  -- Two xs: y = 1 + 2a + 3b exactly.
+  local cells = {
+    A1 = 6,
+    A2 = 9,
+    A3 = 9,
+    A4 = 14,
+    B1 = 1,
+    B2 = 1,
+    B3 = 4,
+    B4 = 2,
+    C1 = 1,
+    C2 = 2,
+    C3 = 0,
+    C4 = 3,
+  }
+  eq (rows_of ('=ROUND(LINEST(A1:A4, B1:C4), 9)', cells), '3,2,1')
+  -- The statistics of a fit: standard errors, R squared, F, degrees of freedom and sums of
+  -- squares, worked out by hand for these four points.
+  local fit = 'LINEST({2,3,5,4}, {1,2,3,4}, TRUE, TRUE)'
+  local want = {
+    { 0.8, 1.5 },
+    { 0.4242640687, 1.161895004 },
+    { 0.64, 0.9486832981 },
+    { 3.555555556, 2 },
+    { 3.2, 1.8 },
+  }
+  for i, row in ipairs (want) do
+    for j, x in ipairs (row) do
+      near (string.format ('=INDEX(%s, %d, %d)', fit, i, j), x, 1e-9)
+    end
+  end
+  eq (calc ('=INDEX(' .. fit .. ', 5, 3)'), '#REF!')
+  -- Excel's help page for TREND and GROWTH.
+  local months = '{1;2;3;4;5;6;7;8;9;10;11;12}'
+  local costs =
+    '{133890;135000;135790;137300;138130;139100;139900;141120;141890;143230;144000;145290}'
+  near (
+    '=INDEX(TREND(' .. costs .. ', ' .. months .. ', {13;14}), 1)',
+    146172,
+    1
+  )
+  near (
+    '=INDEX(TREND(' .. costs .. ', ' .. months .. ', {13;14}), 2)',
+    147190,
+    1
+  )
+  near (
+    '=INDEX(GROWTH({33100;47300;69000;102000;150000;220000}, {11;12;13;14;15;16}, {17;18}), 1)',
+    320196.7184,
+    1e-3
+  )
+  near (
+    '=INDEX(GROWTH({33100;47300;69000;102000;150000;220000}, {11;12;13;14;15;16}), 1)',
+    32618.20377,
+    1e-4
+  )
+  eq (calc ('=LINEST({1,2,3}, {1,2})'), '#REF!')
+end)
+
+---------------------------------------------------------------------------------------------
+-- More money, dates, math and text
+---------------------------------------------------------------------------------------------
+
+test ('XNPV, XIRR and MIRR', function ()
+  -- Values from Excel's help pages.
+  local dates = '{39448,39508,39751,39859,39904}'
+  local flows = '{-10000,2750,4250,3250,2750}'
+  near ('=XNPV(0.09, ' .. flows .. ', ' .. dates .. ')', 2086.647602, 1e-6)
+  near ('=XIRR(' .. flows .. ', ' .. dates .. ')', 0.373362535, 1e-8)
+  near ('=XIRR(' .. flows .. ', ' .. dates .. ', 0.5)', 0.373362535, 1e-8)
+  local cash = '{-120000,39000,30000,21000,37000,46000}'
+  near ('=MIRR(' .. cash .. ', 0.1, 0.12)', 0.126094, 1e-6)
+  near ('=MIRR({-120000,39000,30000,21000}, 0.1, 0.12)', -0.048044655, 1e-9)
+  eq (calc ('=XIRR({1,2}, {39448,39508})'), '#NUM!')
+  eq (calc ('=XNPV(0.1, {1,2}, {39448})'), '#NUM!')
+end)
+
+test ('depreciation: SLN, SYD, DDB and DB', function ()
+  -- Values from Excel's help pages.
+  eq (calc ('=SLN(30000, 7500, 10)'), '2250')
+  near ('=SYD(30000, 7500, 10, 1)', 4090.909091, 1e-6)
+  near ('=SYD(30000, 7500, 10, 10)', 409.0909091, 1e-7)
+  near ('=DDB(2400, 300, 10*365, 1)', 1.315068493, 1e-9)
+  eq (calc ('=DDB(2400, 300, 10*12, 1, 2)'), '40')
+  eq (calc ('=DDB(2400, 300, 10, 1, 2)'), '480')
+  eq (calc ('=DDB(2400, 300, 10, 1, 1.5)'), '360')
+  near ('=DDB(2400, 300, 10, 10)', 22.1225472, 1e-7)
+  local db = {
+    186083.3333,
+    259639.4167,
+    176814.4428,
+    120410.6355,
+    81999.64278,
+    55841.75674,
+    15845.0984,
+  }
+  for period, want in ipairs (db) do
+    near ('=DB(1000000, 100000, 6, ' .. period .. ', 7)', want, 1e-3)
+  end
+  eq (calc ('=DB(1000000, 100000, 6, 8, 7)'), '#NUM!')
+  eq (calc ('=SLN(1, 0, 0)'), '#DIV/0!')
+end)
+
+test ('EFFECT, NOMINAL, CUMIPMT and CUMPRINC', function ()
+  -- Values from Excel's help pages.
+  near ('=EFFECT(0.0525, 4)', 0.053542667, 1e-9)
+  near ('=NOMINAL(0.053543, 4)', 0.05250032, 1e-8)
+  near ('=CUMIPMT(0.09/12, 30*12, 125000, 13, 24, 0)', -11135.23213, 1e-5)
+  near ('=CUMIPMT(0.09/12, 30*12, 125000, 1, 1, 0)', -937.5, 1e-9)
+  near ('=CUMPRINC(0.09/12, 30*12, 125000, 13, 24, 0)', -934.1071234, 1e-7)
+  near ('=CUMPRINC(0.09/12, 30*12, 125000, 1, 1, 0)', -68.27827118, 1e-8)
+  eq (calc ('=EFFECT(0, 4)'), '#NUM!')
+  eq (calc ('=CUMIPMT(0.01, 12, 1000, 5, 3, 0)'), '#NUM!')
+end)
+
+test ('NETWORKDAYS.INTL, WORKDAY.INTL and DAYS360', function ()
+  -- Values from Excel's help pages.
+  eq (calc ('=NETWORKDAYS.INTL(DATE(2006,1,1), DATE(2006,1,31))'), '22')
+  eq (calc ('=NETWORKDAYS.INTL(DATE(2006,2,28), DATE(2006,1,31))'), '-21')
+  eq (
+    calc (
+      '=NETWORKDAYS.INTL(DATE(2006,1,1), DATE(2006,2,1), 7, {"2006/1/2","2006/1/16"})'
+    ),
+    '22'
+  )
+  eq (
+    calc (
+      '=NETWORKDAYS.INTL(DATE(2006,1,1), DATE(2006,2,1), "0010001", {"2006/1/2","2006/1/16"})'
+    ),
+    '20'
+  )
+  eq (calc ('=WORKDAY.INTL(DATE(2012,1,1), 90, 11)'), '41013')
+  eq (calc ('=WORKDAY.INTL(DATE(2012,1,1), 30, 17)'), '40944')
+  eq (calc ('=WORKDAY.INTL(DATE(2012,1,1), 30, 0)'), '#NUM!')
+  eq (calc ('=WORKDAY.INTL(DATE(2012,1,1), 1, "1111111")'), '#VALUE!')
+  eq (calc ('=DAYS360(DATE(2011,1,30), DATE(2011,12,31))'), '330')
+  eq (calc ('=DAYS360(DATE(2011,1,31), DATE(2011,12,31), TRUE)'), '330')
+  eq (calc ('=DAYS360(DATE(2011,2,28), DATE(2011,3,31))'), '30')
+  eq (calc ('=DAYS360(DATE(2011,1,1), DATE(2011,1,31))'), '30')
+end)
+
+test ('hyperbolic and reciprocal trigonometry', function ()
+  -- Values from Excel's help pages.
+  near ('=SINH(1)', 1.175201194, 1e-9)
+  near ('=COSH(4)', 27.30823284, 1e-8)
+  near ('=TANH(-2)', -0.96402758, 1e-8)
+  near ('=ASINH(-2.5)', -1.647231146, 1e-9)
+  near ('=ACOSH(10)', 2.993222846, 1e-9)
+  near ('=ATANH(0.76159416)', 1.00000001, 1e-8)
+  near ('=COT(30)', -0.156119952, 1e-9)
+  near ('=COTH(2)', 1.037314721, 1e-9)
+  near ('=CSC(15)', 1.537780562, 1e-9)
+  near ('=CSCH(1.5)', 0.469642441, 1e-9)
+  near ('=SEC(45)', 1.903594407, 1e-9)
+  near ('=SECH(45)', 5.73e-20, 1e-21)
+  near ('=ACOT(2)', 0.463647609, 1e-9)
+  eq (calc ('=COT(0)'), '#DIV/0!')
+  eq (calc ('=ACOSH(0.5)'), '#NUM!')
+end)
+
+test ('numbers in other bases', function ()
+  -- Values from Excel's help pages.
+  eq (calc ('=BASE(7, 2)'), '111')
+  eq (calc ('=BASE(100, 16)'), '64')
+  eq (calc ('=BASE(15, 2, 10)'), '0000001111')
+  eq (calc ('=DECIMAL("FF", 16)'), '255')
+  eq (calc ('=DECIMAL("zap", 36)'), '45745')
+  eq (calc ('=DEC2BIN(9, 4)'), '1001')
+  eq (calc ('=DEC2BIN(-100)'), '1110011100')
+  eq (calc ('=DEC2HEX(100, 4)'), '0064')
+  eq (calc ('=DEC2HEX(-54)'), 'FFFFFFFFCA')
+  eq (calc ('=DEC2OCT(58, 3)'), '072')
+  eq (calc ('=DEC2OCT(-100)'), '7777777634')
+  eq (calc ('=BIN2DEC(1100100)'), '100')
+  eq (calc ('=BIN2DEC(1111111111)'), '-1')
+  eq (calc ('=HEX2DEC("A5")'), '165')
+  eq (calc ('=HEX2DEC("FFFFFFFF5B")'), '-165')
+  eq (calc ('=OCT2DEC(54)'), '44')
+  eq (calc ('=OCT2DEC(7777777533)'), '-165')
+  eq (calc ('=BIN2HEX(11111011, 4)'), '00FB')
+  eq (calc ('=BIN2HEX(1111111111)'), 'FFFFFFFFFF')
+  eq (calc ('=BIN2OCT(1001, 3)'), '011')
+  eq (calc ('=HEX2BIN("F", 8)'), '00001111')
+  eq (calc ('=HEX2BIN("FFFFFFFE00")'), '1000000000')
+  eq (calc ('=HEX2OCT("F", 3)'), '017')
+  eq (calc ('=HEX2OCT("FFFFFFFF00")'), '7777777400')
+  eq (calc ('=OCT2BIN(3, 3)'), '011')
+  eq (calc ('=OCT2BIN(7777777000)'), '1000000000')
+  eq (calc ('=OCT2HEX(100, 4)'), '0040')
+  eq (calc ('=OCT2HEX(7777777533)'), 'FFFFFFFF5B')
+  eq (calc ('=DEC2BIN(512)'), '#NUM!')
+  eq (calc ('=DEC2BIN(9, 2)'), '#NUM!')
+  eq (calc ('=HEX2DEC("G")'), '#NUM!')
+end)
+
+test ('Roman numerals', function ()
+  -- Excel's help page writes 499 in each form.
+  eq (calc ('=ROMAN(499, 0)'), 'CDXCIX')
+  eq (calc ('=ROMAN(499, 1)'), 'LDVLIV')
+  eq (calc ('=ROMAN(499, 2)'), 'XDIX')
+  eq (calc ('=ROMAN(499, 3)'), 'VDIV')
+  eq (calc ('=ROMAN(499, 4)'), 'ID')
+  eq (calc ('=ROMAN(2026)'), 'MMXXVI')
+  eq (calc ('=ROMAN(4000)'), '#VALUE!')
+  eq (calc ('=ARABIC("LVII")'), '57')
+  eq (calc ('=ARABIC("mcmxii")'), '1912')
+  eq (calc ('=ARABIC("-MMXXVI")'), '-2026')
+  eq (calc ('=ARABIC("ABC")'), '#VALUE!')
+end)
+
+test ('CONVERT turns one unit into another', function ()
+  -- Values from Excel's help page.
+  near ('=CONVERT(1, "lbm", "kg")', 0.4535924, 1e-7)
+  near ('=CONVERT(68, "F", "C")', 20, 1e-12)
+  eq (calc ('=CONVERT(2.5, "ft", "sec")'), '#N/A')
+  near ('=CONVERT(CONVERT(100, "ft", "m"), "ft", "m")', 9.290304, 1e-12)
+  near ('=CONVERT(1, "mi", "km")', 1.609344, 1e-12)
+  near ('=CONVERT(100, "C", "K")', 373.15, 1e-12)
+  near ('=CONVERT(0, "Reau", "F")', 32, 1e-12)
+  near ('=CONVERT(1, "kWh", "J")', 3600000, 1e-6)
+  near ('=CONVERT(1, "Gibyte", "bit")', 8589934592, 1e-3)
+  near ('=CONVERT(1, "km2", "m2")', 1000000, 1e-6)
+  near ('=CONVERT(1, "gal", "l")', 3.785411784, 1e-12)
+  near ('=CONVERT(1, "hr", "mn")', 60, 1e-12)
+  eq (calc ('=CONVERT(1, "furlong", "m")'), '#N/A')
+  eq (calc ('=CONVERT(1, "M", "m")'), '#N/A')
+end)
+
+test ('TEXTSPLIT and NUMBERVALUE', function ()
+  eq (rows_of ('=TEXTSPLIT("Dakota Lennox Sun", " ")'), 'Dakota,Lennox,Sun')
+  eq (rows_of ('=TEXTSPLIT("1,2,3;4,5,6", ",", ";")'), '1,2,3;4,5,6')
+  eq (rows_of ('=TEXTSPLIT("a,b;c", ",", ";")'), 'a,b;c,#N/A')
+  eq (rows_of ('=TEXTSPLIT("a,b;c", ",", ";", FALSE, 0, "-")'), 'a,b;c,-')
+  eq (rows_of ('=TEXTSPLIT("a,,b", ",", , TRUE)'), 'a,b')
+  eq (rows_of ('=TEXTSPLIT("aXbxc", "x", , , 1)'), 'a,b,c')
+  eq (rows_of ('=TEXTSPLIT("a-b c", {"-"," "})'), 'a,b,c')
+  -- Values from Excel's help page.
+  eq (calc ('=NUMBERVALUE("2.500,27", ",", ".")'), '2500.27')
+  eq (calc ('=NUMBERVALUE("3.5%")'), '0.035')
+  eq (calc ('=NUMBERVALUE(" 1 234 ", ".", " ")'), '1234')
+  eq (calc ('=NUMBERVALUE("")'), '0')
+  eq (calc ('=NUMBERVALUE("1.2.3")'), '#VALUE!')
+end)
+
+---------------------------------------------------------------------------------------------
 -- Every function
 ---------------------------------------------------------------------------------------------
 
 local EVERY = {
   'ABS',
   'ACOS',
+  'ACOSH',
+  'ACOT',
   'ADDRESS',
+  'AGGREGATE',
   'AND',
+  'ARABIC',
   'ASIN',
+  'ASINH',
   'ATAN',
   'ATAN2',
+  'ATANH',
+  'AVEDEV',
   'AVERAGE',
   'AVERAGEA',
   'AVERAGEIF',
   'AVERAGEIFS',
+  'BASE',
+  'BIN2DEC',
+  'BIN2HEX',
+  'BIN2OCT',
+  'BINOM.DIST',
+  'BINOMDIST',
   'BYCOL',
   'BYROW',
   'CEILING',
   'CEILING.MATH',
+  'CELL',
   'CHAR',
+  'CHIDIST',
+  'CHIINV',
+  'CHISQ.DIST',
+  'CHISQ.DIST.RT',
+  'CHISQ.INV',
+  'CHISQ.INV.RT',
+  'CHISQ.TEST',
+  'CHITEST',
   'CHOOSE',
   'CLEAN',
   'CODE',
@@ -1628,21 +2041,41 @@ local EVERY = {
   'COMBIN',
   'CONCAT',
   'CONCATENATE',
+  'CONVERT',
   'CORREL',
   'COS',
+  'COSH',
+  'COT',
+  'COTH',
   'COUNT',
   'COUNTA',
   'COUNTBLANK',
   'COUNTIF',
   'COUNTIFS',
+  'COVAR',
+  'COVARIANCE.P',
+  'COVARIANCE.S',
+  'CSC',
+  'CSCH',
+  'CUMIPMT',
+  'CUMPRINC',
   'DATE',
   'DATEDIF',
   'DATEVALUE',
   'DAY',
   'DAYS',
+  'DAYS360',
+  'DB',
+  'DDB',
+  'DEC2BIN',
+  'DEC2HEX',
+  'DEC2OCT',
+  'DECIMAL',
   'DEGREES',
+  'DEVSQ',
   'DOLLAR',
   'EDATE',
+  'EFFECT',
   'EOMONTH',
   'ERROR.TYPE',
   'EVEN',
@@ -1657,10 +2090,19 @@ local EVERY = {
   'FLOOR.MATH',
   'FORECAST',
   'FORECAST.LINEAR',
+  'FORMULATEXT',
+  'FREQUENCY',
   'FV',
   'GCD',
+  'GEOMEAN',
+  'GROWTH',
+  'HARMEAN',
+  'HEX2BIN',
+  'HEX2DEC',
+  'HEX2OCT',
   'HLOOKUP',
   'HOUR',
+  'HYPERLINK',
   'IF',
   'IFERROR',
   'IFNA',
@@ -1675,6 +2117,7 @@ local EVERY = {
   'ISERR',
   'ISERROR',
   'ISEVEN',
+  'ISFORMULA',
   'ISLOGICAL',
   'ISNA',
   'ISNUMBER',
@@ -1682,12 +2125,14 @@ local EVERY = {
   'ISOWEEKNUM',
   'ISREF',
   'ISTEXT',
+  'KURT',
   'LAMBDA',
   'LARGE',
   'LCM',
   'LEFT',
   'LEN',
   'LET',
+  'LINEST',
   'LN',
   'LOG',
   'LOG10',
@@ -1703,6 +2148,7 @@ local EVERY = {
   'MIN',
   'MINIFS',
   'MINUTE',
+  'MIRR',
   'MOD',
   'MODE',
   'MODE.SNGL',
@@ -1711,24 +2157,45 @@ local EVERY = {
   'N',
   'NA',
   'NETWORKDAYS',
+  'NETWORKDAYS.INTL',
+  'NOMINAL',
+  'NORM.DIST',
+  'NORM.INV',
+  'NORM.S.DIST',
+  'NORM.S.INV',
+  'NORMDIST',
+  'NORMINV',
+  'NORMSDIST',
+  'NORMSINV',
   'NOT',
   'NOW',
   'NPER',
   'NPV',
+  'NUMBERVALUE',
+  'OCT2BIN',
+  'OCT2DEC',
+  'OCT2HEX',
   'ODD',
   'OFFSET',
   'OR',
   'PERCENTILE',
+  'PERCENTILE.EXC',
   'PERCENTILE.INC',
+  'PERCENTRANK',
+  'PERCENTRANK.EXC',
+  'PERCENTRANK.INC',
   'PERMUT',
   'PI',
   'PMT',
+  'POISSON',
+  'POISSON.DIST',
   'POWER',
   'PPMT',
   'PRODUCT',
   'PROPER',
   'PV',
   'QUARTILE',
+  'QUARTILE.EXC',
   'QUARTILE.INC',
   'QUOTIENT',
   'RADIANS',
@@ -1742,17 +2209,27 @@ local EVERY = {
   'REPLACE',
   'REPT',
   'RIGHT',
+  'ROMAN',
   'ROUND',
   'ROUNDDOWN',
   'ROUNDUP',
   'ROW',
   'ROWS',
+  'RSQ',
   'SCAN',
   'SEARCH',
+  'SEC',
+  'SECH',
   'SECOND',
   'SEQUENCE',
+  'SHEET',
+  'SHEETS',
   'SIGN',
   'SIN',
+  'SINH',
+  'SKEW',
+  'SKEW.P',
+  'SLN',
   'SLOPE',
   'SMALL',
   'SORT',
@@ -1763,24 +2240,36 @@ local EVERY = {
   'STDEV.S',
   'STDEVP',
   'SUBSTITUTE',
+  'SUBTOTAL',
   'SUM',
   'SUMIF',
   'SUMIFS',
   'SUMPRODUCT',
   'SUMSQ',
   'SWITCH',
+  'SYD',
   'T',
+  'T.DIST',
+  'T.DIST.2T',
+  'T.DIST.RT',
+  'T.INV',
+  'T.INV.2T',
+  'T.TEST',
   'TAN',
+  'TANH',
   'TEXT',
   'TEXTAFTER',
   'TEXTBEFORE',
   'TEXTJOIN',
+  'TEXTSPLIT',
   'TIME',
   'TIMEVALUE',
   'TODAY',
+  'TREND',
   'TRIM',
   'TRUE',
   'TRUNC',
+  'TTEST',
   'TYPE',
   'UNICHAR',
   'UNICODE',
@@ -1795,8 +2284,11 @@ local EVERY = {
   'WEEKDAY',
   'WEEKNUM',
   'WORKDAY',
+  'WORKDAY.INTL',
+  'XIRR',
   'XLOOKUP',
   'XMATCH',
+  'XNPV',
   'XOR',
   'YEAR',
   'YEARFRAC',

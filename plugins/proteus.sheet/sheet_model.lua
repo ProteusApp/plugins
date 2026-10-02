@@ -1593,6 +1593,8 @@ function Sheet:put_prop (field, key, value)
     self.book:names_changed ()
   elseif field == 'rows' or field == 'cols' then
     self.book.full = true
+  elseif field == 'hidden_rows' or field == 'filter' then
+    self.book:rows_changed ()
   end
   self.book:touch ()
 end
@@ -3277,6 +3279,7 @@ function Sheet:refilter ()
   local f = self.filter
   if f then
     f.hidden = self:hidden_by (f)
+    self.book:rows_changed ()
   end
 end
 

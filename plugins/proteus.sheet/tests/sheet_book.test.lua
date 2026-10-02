@@ -427,7 +427,7 @@ test ('INDIRECT and OFFSET read cells worked out on demand', function ()
 end)
 
 test (
-  'a long chain of INDIRECT gives #CYCLE! rather than overflowing',
+  'a long chain of INDIRECT gives #CALC! rather than overflowing',
   function ()
     local book = B.new ({ rows = 400 })
     local s = book.sheets[1]
@@ -438,8 +438,9 @@ test (
     book:ensure ()
     for row = 1, 400 do
       local v = s:value (row, 1)
-      ok (type (v) == 'number' or v == f.error ('#CYCLE!'), 'row ' .. row)
+      ok (type (v) == 'number' or v == f.error ('#CALC!'), 'row ' .. row)
     end
+    eq (s:value (1, 1), f.error ('#CALC!'))
     eq (s:value (400, 1), 1)
     eq (s:value (399, 1), 2)
   end

@@ -5,7 +5,7 @@ A spreadsheet with formulas, formats, charts and several sheets per workbook. In
 ## What it does
 
 - **Workbooks.** Each workbook is a file in `data/proteus.sheet/`, listed in the Workbooks view. Before 0.3.0 they lived in `data/sheets/`, and Proteus moves them on its first start.
-- **Formulas.** Over 190 functions, such as `SUM`, `VLOOKUP`, `XLOOKUP`, `IF` and `TEXT`, with references between sheets. A change recalculates only the cells that depend on it.
+- **Formulas.** Close to 300 functions, such as `SUM`, `VLOOKUP`, `XLOOKUP`, `IF`, `TEXT`, `SUBTOTAL`, `NORM.DIST`, `XIRR` and `CONVERT`, with references between sheets. A change recalculates only the cells that depend on it, and a formula with the wrong count of arguments says so as it goes in.
 - **Dynamic arrays.** A formula that gives a block, such as `=SORT(A2:C9)`, `=FILTER(...)`, `=UNIQUE(...)` or `=SEQUENCE(5)`, spills into the cells around it, and `A1#` reads the whole block. A block with no room shows `#SPILL!`. `LET` names values inside a formula, and `LAMBDA` makes functions for `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL` and `MAKEARRAY`.
 - **Formats.** Number formats, fonts, colours, borders, alignment, merged cells and conditional formats.
 - **Data.** Sort, filter, find and replace, data validation, and frozen or hidden rows and columns.

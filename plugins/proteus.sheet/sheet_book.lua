@@ -191,6 +191,8 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field edited Sheet.Position[] Cells whose text changed since the last recalculation.
 ---@field spill_moved Sheet.Position[] Cells a block spilled into, or left, since the formulas that read them were worked out.
 ---@field volatile table<Sheet.Cell, boolean>
+---@field row_readers table<Sheet.Cell, boolean> Formulas that read which rows are hidden, such as SUBTOTAL.
+---@field rows_stale boolean True when hidden rows changed since those formulas were worked out.
 ---@field by_name table<string, Sheet.Sheet> Sheets by lower-case name.
 ---@field name_cache table<string, Sheet.Sheet|false> Sheets by name as a formula writes it.
 ---@field live table<Sheet.Sheet, boolean> The sheets in the book now.
@@ -217,6 +219,7 @@ local HUGE = math.huge
 local KEY = model.KEY
 local CYCLE = formula.error ('#CYCLE!')
 local SPILL = formula.error ('#SPILL!')
+local TOO_DEEP = formula.error ('#CALC!')
 -- How many times in a row a recalculation goes round again for blocks that spilled further.
 local SPILL_ROUNDS = 8
 local BROKEN = formula.error ('#ERROR!')
@@ -287,6 +290,8 @@ local function blank_book (opts)
   self.edited = {}
   self.spill_moved = {}
   self.volatile = {}
+  self.row_readers = {}
+  self.rows_stale = false
   self.by_name = {}
   self.name_cache = {}
   self.live = {}
@@ -766,6 +771,9 @@ function Book:watch (sheet, cell)
     cell.volatile = true
     self.volatile[cell] = true
   end
+  if formula.reads_hidden (ast) then
+    self.row_readers[cell] = true
+  end
 end
 
 ---Takes a formula cell out of the indexes.
@@ -777,6 +785,7 @@ function Book:unwatch (sheet, cell)
     mine[cell] = nil
   end
   self.volatile[cell] = nil
+  self.row_readers[cell] = nil
   for _, a in ipairs (cell.areas or {}) do
     local w = a.sheet.watch
     if small (a) then
@@ -896,6 +905,53 @@ function Book:context (sheet)
         return nil, nil
       end
       return found.rows, found.cols
+    end,
+    hidden = function (row, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      if not target then
+        return nil
+      end
+      if target:filtered (row) then
+        return 'filter'
+      end
+      return target.hidden_rows[row] and 'user' or nil
+    end,
+    subtotal = function (row, col, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      local cell = target and target.cells[row * KEY + col]
+      if not cell or not cell.formula then
+        return false
+      end
+      local up = string.upper (cell.text)
+      return string.find (up, 'SUBTOTAL(', 1, true) ~= nil
+        or string.find (up, 'AGGREGATE(', 1, true) ~= nil
+    end,
+    formula_text = function (row, col, name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      local cell = target and target.cells[row * KEY + col]
+      if cell and cell.formula then
+        return cell.text
+      end
+      return nil
+    end,
+    sheet_index = function (name)
+      local target = sheet ---@type Sheet.Sheet?
+      if name then
+        target = book:find (name)
+      end
+      return target and book:index_of (target)
+    end,
+    sheet_count = function ()
+      return #book.sheets
     end,
     spill = function (row, col, name)
       local target = sheet
@@ -1053,12 +1109,16 @@ function Book:place (sheet, cell, block)
 end
 
 ---Works out a cell that a formula reads before its turn came. A cell already being worked
----out is a loop, and so is a chain too deep to follow.
+---out is a loop, #CYCLE!. A chain too deep to follow, such as INDIRECT reading INDIRECT
+---more than 32 times over, is #CALC!, since it need not be a loop.
 ---@param cell Sheet.Cell
 ---@return Sheet.Value
 function Book:on_demand (cell)
-  if cell.busy or self.nesting >= DEPTH then
+  if cell.busy then
     return CYCLE
+  end
+  if self.nesting >= DEPTH then
+    return TOO_DEEP
   end
   self.nesting = self.nesting + 1
   self:compute (cell)
@@ -1146,6 +1206,8 @@ function Book:recalc ()
   self.edited = {}
   self.spill_moved = {}
   self.volatile = {}
+  self.row_readers = {}
+  self.rows_stale = false
   for _, sheet in ipairs (self.sheets) do
     sheet.watch = model.new_watch ()
   end
@@ -1249,6 +1311,12 @@ function Book:update ()
   for cell in pairs (self.volatile) do
     mark (cell)
   end
+  if self.rows_stale then
+    self.rows_stale = false
+    for cell in pairs (self.row_readers) do
+      mark (cell)
+    end
+  end
   local i = 1
   while i <= #queue do
     local pos = queue[i]
@@ -1263,7 +1331,12 @@ end
 function Book:ensure ()
   if self.full then
     self:recalc ()
-  elseif #self.edited > 0 or #self.spill_moved > 0 or self.stale then
+  elseif
+    #self.edited > 0
+    or #self.spill_moved > 0
+    or self.stale
+    or self.rows_stale
+  then
     self:update ()
     self:settle ()
   end
@@ -1272,6 +1345,12 @@ end
 ---Asks for the volatile formulas, such as NOW and RAND, to be worked out again.
 function Book:refresh ()
   self.stale = true
+end
+
+---Tells the book that rows were hidden or shown, by the user or by a filter, so SUBTOTAL and
+---AGGREGATE are worked out again.
+function Book:rows_changed ()
+  self.rows_stale = true
 end
 
 ---The value of a cell on the sheet at `index`, as the Excel writer asks for it.

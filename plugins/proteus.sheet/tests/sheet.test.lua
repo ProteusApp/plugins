@@ -404,8 +404,9 @@ test ('every error by name', function ()
   eq (calc ('=(-8)^(1/3)'), '#NUM!')
   eq (calc ('=10^400'), '#NUM!')
   eq (calc ('=1+'), '#ERROR!')
-  eq (calc ('=SUM()'), '#VALUE!')
-  eq (calc ('=ABS(1, 2)'), '#VALUE!')
+  -- A wrong count of arguments fails as it is typed, as a syntax error does.
+  eq (calc ('=SUM()'), '#ERROR!')
+  eq (calc ('=ABS(1, 2)'), '#ERROR!')
   eq (calc ('=#N/A'), '#N/A')
   eq (calc ('=#NULL!'), '#NULL!')
   local s = sheet_of ({ A1 = '=A1' })
@@ -1444,6 +1445,135 @@ test ('can_point knows where a reference can go', function ()
   ok (f.can_point ('=SUM()', 6))
   ok (f.can_point ('=(+1)', 3))
   ok (not f.can_point ('=(A1)', 3))
+end)
+
+test (
+  'SUBTOTAL and AGGREGATE leave out hidden rows and other subtotals',
+  function ()
+    local s = sheet_of ({
+      A1 = 'Item',
+      B1 = 'Cost',
+      A2 = 'Rent',
+      B2 = '100',
+      A3 = 'Food',
+      B3 = '20',
+      A4 = 'Rent',
+      B4 = '300',
+      B5 = '=SUBTOTAL(9, B2:B4)',
+      B6 = '=SUBTOTAL(9, B2:B5)',
+      C1 = '=SUBTOTAL(109, B2:B4)',
+      C2 = '=SUBTOTAL(1, B2:B4)',
+      C3 = '=SUBTOTAL(2, B2:B4)',
+      C4 = '=SUBTOTAL(3, A2:A4)',
+      C5 = '=SUBTOTAL(4, B2:B4)',
+      C6 = '=SUBTOTAL(5, B2:B4)',
+      C7 = '=SUBTOTAL(6, B2:B3)',
+      C8 = '=SUBTOTAL(10, B2:B4)',
+      D1 = '=AGGREGATE(9, 5, B2:B4)',
+      D2 = '=AGGREGATE(9, 4, B2:B6)',
+      D3 = '=AGGREGATE(9, 0, B2:B6)',
+      D4 = '=AGGREGATE(4, 6, E1:E3)',
+      D5 = '=AGGREGATE(14, 6, E1:E3, 2)',
+      D6 = '=AGGREGATE(12, 0, B2:B4)',
+      D7 = '=AGGREGATE(9, 4, E1:E3)',
+      D8 = '=SUBTOTAL(12, B2:B4)',
+      D9 = '=SUBTOTAL(9, 5)',
+      E1 = '7',
+      E2 = '=1/0',
+      E3 = '3',
+    })
+    eq (
+      { shown (s, 'B5'), shown (s, 'B6'), shown (s, 'C1') },
+      { '420', '420', '420' }
+    )
+    eq (
+      { shown (s, 'C2'), shown (s, 'C3'), shown (s, 'C4'), shown (s, 'C5') },
+      { '140', '3', '3', '300' }
+    )
+    eq (
+      { shown (s, 'C6'), shown (s, 'C7'), shown (s, 'C8') },
+      { '20', '2000', '20800' }
+    )
+    eq (
+      { shown (s, 'D1'), shown (s, 'D2'), shown (s, 'D3') },
+      { '420', '1260', '420' }
+    )
+    eq (
+      { shown (s, 'D4'), shown (s, 'D5'), shown (s, 'D6') },
+      { '7', '3', '100' }
+    )
+    eq ({ shown (s, 'D7'), shown (s, 'D8'), shown (s, 'D9') }, {
+      '#DIV/0!',
+      '#VALUE!',
+      '#VALUE!',
+    })
+    -- A row the user hides counts for 9 and not for 109, and the subtotals follow at once.
+    s:set_hidden ('row', 3, 3, true)
+    eq (
+      { shown (s, 'B5'), shown (s, 'C1'), shown (s, 'D1') },
+      { '420', '400', '400' }
+    )
+    s:set_hidden ('row', 3, 3, false)
+    -- A row the filter hides counts for neither.
+    local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
+    ops.set_filter (s, m.parse_range ('A1:B4') --[[@as Sheet.Rect]])
+    ops.filter_column (s, 1, { values = { 'Rent' } })
+    eq (
+      { shown (s, 'B5'), shown (s, 'C1'), shown (s, 'C4') },
+      { '400', '400', '2' }
+    )
+    eq (shown (s, 'D1'), '400')
+    ops.remove_filter (s)
+    eq (shown (s, 'B5'), '420')
+  end
+)
+
+test ('the information functions tell about cells and sheets', function ()
+  local s = sheet_of ({
+    A1 = '=1+2',
+    A2 = 'text',
+    B1 = '=FORMULATEXT(A1)',
+    B2 = '=FORMULATEXT(A2)',
+    B3 = '=ISFORMULA(A1)',
+    B4 = '=ISFORMULA(A2)',
+    C1 = '=SHEET()',
+    C2 = '=SHEETS()',
+    C3 = '=SHEET("Other")',
+    C4 = '=SHEET(Other!A1)',
+    C5 = '=SHEETS(A1:B2)',
+    C6 = '=SHEET("Nope")',
+    D1 = '=CELL("address", B7)',
+    D2 = '=CELL("row", B7)',
+    D3 = '=CELL("col", B7)',
+    D4 = '=CELL("contents", A1)',
+    D5 = '=CELL("type", A2)',
+    D6 = '=CELL("type", Z9)',
+    D7 = '=CELL("address", Other!C3)',
+    D8 = '=CELL("nope", A1)',
+    E1 = '=HYPERLINK("https://example.com", "Example")',
+    E2 = '=HYPERLINK("https://example.com")',
+  })
+  assert (s.book:add_sheet ('Other'))
+  eq ({ shown (s, 'B1'), shown (s, 'B2'), shown (s, 'B3'), shown (s, 'B4') }, {
+    '=1+2',
+    '#N/A',
+    'TRUE',
+    'FALSE',
+  })
+  eq ({ shown (s, 'C1'), shown (s, 'C2'), shown (s, 'C3'), shown (s, 'C4') }, {
+    '1',
+    '2',
+    '2',
+    '2',
+  })
+  eq ({ shown (s, 'C5'), shown (s, 'C6') }, { '1', '#N/A' })
+  eq (
+    { shown (s, 'D1'), shown (s, 'D2'), shown (s, 'D3') },
+    { '$B$7', '7', '2' }
+  )
+  eq ({ shown (s, 'D4'), shown (s, 'D5'), shown (s, 'D6') }, { '3', 'l', 'b' })
+  eq ({ shown (s, 'D7'), shown (s, 'D8') }, { 'Other!$C$3', '#VALUE!' })
+  eq ({ shown (s, 'E1'), shown (s, 'E2') }, { 'Example', 'https://example.com' })
 end)
 
 test ('the example budget works out with no errors', function ()
