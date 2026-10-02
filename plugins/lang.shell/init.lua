@@ -39,7 +39,7 @@ local server_module = require ('lib.server') --[[@as LangShell.ServerModule]]
 return {
   name = 'Shell',
   description = 'Shell scripts with bash-language-server, ShellCheck and shfmt: completion, hover help, go to definition, problems and formatting.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server, ShellCheck and shfmt are programs it runs and downloads, on files
   -- anywhere on disk.
@@ -128,6 +128,11 @@ return {
       program = 'bash-language-server',
       kind = 'server',
       install = 'npm install --global bash-language-server',
+      npm = {
+        packages = { 'bash-language-server@5.8.1' },
+        bin = 'bash-language-server',
+      },
+      languages = { 'shell' },
       homepage = 'https://github.com/bash-lsp/bash-language-server',
       settings = { 'shell.enabled', 'shell.shellcheck' },
       start = function ()

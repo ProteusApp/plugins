@@ -31,7 +31,7 @@ local remove = app.use ('typescript').serve ({
 
 ## What it needs
 
-Node.js, and the language server with TypeScript:
+Node.js on the PATH. When the server is nowhere else, the first TypeScript or JavaScript file that opens has npm install typescript-language-server 6.0.1 and TypeScript 6.0.3 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```text
 npm install --global typescript-language-server typescript@6

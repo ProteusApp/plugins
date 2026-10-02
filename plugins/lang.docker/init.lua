@@ -40,7 +40,7 @@ local server_module = require ('lib.server') --[[@as LangDocker.ServerModule]]
 return {
   name = 'Docker',
   description = 'Dockerfiles with docker-langserver and Hadolint: completion, hover help, problems and formatting. Compose files get their schema for a YAML plugin.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- docker-langserver and Hadolint are programs it runs, and downloads in Hadolint's case, on
   -- files anywhere on disk.
@@ -101,6 +101,11 @@ return {
       program = 'docker-langserver',
       kind = 'server',
       install = 'npm install --global dockerfile-language-server-nodejs',
+      npm = {
+        packages = { 'dockerfile-language-server-nodejs@0.15.0' },
+        bin = 'docker-langserver',
+      },
+      languages = { 'dockerfile' },
       homepage = 'https://github.com/rcjsuen/dockerfile-language-server-nodejs',
       settings = { 'docker.enabled', 'docker.format' },
       start = function ()

@@ -2,7 +2,7 @@
   "id": "lang.typescript",
   "name": "TypeScript",
   "description": "TypeScript with typescript-language-server: completion, hover help, go to definition, problems and Organize Imports, on one server that JavaScript and React files share.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",

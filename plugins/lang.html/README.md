@@ -22,7 +22,7 @@ The page's scripts do not run unless `html.preview_scripts` is on. Off, the prev
 
 ## What it needs
 
-Node.js, and the server from npm:
+Node.js on the PATH. When the server is nowhere else, the first HTML file that opens has npm install vscode-langservers-extracted 4.10.0 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```sh
 npm install --global vscode-langservers-extracted

@@ -38,7 +38,7 @@ local TSCONFIG = 'https://www.schemastore.org/tsconfig.json'
 return {
   name = 'TypeScript',
   description = 'TypeScript with typescript-language-server: completion, hover help, go to definition, problems and Organize Imports, on one server that JavaScript and React files share.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server is a program it runs, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -87,6 +87,14 @@ return {
       program = 'typescript-language-server',
       kind = 'server',
       install = 'npm install --global typescript-language-server typescript@6',
+      npm = {
+        packages = {
+          'typescript-language-server@6.0.1',
+          'typescript@6.0.3',
+        },
+        bin = 'typescript-language-server',
+      },
+      languages = {},
       homepage = 'https://github.com/typescript-language-server/typescript-language-server',
       settings = { 'typescript.enabled', 'typescript.project_typescript' },
       start = function ()

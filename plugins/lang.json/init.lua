@@ -30,7 +30,7 @@ local server_module = require ('lib.server') --[[@as LangJson.ServerModule]]
 return {
   name = 'JSON',
   description = 'JSON with vscode-json-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server is a program it runs, on files anywhere on disk. SchemaStore's
   -- catalog comes from schemastore.org.
@@ -74,6 +74,8 @@ return {
       program = 'vscode-json-language-server',
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
+      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = 'vscode-json-language-server' },
+      languages = { 'json' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = { 'json.enabled', 'json.schema_catalog', 'json.validate' },
       start = function ()

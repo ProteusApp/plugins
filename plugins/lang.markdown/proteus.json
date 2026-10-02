@@ -2,7 +2,7 @@
   "id": "lang.markdown",
   "name": "Markdown",
   "description": "Markdown with Marksman: completion for links and headings, go to definition and problems, and a live preview beside the code.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.core.settings",

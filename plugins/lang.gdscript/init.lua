@@ -35,7 +35,7 @@ local server_module = require ('lib.server') --[[@as LangGdscript.ServerModule]]
 return {
   name = 'GDScript',
   description = "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
-  version = '1.0.0',
+  version = '1.0.1',
   requires = {
     proteus = '>=0.3.0',
     features = { 'permissions', 'languages', 'tcp' },
@@ -107,6 +107,7 @@ return {
       program = 'godot',
       kind = 'server',
       install = 'Install Godot 4 from godotengine.org, then open the project in it.',
+      languages = { 'gdscript' },
       homepage = 'https://godotengine.org',
       settings = {
         'gdscript.port',

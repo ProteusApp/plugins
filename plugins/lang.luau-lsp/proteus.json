@@ -2,7 +2,7 @@
   "id": "lang.luau-lsp",
   "name": "Luau",
   "description": "Luau with luau-lsp: completion, hover help, go to definition and type problems, with Roblox types, Rojo sourcemaps and StyLua formatting.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.core.settings",

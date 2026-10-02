@@ -51,7 +51,7 @@ local stop_router = nil ---@type fun()?
 return {
   name = 'CSS',
   description = 'CSS and Less with vscode-css-language-server: completion, hover help with browser support, problems and go to definition.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- The language server is a program it runs, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -107,6 +107,8 @@ return {
       program = 'vscode-css-language-server',
       kind = 'server',
       install = 'npm install --global vscode-langservers-extracted',
+      npm = { packages = { 'vscode-langservers-extracted@4.10.0' }, bin = 'vscode-css-language-server' },
+      languages = { 'css' },
       homepage = 'https://github.com/hrsh7th/vscode-langservers-extracted',
       settings = tool_settings,
       start = function ()

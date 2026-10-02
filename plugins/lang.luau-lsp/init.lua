@@ -39,7 +39,7 @@ local server_module = require ('lib.server') --[[@as LangLuau.ServerModule]]
 return {
   name = 'Luau',
   description = 'Luau with luau-lsp: completion, hover help, go to definition and type problems, with Roblox types, Rojo sourcemaps and StyLua formatting.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions', 'languages' } },
   -- `files` for the editor service and the files on disk, `process` to run luau-lsp, Rojo and
   -- StyLua, and `net` to download Roblox's types and the API documentation.
@@ -116,6 +116,7 @@ return {
       program = 'luau-lsp',
       kind = 'server',
       install = 'rokit add JohnnyMorganz/luau-lsp',
+      languages = { 'luau' },
       homepage = 'https://github.com/JohnnyMorganz/luau-lsp',
       settings = {
         'luau-lsp.enabled',

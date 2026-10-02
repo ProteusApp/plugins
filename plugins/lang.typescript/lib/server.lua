@@ -269,6 +269,28 @@ function M.install (ctx, tool)
     end)
   end
 
+  ---Tells the Tools panel the editor languages the server serves. An older app has no
+  ---`set_languages`, and then the server shows in the status bar for every file.
+  ---@param list string[]
+  local function set_languages (list)
+    if tool.set_languages then
+      tool.set_languages (list)
+    end
+  end
+
+  ---Tells the Tools panel which editor languages the server serves now, so its status bar
+  ---item shows only for their files.
+  local function tell_languages ()
+    local list = {} ---@type string[]
+    for language, entry in pairs (languages) do
+      if entry.users > 0 then
+        list[#list + 1] = language
+      end
+    end
+    table.sort (list)
+    set_languages (list)
+  end
+
   ---@param spec LangTypescript.ServeSpec
   ---@return LangTypescript.Served
   local function make_entry (spec)
@@ -331,7 +353,7 @@ function M.install (ctx, tool)
       end
       local root = root_for (doc)
       starting = true
-      program_module.find (app, root, function (found, why)
+      program_module.find (app, tool, root, function (found, why)
         if not found then
           starting = false
           tool.set_path (nil)
@@ -367,6 +389,7 @@ function M.install (ctx, tool)
         languages[spec.language] = entry
       end
       entry.users = entry.users + 1
+      tell_languages ()
       if ready then
         attach (entry)
       elseif not rpc.running () then
@@ -382,6 +405,7 @@ function M.install (ctx, tool)
         if entry.users == 0 then
           detach (entry)
         end
+        tell_languages ()
       end
     end,
 

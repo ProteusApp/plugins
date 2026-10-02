@@ -2,7 +2,7 @@
   "id": "lang.docker",
   "name": "Docker",
   "description": "Dockerfiles with docker-langserver and Hadolint: completion, hover help, problems and formatting. Compose files get their schema for a YAML plugin.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",

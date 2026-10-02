@@ -2,7 +2,7 @@
   "id": "lang.shell",
   "name": "Shell",
   "description": "Shell scripts with bash-language-server, ShellCheck and shfmt: completion, hover help, go to definition, problems and formatting.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",

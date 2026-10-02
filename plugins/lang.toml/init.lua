@@ -30,7 +30,7 @@ local server_module = require ('lib.server') --[[@as LangToml.ServerModule]]
 return {
   name = 'TOML',
   description = 'TOML with Taplo: completion, hover help and problems from JSON schemas, and formatting. Other plugins add schemas as file associations.',
-  version = '1.0.1',
+  version = '1.0.2',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   -- Taplo is a program it runs and downloads, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -94,6 +94,7 @@ return {
       program = 'taplo',
       kind = 'server',
       install = 'cargo install taplo-cli --locked',
+      languages = { 'toml' },
       homepage = 'https://taplo.tamasfe.dev',
       settings = { 'toml.enabled', 'toml.schema_catalog', 'toml.format' },
       release = release,

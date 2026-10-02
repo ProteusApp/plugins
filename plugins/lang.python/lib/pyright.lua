@@ -40,6 +40,11 @@ function M.install (ctx)
     program = 'basedpyright-langserver',
     kind = 'server',
     install = 'npm install --global basedpyright, or pip install basedpyright',
+    npm = {
+      packages = { 'basedpyright@1.40.1' },
+      bin = 'basedpyright-langserver',
+    },
+    languages = { 'python' },
     homepage = 'https://docs.basedpyright.com',
     settings = {
       'python.enabled',
@@ -97,7 +102,7 @@ function M.install (ctx)
         else
           tool.log ('info', 'no Python found, so imports cannot be followed')
         end
-        program_module.find (app, root, state.python, function (launch, why)
+        program_module.find (app, tool, root, state.python, function (launch, why)
           starting = false
           if not launch then
             tool.set_path (nil)

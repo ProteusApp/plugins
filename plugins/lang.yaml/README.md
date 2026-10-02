@@ -13,7 +13,7 @@ The language server starts when the first YAML file opens.
 
 ## What it needs
 
-yaml-language-server runs on Node.js. Install it with `npm install --global yaml-language-server`, then press **Look again** in the Tools panel.
+yaml-language-server runs on Node.js, which must be on the PATH. When the server is nowhere else, the first YAML file that opens has npm install yaml-language-server 1.24.0 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead, run `npm install --global yaml-language-server`.
 
 ## Schemas for other plugins
 

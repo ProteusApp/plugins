@@ -2,7 +2,7 @@
   "id": "lang.css",
   "name": "CSS",
   "description": "CSS and Less with vscode-css-language-server: completion, hover help with browser support, problems and go to definition.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.core.settings",
     "proteus.core.commands",

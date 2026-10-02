@@ -2,7 +2,7 @@
   "id": "lang.html",
   "name": "HTML",
   "description": "HTML with VS Code's language server: completion, hover help and problems, also inside style and script, and a live preview.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",

@@ -17,7 +17,7 @@ The language server starts when the first JSON file opens.
 
 ## What it needs
 
-Node.js, and the language server:
+Node.js on the PATH. When the server is nowhere else, the first JSON file that opens has npm install vscode-langservers-extracted 4.10.0 into the app's cache folder. The **Download missing tools** setting, `tools.download`, can make it ask first or never do it. To install it yourself instead:
 
 ```text
 npm install --global vscode-langservers-extracted

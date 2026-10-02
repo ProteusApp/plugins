@@ -41,7 +41,7 @@ local SASS_PINK = '#cd6799'
 return {
   name = 'Sass',
   description = 'Sass and SCSS with Some Sass: completion across @use and @import, hover help, go to definition and problems.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- Some Sass is a program it runs, on files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -94,6 +94,11 @@ return {
       program = languages.program (app.os),
       kind = 'server',
       install = 'npm install --global some-sass-language-server',
+      npm = {
+        packages = { 'some-sass-language-server@2.3.8' },
+        bin = 'some-sass-language-server',
+      },
+      languages = languages.EDITOR_LANGUAGES,
       homepage = 'https://wkillerud.github.io/some-sass/',
       settings = {
         'sass.enabled',
