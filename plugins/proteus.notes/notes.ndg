@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "settings": {
     "locale": "en-US",
     "currency": "USD"
@@ -1172,6 +1172,22 @@
       },
       "config": {},
       "literals": {}
+    },
+    {
+      "id": "n214",
+      "block": "app.command",
+      "name": "Search Notes",
+      "position": {
+        "x": -330,
+        "y": 220
+      },
+      "config": {
+        "key": "ctrl+shift+f",
+        "title": "Search Notes",
+        "icon": "search",
+        "menu": "Edit"
+      },
+      "literals": {}
     }
   ],
   "edges": [
@@ -1954,9 +1970,15 @@
       "from": "n90",
       "to": "n91",
       "input": "test"
+    },
+    {
+      "id": "e215",
+      "from": "n214",
+      "to": "n18",
+      "input": "focus"
     }
   ],
-  "next_id": 214,
+  "next_id": 216,
   "layout": {
     "id": "root",
     "kind": "column",
