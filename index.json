@@ -1186,7 +1186,7 @@
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1202,7 +1202,8 @@
         "proteus.ui.palette",
         "proteus.ui.notify",
         "proteus.ui.tabs",
-        "proteus.editor.core"
+        "proteus.editor.core",
+        "proteus.terminal"
       ],
       "permissions": [
         "files"
@@ -1218,8 +1219,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "ce160d5c99f5ce5886009670c4f958a29df0359f",
-      "updated": "2026-10-02T05:17:14Z"
+      "commit": "141fc070f421f4510fc2eff97ae2c1df35c865b0",
+      "updated": "2026-10-02T16:42:16Z"
     },
     {
       "id": "proteus.code.plugins",
@@ -2015,14 +2016,14 @@
         "terminal.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "54fab442c1f8085a9f993555e4015ef2c5ee9321",
-      "updated": "2026-10-02T05:33:32Z"
+      "commit": "4573e77dc6ae791e3ce9cee2a5912a11b7bf2a20",
+      "updated": "2026-10-02T05:58:33Z"
     },
     {
       "id": "proteus.terminal",
       "name": "Terminal",
-      "description": "Terminals in the bottom dock, which start in the folder open in the Code Editor.",
-      "version": "1.0.2",
+      "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
+      "version": "2.0.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2033,7 +2034,10 @@
         "proteus.code.project",
         "proteus.core.commands",
         "proteus.core.keys",
-        "proteus.ui.menus"
+        "proteus.ui.menus",
+        "proteus.ui.palette",
+        "proteus.ui.notify",
+        "proteus.editor.core"
       ],
       "permissions": [
         "process",
@@ -2049,10 +2053,15 @@
       },
       "files": [
         "README.md",
-        "init.lua"
+        "handbook/terminal.md",
+        "init.lua",
+        "terminal_groups.lua",
+        "terminal_profiles.lua",
+        "tests/groups.test.lua",
+        "tests/profiles.test.lua"
       ],
-      "commit": "d46fbdd916b77ac65392a047cc487ea706c0e119",
-      "updated": "2026-10-02T16:34:18Z"
+      "commit": "8c32afafc73f0f37b7d52fbf31b0ff0b8a9d43fb",
+      "updated": "2026-10-02T16:37:52Z"
     },
     {
       "id": "proteus.todo",
