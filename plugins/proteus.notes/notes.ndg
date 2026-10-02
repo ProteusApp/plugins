@@ -1178,791 +1178,813 @@
       },
       "config": {},
       "literals": {}
+    },
+    {
+      "id": "n92",
+      "block": "app.command",
+      "name": "Search Notes",
+      "position": {
+        "x": -330,
+        "y": 220
+      },
+      "config": {
+        "key": "ctrl+shift+f",
+        "title": "Search Notes",
+        "icon": "search",
+        "menu": "Edit"
+      },
+      "literals": {}
     }
   ],
   "edges": [
     {
-      "id": "e92",
+      "id": "e93",
       "from": "n2",
       "to": "n3",
       "input": "when"
     },
     {
-      "id": "e93",
+      "id": "e94",
       "from": "n1",
       "to": "n3",
       "input": "path"
     },
     {
-      "id": "e94",
+      "id": "e95",
       "from": "n3",
       "output": "names",
       "to": "n4",
       "input": "list"
     },
     {
-      "id": "e95",
+      "id": "e96",
       "from": "n4",
       "to": "n5",
       "input": "list"
     },
     {
-      "id": "e96",
+      "id": "e97",
       "from": "n5",
       "to": "n6",
       "input": "a"
     },
     {
-      "id": "e97",
+      "id": "e98",
       "from": "n3",
       "output": "done",
       "to": "n7",
       "input": "when"
     },
     {
-      "id": "e98",
+      "id": "e99",
       "from": "n6",
       "to": "n7",
       "input": "test"
     },
     {
-      "id": "e99",
+      "id": "e100",
       "from": "n7",
       "output": "yes",
       "to": "n10",
       "input": "when"
     },
     {
-      "id": "e100",
+      "id": "e101",
       "from": "n1",
       "to": "n9",
       "input": "a"
     },
     {
-      "id": "e101",
+      "id": "e102",
       "from": "n9",
       "to": "n10",
       "input": "path"
     },
     {
-      "id": "e102",
+      "id": "e103",
       "from": "n8",
       "to": "n10",
       "input": "text"
     },
     {
-      "id": "e103",
+      "id": "e104",
       "from": "n10",
       "output": "done",
       "to": "n11",
       "input": "a"
     },
     {
-      "id": "e104",
+      "id": "e105",
       "from": "n7",
       "output": "no",
       "to": "n12",
       "input": "a"
     },
     {
-      "id": "e105",
+      "id": "e106",
       "from": "n11",
       "output": "then",
       "to": "n12",
       "input": "b"
     },
     {
-      "id": "e106",
+      "id": "e107",
       "from": "n12",
       "output": "then",
       "to": "n13",
       "input": "when"
     },
     {
-      "id": "e107",
+      "id": "e108",
       "from": "n1",
       "to": "n13",
       "input": "path"
     },
     {
-      "id": "e108",
+      "id": "e109",
       "from": "n13",
       "output": "names",
       "to": "n14",
       "input": "list"
     },
     {
-      "id": "e109",
+      "id": "e110",
       "from": "n14",
       "to": "n15",
       "input": "list"
     },
     {
-      "id": "e110",
+      "id": "e111",
       "from": "n13",
       "output": "done",
       "to": "n17",
       "input": "when"
     },
     {
-      "id": "e111",
+      "id": "e112",
       "from": "n15",
       "to": "n17",
       "input": "to"
     },
     {
-      "id": "e112",
+      "id": "e113",
       "from": "n16",
       "to": "n19",
       "input": "list"
     },
     {
-      "id": "e113",
+      "id": "e114",
       "from": "n18",
       "to": "n19",
       "input": "text"
     },
     {
-      "id": "e114",
+      "id": "e115",
       "from": "n19",
       "to": "n20",
       "input": "list"
     },
     {
-      "id": "e115",
+      "id": "e116",
       "from": "n20",
       "to": "n21",
       "input": "a"
     },
     {
-      "id": "e116",
+      "id": "e117",
       "from": "n21",
       "to": "n22",
       "input": "text"
     },
     {
-      "id": "e117",
+      "id": "e118",
       "from": "n22",
       "to": "n23",
       "input": "list"
     },
     {
-      "id": "e118",
+      "id": "e119",
       "from": "n23",
       "to": "n24",
       "input": "items"
     },
     {
-      "id": "e119",
+      "id": "e120",
       "from": "n24",
       "output": "picked",
       "to": "n28",
       "input": "when"
     },
     {
-      "id": "e120",
+      "id": "e121",
       "from": "n19",
       "to": "n29",
       "input": "list"
     },
     {
-      "id": "e121",
+      "id": "e122",
       "from": "n24",
       "output": "position",
       "to": "n29",
       "input": "position"
     },
     {
-      "id": "e122",
+      "id": "e123",
       "from": "n1",
       "to": "n30",
       "input": "a"
     },
     {
-      "id": "e123",
+      "id": "e124",
       "from": "n29",
       "to": "n30",
       "input": "b"
     },
     {
-      "id": "e124",
+      "id": "e125",
       "from": "n28",
       "output": "first",
       "to": "n31",
       "input": "when"
     },
     {
-      "id": "e125",
+      "id": "e126",
       "from": "n30",
       "to": "n31",
       "input": "to"
     },
     {
-      "id": "e126",
+      "id": "e127",
       "from": "n28",
       "output": "second",
       "to": "n32",
       "input": "a"
     },
     {
-      "id": "e127",
+      "id": "e128",
       "from": "n65",
       "output": "done",
       "to": "n32",
       "input": "b"
     },
     {
-      "id": "e128",
+      "id": "e129",
       "from": "n32",
       "output": "then",
       "to": "n33",
       "input": "when"
     },
     {
-      "id": "e129",
+      "id": "e130",
       "from": "n27",
       "to": "n33",
       "input": "path"
     },
     {
-      "id": "e130",
+      "id": "e131",
       "from": "n27",
       "to": "n34",
       "input": "a"
     },
     {
-      "id": "e131",
+      "id": "e132",
       "from": "n34",
       "to": "n35",
       "input": "when"
     },
     {
-      "id": "e132",
+      "id": "e133",
       "from": "n33",
       "output": "text",
       "to": "n35",
       "input": "then"
     },
     {
-      "id": "e133",
+      "id": "e134",
       "from": "n33",
       "output": "done",
       "to": "n36",
       "input": "a"
     },
     {
-      "id": "e134",
+      "id": "e135",
       "from": "n75",
       "output": "second",
       "to": "n36",
       "input": "b"
     },
     {
-      "id": "e135",
+      "id": "e136",
       "from": "n36",
       "output": "then",
       "to": "n37",
       "input": "set"
     },
     {
-      "id": "e136",
+      "id": "e137",
       "from": "n35",
       "to": "n37",
       "input": "to"
     },
     {
-      "id": "e137",
+      "id": "e138",
       "from": "n37",
       "to": "n38",
       "input": "text"
     },
     {
-      "id": "e138",
+      "id": "e139",
       "from": "n68",
       "to": "n38",
       "input": "visible"
     },
     {
-      "id": "e139",
+      "id": "e140",
       "from": "n37",
       "output": "changed",
       "to": "n39",
       "input": "when"
     },
     {
-      "id": "e140",
+      "id": "e141",
       "from": "n39",
       "output": "then",
       "to": "n40",
       "input": "when"
     },
     {
-      "id": "e141",
+      "id": "e142",
       "from": "n34",
       "to": "n40",
       "input": "test"
     },
     {
-      "id": "e142",
+      "id": "e143",
       "from": "n40",
       "output": "yes",
       "to": "n41",
       "input": "when"
     },
     {
-      "id": "e143",
+      "id": "e144",
       "from": "n27",
       "to": "n41",
       "input": "path"
     },
     {
-      "id": "e144",
+      "id": "e145",
       "from": "n37",
       "to": "n41",
       "input": "text"
     },
     {
-      "id": "e145",
+      "id": "e146",
       "from": "n37",
       "to": "n42",
       "input": "text"
     },
     {
-      "id": "e146",
+      "id": "e147",
       "from": "n42",
       "to": "n43",
       "input": "text"
     },
     {
-      "id": "e147",
+      "id": "e148",
       "from": "n43",
       "to": "n44",
       "input": "text"
     },
     {
-      "id": "e148",
+      "id": "e149",
       "from": "n44",
       "to": "n45",
       "input": "list"
     },
     {
-      "id": "e149",
+      "id": "e150",
       "from": "n43",
       "to": "n46",
       "input": "a"
     },
     {
-      "id": "e150",
+      "id": "e151",
       "from": "n46",
       "to": "n47",
       "input": "when"
     },
     {
-      "id": "e151",
+      "id": "e152",
       "from": "n45",
       "to": "n47",
       "input": "otherwise"
     },
     {
-      "id": "e152",
+      "id": "e153",
       "from": "n47",
       "to": "n48",
       "input": "a"
     },
     {
-      "id": "e153",
+      "id": "e154",
       "from": "n41",
       "output": "done",
       "to": "n50",
       "input": "when"
     },
     {
-      "id": "e154",
+      "id": "e155",
       "from": "n48",
       "to": "n50",
       "input": "to"
     },
     {
-      "id": "e155",
+      "id": "e156",
       "from": "n49",
       "to": "n51",
       "input": "text"
     },
     {
-      "id": "e156",
+      "id": "e157",
       "from": "n25",
       "to": "n53",
       "input": "a"
     },
     {
-      "id": "e157",
+      "id": "e158",
       "from": "n52",
       "to": "n53",
       "input": "b"
     },
     {
-      "id": "e158",
+      "id": "e159",
       "from": "n16",
       "to": "n54",
       "input": "list"
     },
     {
-      "id": "e159",
+      "id": "e160",
       "from": "n54",
       "to": "n55",
       "input": "a"
     },
     {
-      "id": "e160",
+      "id": "e161",
       "from": "n55",
       "to": "n56",
       "input": "b"
     },
     {
-      "id": "e161",
+      "id": "e162",
       "from": "n56",
       "to": "n57",
       "input": "a"
     },
     {
-      "id": "e162",
+      "id": "e163",
       "from": "n1",
       "to": "n58",
       "input": "a"
     },
     {
-      "id": "e163",
+      "id": "e164",
       "from": "n57",
       "to": "n58",
       "input": "b"
     },
     {
-      "id": "e164",
+      "id": "e165",
       "from": "n56",
       "to": "n59",
       "input": "b"
     },
     {
-      "id": "e165",
+      "id": "e166",
       "from": "n16",
       "to": "n60",
       "input": "list"
     },
     {
-      "id": "e166",
+      "id": "e167",
       "from": "n57",
       "to": "n60",
       "input": "item"
     },
     {
-      "id": "e167",
+      "id": "e168",
       "from": "n53",
       "output": "then",
       "to": "n61",
       "input": "when"
     },
     {
-      "id": "e168",
+      "id": "e169",
       "from": "n60",
       "to": "n61",
       "input": "test"
     },
     {
-      "id": "e169",
+      "id": "e170",
       "from": "n61",
       "output": "yes",
       "to": "n62",
       "input": "when"
     },
     {
-      "id": "e170",
+      "id": "e171",
       "from": "n61",
       "output": "no",
       "to": "n63",
       "input": "when"
     },
     {
-      "id": "e171",
+      "id": "e172",
       "from": "n63",
       "output": "first",
       "to": "n64",
       "input": "when"
     },
     {
-      "id": "e172",
+      "id": "e173",
       "from": "n58",
       "to": "n64",
       "input": "to"
     },
     {
-      "id": "e173",
+      "id": "e174",
       "from": "n63",
       "output": "second",
       "to": "n65",
       "input": "when"
     },
     {
-      "id": "e174",
+      "id": "e175",
       "from": "n27",
       "to": "n65",
       "input": "path"
     },
     {
-      "id": "e175",
+      "id": "e176",
       "from": "n59",
       "to": "n65",
       "input": "text"
     },
     {
-      "id": "e176",
+      "id": "e177",
       "from": "n65",
       "output": "done",
       "to": "n11",
       "input": "b"
     },
     {
-      "id": "e177",
+      "id": "e178",
       "from": "n66",
       "to": "n67",
       "input": "a"
     },
     {
-      "id": "e178",
+      "id": "e179",
       "from": "n26",
       "to": "n67",
       "input": "b"
     },
     {
-      "id": "e179",
+      "id": "e180",
       "from": "n68",
       "to": "n69",
       "input": "value"
     },
     {
-      "id": "e180",
+      "id": "e181",
       "from": "n67",
       "output": "then",
       "to": "n70",
       "input": "when"
     },
     {
-      "id": "e181",
+      "id": "e182",
       "from": "n69",
       "to": "n70",
       "input": "to"
     },
     {
-      "id": "e182",
+      "id": "e183",
       "from": "n71",
       "to": "n72",
       "input": "when"
     },
     {
-      "id": "e183",
+      "id": "e184",
       "from": "n34",
       "to": "n72",
       "input": "test"
     },
     {
-      "id": "e184",
+      "id": "e185",
       "from": "n72",
       "output": "yes",
       "to": "n73",
       "input": "when"
     },
     {
-      "id": "e185",
+      "id": "e186",
       "from": "n27",
       "to": "n73",
       "input": "path"
     },
     {
-      "id": "e186",
+      "id": "e187",
       "from": "n73",
       "output": "done",
       "to": "n74",
       "input": "a"
     },
     {
-      "id": "e187",
+      "id": "e188",
       "from": "n91",
       "output": "yes",
       "to": "n74",
       "input": "b"
     },
     {
-      "id": "e188",
+      "id": "e189",
       "from": "n74",
       "output": "then",
       "to": "n75",
       "input": "when"
     },
     {
-      "id": "e189",
+      "id": "e190",
       "from": "n75",
       "output": "first",
       "to": "n76",
       "input": "when"
     },
     {
-      "id": "e190",
+      "id": "e191",
       "from": "n73",
       "output": "done",
       "to": "n77",
       "input": "a"
     },
     {
-      "id": "e191",
+      "id": "e192",
       "from": "n89",
       "output": "done",
       "to": "n77",
       "input": "b"
     },
     {
-      "id": "e192",
+      "id": "e193",
       "from": "n77",
       "output": "then",
       "to": "n11",
       "input": "c"
     },
     {
-      "id": "e193",
+      "id": "e194",
       "from": "n78",
       "to": "n79",
       "input": "items"
     },
     {
-      "id": "e194",
+      "id": "e195",
       "from": "n79",
       "output": "item",
       "to": "n80",
       "input": "a"
     },
     {
-      "id": "e195",
+      "id": "e196",
       "from": "n79",
       "output": "picked",
       "to": "n81",
       "input": "when"
     },
     {
-      "id": "e196",
+      "id": "e197",
       "from": "n80",
       "to": "n81",
       "input": "test"
     },
     {
-      "id": "e197",
+      "id": "e198",
       "from": "n79",
       "output": "choice",
       "to": "n82",
       "input": "a"
     },
     {
-      "id": "e198",
+      "id": "e199",
       "from": "n81",
       "output": "yes",
       "to": "n83",
       "input": "when"
     },
     {
-      "id": "e199",
+      "id": "e200",
       "from": "n82",
       "to": "n83",
       "input": "test"
     },
     {
-      "id": "e200",
+      "id": "e201",
       "from": "n79",
       "output": "item",
       "to": "n84",
       "input": "a"
     },
     {
-      "id": "e201",
+      "id": "e202",
       "from": "n1",
       "to": "n85",
       "input": "a"
     },
     {
-      "id": "e202",
+      "id": "e203",
       "from": "n84",
       "to": "n85",
       "input": "b"
     },
     {
-      "id": "e203",
+      "id": "e204",
       "from": "n83",
       "output": "yes",
       "to": "n86",
       "input": "when"
     },
     {
-      "id": "e204",
+      "id": "e205",
       "from": "n85",
       "to": "n86",
       "input": "target"
     },
     {
-      "id": "e205",
+      "id": "e206",
       "from": "n79",
       "output": "choice",
       "to": "n87",
       "input": "a"
     },
     {
-      "id": "e206",
+      "id": "e207",
       "from": "n83",
       "output": "no",
       "to": "n88",
       "input": "when"
     },
     {
-      "id": "e207",
+      "id": "e208",
       "from": "n87",
       "to": "n88",
       "input": "test"
     },
     {
-      "id": "e208",
+      "id": "e209",
       "from": "n88",
       "output": "yes",
       "to": "n89",
       "input": "when"
     },
     {
-      "id": "e209",
+      "id": "e210",
       "from": "n85",
       "to": "n89",
       "input": "path"
     },
     {
-      "id": "e210",
+      "id": "e211",
       "from": "n85",
       "to": "n90",
       "input": "a"
     },
     {
-      "id": "e211",
+      "id": "e212",
       "from": "n27",
       "to": "n90",
       "input": "b"
     },
     {
-      "id": "e212",
+      "id": "e213",
       "from": "n89",
       "output": "done",
       "to": "n91",
       "input": "when"
     },
     {
-      "id": "e213",
+      "id": "e214",
       "from": "n90",
       "to": "n91",
       "input": "test"
+    },
+    {
+      "id": "e215",
+      "from": "n92",
+      "to": "n18",
+      "input": "focus"
     }
   ],
-  "next_id": 214,
+  "next_id": 216,
   "layout": {
     "id": "root",
     "kind": "column",

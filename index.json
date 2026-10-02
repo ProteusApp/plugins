@@ -754,7 +754,7 @@
       "id": "proteus.kanban",
       "name": "Kanban",
       "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -785,8 +785,8 @@
         "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
-      "updated": "2026-10-02T05:20:34Z"
+      "commit": "f887ffa17450a90b72157162973fe3c9db6860f0",
+      "updated": "2026-10-02T06:16:53Z"
     },
     {
       "id": "icons.badges",
@@ -1048,7 +1048,7 @@
       "id": "proteus.notes",
       "name": "Notes",
       "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
-      "version": "1.2.1",
+      "version": "1.3.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1079,8 +1079,8 @@
         "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
-      "updated": "2026-10-02T05:20:34Z"
+      "commit": "e663a1166734378276a93ee2a98353dbaa265483",
+      "updated": "2026-10-02T06:24:02Z"
     },
     {
       "id": "theme.outrun",
