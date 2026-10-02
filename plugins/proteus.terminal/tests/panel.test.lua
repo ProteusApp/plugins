@@ -107,7 +107,7 @@ end
 
 ---@param opts { project?: table<string, string>, disk?: table<string, table>, settings?: table, json?: table<string, any> }
 local function boot (opts)
-  local env = setmetatable ({
+  local env = {
     require = function (name)
       if name == 'disk_paths' then
         return {
@@ -118,7 +118,21 @@ local function boot (opts)
       end
       return require (name)
     end,
-  }, { __index = _G })
+    assert = assert,
+    error = error,
+    ipairs = ipairs,
+    math = math,
+    next = next,
+    pairs = pairs,
+    pcall = pcall,
+    select = select,
+    setmetatable = setmetatable,
+    string = string,
+    table = table,
+    tonumber = tonumber,
+    tostring = tostring,
+    type = type,
+  }
   local plugin = assert (
     load (read ('plugins/proteus.terminal/init.lua'), '@init.lua', 't', env)
   ) ()

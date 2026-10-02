@@ -115,6 +115,13 @@ function M.install (ctx)
         )
         return
       end
+      if ctx.untrusted then
+        tool.set_state (
+          'stopped',
+          'waits until you trust this folder (File: Trust This Folder)'
+        )
+        return
+      end
       doc = doc or first_rust_doc ()
       if not doc and not ctx.project_root then
         tool.set_state ('stopped', 'starts when a Rust file opens')

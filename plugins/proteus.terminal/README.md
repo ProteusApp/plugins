@@ -21,6 +21,8 @@ The panel is shared, so other plugins may show it, as the Code Editor's folder p
 | `terminal.font_size` | `13` | The terminals' font size. |
 | `terminal.tasks` | none | Tasks to run, beside the folder's: `[{ "label": "Build", "command": "npm run build", "problems": "tsc" }]`. |
 
+`terminal.shell` names the program that runs, so only your own choice sets it. A profile or a folder's `.proteus/settings.json` cannot.
+
 ## Permissions
 
 - `process` runs the program in each terminal.

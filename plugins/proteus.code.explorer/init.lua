@@ -940,8 +940,44 @@ return {
       return app.os == 'windows' and 'the Recycle Bin' or 'the Trash'
     end
 
+    ---A sentence naming the files with unsaved edits inside the items, or '' when none has
+    ---any.
+    ---@param list CodeExplorer.Entry[]
+    ---@return string
+    local function unsaved_note (list)
+      local files = {} ---@type string[]
+      for path, on in pairs (unsaved) do
+        for _, e in ipairs (list) do
+          if on and paths.inside (path, e.path) then
+            files[#files + 1] = path
+            break
+          end
+        end
+      end
+      if #files == 0 then
+        return ''
+      end
+      table.sort (files)
+      local names = files[1]
+      if #files > 3 then
+        names = table.concat (files, ', ', 1, 3)
+          .. ' and '
+          .. (#files - 3)
+          .. ' more'
+      elseif #files > 1 then
+        names = table.concat (files, ', ', 1, #files - 1)
+          .. ' and '
+          .. files[#files]
+      end
+      return ' '
+        .. names
+        .. (#files == 1 and ' has' or ' have')
+        .. ' unsaved changes, which are lost.'
+    end
+
     ---Moves items to the Recycle Bin, after asking. An item the bin refuses, such as one on a
-    ---network drive, can be deleted for good instead, after asking again.
+    ---network drive, can be deleted for good instead, after asking again. The question names
+    ---any file in them with unsaved edits.
     ---@param list CodeExplorer.Entry[]
     local function delete (list)
       local p = picker ()
@@ -950,7 +986,12 @@ return {
       end
       local what = #list == 1 and list[1].name or (#list .. ' items')
       p.confirm ({
-        message = 'Move ' .. what .. ' to ' .. bin_name () .. '?',
+        message = 'Move '
+          .. what
+          .. ' to '
+          .. bin_name ()
+          .. '?'
+          .. unsaved_note (list),
         yes = 'Move to ' .. (app.os == 'windows' and 'Recycle Bin' or 'Trash'),
         on_yes = function ()
           -- The selection moves to the row after the last one deleted, so Delete can be

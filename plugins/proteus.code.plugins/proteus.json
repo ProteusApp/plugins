@@ -2,7 +2,7 @@
   "id": "proteus.code.plugins",
   "name": "Project Plugins",
   "description": "Builds Proteus plugins in the open folder's .proteus folder, for everyone who opens it.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.core.commands",

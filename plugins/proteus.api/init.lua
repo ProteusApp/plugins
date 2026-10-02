@@ -197,7 +197,7 @@ local CSS = [[
 return {
   name = 'API Client',
   description = 'Send HTTP requests, save them, and read the answers.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It sends the requests the user writes, to any address.
   permissions = { 'net' },
@@ -1343,9 +1343,11 @@ return {
           }
         end
         doc.result = result
+        -- The address as typed, with {{variables}} left in, so no token from an environment
+        -- is kept in the history.
         history = http.add_history (history, {
           method = built.method,
-          url = built.url,
+          url = http.build (snapshot).url,
           status = result.status or 0,
           time = app.util.now (),
           request = snapshot,
@@ -1972,16 +1974,28 @@ return {
 
     do
       local stored = app.store.get ('history', {}) ---@type table<string, any>[]
+      local scrubbed = false
       for _, e in ipairs (type (stored) == 'table' and stored or {}) do
         if type (e) == 'table' and type (e.url) == 'string' then
+          local request = http.normalize (e.request)
+          -- An older history kept the address with the environment's values filled in. The
+          -- request it came from has the {{variables}} instead.
+          local url = e.url
+          if type (e.request) == 'table' then
+            url = http.build (request).url
+            scrubbed = scrubbed or url ~= e.url
+          end
           history[#history + 1] = {
             method = http.normalize ({ method = e.method }).method,
-            url = e.url,
+            url = url,
             status = math.floor (tonumber (e.status) or 0),
             time = tonumber (e.time) or 0,
-            request = http.normalize (e.request),
+            request = request,
           }
         end
+      end
+      if scrubbed then
+        app.store.set ('history', history)
       end
     end
 

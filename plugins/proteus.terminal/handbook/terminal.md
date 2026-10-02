@@ -62,7 +62,7 @@ A folder's `.proteus` files only load once you trust the folder, and `.proteus/t
 }
 ```
 
-The `terminal.tasks` setting holds the list alone, without `"tasks"` around it.
+The `terminal.tasks` setting holds the list alone, without `"tasks"` around it. It is a sensitive setting: only your own choice counts, so neither a profile nor a folder's `.proteus/settings.json` can add tasks through it.
 
 | Field | What it is |
 |-------|------------|
