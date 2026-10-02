@@ -1,6 +1,6 @@
 -- sheet_fn_date: the date and time functions of the Sheet app's formulas: making dates and
 -- times and taking them apart, weeks, months and workdays, the days between two dates, and
--- dates read from text. sheet_formula loads the module.
+-- dates read from text. sheet_formula_kit loads the module.
 
 ---@param K Sheet.FormulaKit
 return function (K)

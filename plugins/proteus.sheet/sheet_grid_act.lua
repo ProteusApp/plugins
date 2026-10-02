@@ -1,7 +1,7 @@
 -- sheet_grid_act: the actions on the Sheet app grid's selection. Copy, cut and paste, clearing
 -- and filling, inserting, deleting and hiding rows and columns, freezing panes, sizes, and the
 -- measuring behind auto-fit. sheet_grid.lua installs it into the grid, and the commands in
--- init.lua call these functions.
+-- sheet_commands.lua call these functions.
 
 local calc = require ('sheet_grid_calc') --[[@as Sheet.GridCalcModule]]
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]

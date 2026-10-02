@@ -1,6 +1,6 @@
 -- sheet_fn_math: the math functions of the Sheet app's formulas: sums and products with their
--- conditional kin, rounding, whole numbers, logarithms and trigonometry. sheet_formula loads
--- the module.
+-- conditional kin, rounding, whole numbers, logarithms and trigonometry. sheet_formula_kit
+-- loads the module.
 
 ---@param K Sheet.FormulaKit
 return function (K)

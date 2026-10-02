@@ -3,7 +3,7 @@
 -- out hidden rows, errors and other subtotals. The distributions (normal, t, chi-squared,
 -- binomial and Poisson) rest on the gamma and beta functions, worked out to about 15 digits.
 -- The rest are the summaries and fits spreadsheets have: GEOMEAN, SKEW, LINEST, FREQUENCY and
--- their kin. sheet_formula loads the module.
+-- their kin. sheet_formula_kit loads the module.
 
 ---A line, plane or curve fitted to data by least squares, for LINEST, TREND and GROWTH.
 ---@class Sheet.Fit

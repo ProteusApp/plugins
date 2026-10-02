@@ -1,7 +1,8 @@
--- sheet_ctl: the controller that joins the Sheet app's screen parts. init.lua and sheet_grid.lua
--- make it and own the grid, files and sheets. sheet_toolbar.lua and sheet_panels.lua use it for
--- the toolbar, the side panels and the pop-ups. The parts also reach each other's commands by
--- id with `commands.run`.
+-- sheet_ctl: the controller that joins the Sheet app's screen parts. init.lua makes it, and
+-- sheet_grid.lua and sheet_files.lua own the grid, the files and the sheets behind it. It also
+-- describes what init.lua hands sheet_commands.lua and sheet_menus.lua. sheet_toolbar.lua and
+-- sheet_panels.lua use it for the toolbar, the side panels and the pop-ups. The parts also
+-- reach each other's commands by id with `commands.run`.
 
 ---What the grid shows besides the cells.
 ---@class Sheet.ViewOptions

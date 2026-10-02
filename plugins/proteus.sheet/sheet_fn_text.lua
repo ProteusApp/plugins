@@ -1,6 +1,6 @@
 -- sheet_fn_text: the text functions of the Sheet app's formulas: joining and cutting text,
 -- case, searching and replacing, character codes, and numbers written as text with TEXT,
--- VALUE, FIXED and DOLLAR. sheet_formula loads the module.
+-- VALUE, FIXED and DOLLAR. sheet_formula_kit loads the module.
 
 ---@param K Sheet.FormulaKit
 return function (K)

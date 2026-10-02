@@ -1,7 +1,7 @@
 -- sheet_fn_more: more math, text and information functions for the Sheet app's formulas:
 -- hyperbolic and reciprocal trigonometry, numbers in other bases, Roman numerals, CONVERT
 -- between units, TEXTSPLIT and NUMBERVALUE, and the functions that tell about cells and sheets,
--- such as FORMULATEXT, SHEET and CELL. sheet_formula loads the module.
+-- such as FORMULATEXT, SHEET and CELL. sheet_formula_kit loads the module.
 
 ---A unit CONVERT knows: what it measures, its size in the base unit, and whether it takes a
 ---metric prefix such as `k` or a binary one such as `Ki`.
@@ -27,7 +27,7 @@ return function (K)
   -- Trigonometry
   -------------------------------------------------------------------------------------------
 
-  ---A function of one number, as `math1` in sheet_formula makes them.
+  ---A function of one number, as `math1` in sheet_formula_kit makes them.
   ---@param fn fun(x: number): number
   ---@return Sheet.Function
   local function math1 (fn)

@@ -1,6 +1,6 @@
 -- sheet_fn_lookup: the lookup and reference functions of the Sheet app's formulas: VLOOKUP,
 -- XLOOKUP, MATCH and INDEX, the size and place of a reference, and the references made from
--- text and numbers with INDIRECT, OFFSET and ADDRESS. sheet_formula loads the module.
+-- text and numbers with INDIRECT, OFFSET and ADDRESS. sheet_formula_kit loads the module.
 
 ---@param K Sheet.FormulaKit
 return function (K)

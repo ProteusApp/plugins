@@ -2,7 +2,7 @@
 -- (PMT, FV, PV, NPER, RATE), NPV and IRR come first, then more money and date functions: cash
 -- flows on dates (XNPV, XIRR), MIRR, depreciation (SLN, SYD, DB, DDB), interest rates (EFFECT,
 -- NOMINAL), sums of payments (CUMIPMT, CUMPRINC), working days with any weekend
--- (NETWORKDAYS.INTL, WORKDAY.INTL) and the 360-day year of DAYS360. sheet_formula loads it.
+-- (NETWORKDAYS.INTL, WORKDAY.INTL) and the 360-day year of DAYS360. sheet_formula_kit loads it.
 
 ---@param K Sheet.FormulaKit
 return function (K)

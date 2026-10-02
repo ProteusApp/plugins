@@ -1,6 +1,6 @@
 -- sheet_fn_logic_info: the logic and information functions of the Sheet app's formulas: IF
 -- and its kin, AND, OR and SWITCH, and the tests of what a value is, such as ISBLANK, TYPE
--- and ERROR.TYPE. sheet_formula loads the module.
+-- and ERROR.TYPE. sheet_formula_kit loads the module.
 
 ---@param K Sheet.FormulaKit
 return function (K)
