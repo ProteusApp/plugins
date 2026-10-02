@@ -23,7 +23,11 @@ A pull request opened by hand is welcome too. It must follow the same layout and
 
 ## Update a plugin
 
-Raise `version` in the plugin's `init.lua`, or in the table a profile returns, save it, and publish again. The new version goes through the same review. Only the first author can update a plugin or profile, and the version must go up. Once the update is approved, the marketplace offers **Update** to everyone who installed it.
+Raise `version` in the plugin's `init.lua`, or in the table a profile returns, save it, and publish again. The new version goes through the same review. Only the first author can update a plugin or profile, and the version must go up. Once the update is approved, the marketplace offers **Update** to everyone who installed it. The publish dialog in Proteus asks what changed. That note, up to 2000 characters, goes into the pull request for the reviewer, into `proteus.json` as `changes`, and into the index, where the marketplace shows it beside the update.
+
+## Withdraw a plugin
+
+**Plugins > Withdraw from the Registry…** in Proteus takes back what you published. A submission still in review closes, with its pull request. For one that is listed already, Proteus opens a removal request, and once a maintainer approves it the marketplace stops offering it. Copies people installed stay on their machines.
 
 ## What a plugin declares
 

@@ -35,6 +35,30 @@ export const TITLE_PREFIX = 'Plugin submission:';
 /** The title every profile submission issue starts with. */
 export const PROFILE_TITLE_PREFIX = 'Profile submission:';
 
+/** The title of an issue in which an author asks to take down a plugin they published. */
+export const REMOVAL_TITLE_PREFIX = 'Removal request:';
+
+/** The title of an issue in which an author asks to take down a profile they published. */
+export const PROFILE_REMOVAL_TITLE_PREFIX = 'Profile removal request:';
+
+/**
+ * What a removal request asks to take down, as `{ kind, id }`, from the issue's title, or null
+ * for any other issue. Proteus opens these with Withdraw from the Registry.
+ */
+export function removalOf(issue) {
+  const title = String(issue?.title ?? '');
+  for (const [prefix, kind] of [
+    [PROFILE_REMOVAL_TITLE_PREFIX, 'profile'],
+    [REMOVAL_TITLE_PREFIX, 'plugin'],
+  ]) {
+    if (title.startsWith(prefix + ' ')) {
+      const id = title.slice(prefix.length + 1).trim().split(/\s+/)[0] ?? '';
+      return ID.test(id) && id.length <= 64 && !id.includes('..') ? { kind, id } : null;
+    }
+  }
+  return null;
+}
+
 /** The two kinds of thing the registry lists. */
 export const KINDS = ['plugin', 'profile'];
 
@@ -64,6 +88,7 @@ export function isSubmission(issue) {
     labels.includes(LABEL) ||
     String(issue.title ?? '').startsWith(TITLE_PREFIX) ||
     String(issue.title ?? '').startsWith(PROFILE_TITLE_PREFIX) ||
+    removalOf(issue) !== null ||
     /<!--\s*proteus-manifest\s*-->/.test(String(issue.body ?? ''))
   );
 }
@@ -103,6 +128,9 @@ export const LIMITS = {
 
 /** A line longer than this hides code from a reviewer, as minified code does. */
 export const MAX_LINE = 1000;
+
+/** The longest note on what changed in a version that a submission may carry. */
+export const MAX_CHANGES = 2000;
 
 /**
  * What a plugin may ask to do beyond drawing and keeping its own data. Proteus knows the same
@@ -330,6 +358,9 @@ export function validate(
   if (typeof sub.version !== 'string' || !VERSION.test(sub.version)) {
     problems.push('The version must look like 1.0.0.');
   }
+  if (sub.changes !== undefined && (typeof sub.changes !== 'string' || sub.changes.length > MAX_CHANGES)) {
+    problems.push(`What changed must be text of at most ${MAX_CHANGES} characters.`);
+  }
   for (const key of kind === 'profile' ? ['plugins'] : ['depends', 'optional']) {
     const list = sub[key] ?? [];
     if (!Array.isArray(list) || list.some((d) => typeof d !== 'string' || !ID.test(d))) {
@@ -435,6 +466,8 @@ export function manifestFor(sub, author, issue) {
     name: sub.name.trim(),
     description: sub.description.trim(),
     version: sub.version,
+    // What changed in this version, in the author's words, for reviewers and for the marketplace.
+    ...(typeof sub.changes === 'string' && sub.changes.trim() ? { changes: sub.changes.trim() } : {}),
   };
   const own =
     kindOf(sub) === 'profile'
@@ -471,6 +504,7 @@ export function buildIndex(entries) {
     description: manifest.description,
     version: manifest.version,
     author: manifest.author?.login ?? '',
+    ...(manifest.changes ? { changes: manifest.changes } : {}),
     ...(manifest.requires && kindOf(manifest) === 'profile' ? { requires: manifest.requires } : {}),
   });
   const plugins = entries
@@ -510,6 +544,9 @@ export function pullRequestBody(manifest, sub, issue, updating) {
     `> ${manifest.description.replace(/\n/g, ' ')}`,
     '',
   ];
+  if (manifest.changes) {
+    lines.push('### What changed', '', ...manifest.changes.split('\n').map((line) => `> ${line}`), '');
+  }
   if (kind === 'profile') {
     lines.push('### Plugins', '', (manifest.plugins ?? []).map((id) => `\`${id}\``).join(', ') || 'None.', '');
   } else {

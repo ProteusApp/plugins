@@ -227,6 +227,22 @@ test('manifestFor and buildIndex carry permissions, folders and requires', () =>
   assert.match(pullRequestBody(m, sub, 7, false), /Files on this computer\*\* \(full access\)/);
 });
 
+test('what changed goes into proteus.json, the index and the pull request', () => {
+  const sub = good({ version: '1.1.0', changes: '  Shows the date too.\nFixes the clock at midnight.  ' });
+  assert.deepEqual(validate(sub, { reserved }), []);
+  const m = manifestFor(sub, { login: 'ann', id: 1 }, 7);
+  assert.equal(m.changes, 'Shows the date too.\nFixes the clock at midnight.');
+  const [entry] = buildIndex([{ manifest: m, commit: 'abc', updated: '' }]).plugins;
+  assert.equal(entry.changes, m.changes);
+  const body = pullRequestBody(m, sub, 7, true);
+  assert.match(body, /### What changed\n\n> Shows the date too\.\n> Fixes the clock at midnight\./);
+  // None, or only spaces, leaves the field out.
+  assert.equal('changes' in manifestFor(good({ changes: '  ' }), { login: 'ann', id: 1 }, 7), false);
+  assert.equal('changes' in buildIndex([{ manifest: manifestFor(good(), { login: 'ann', id: 1 }, 7), commit: 'a', updated: '' }]).plugins[0], false);
+  assert.match(validate(good({ changes: 'x'.repeat(2001) }), { reserved }).join(' '), /What changed/);
+  assert.match(validate(good({ changes: 5 }), { reserved }).join(' '), /What changed/);
+});
+
 test('compareVersions compares each part as a number', () => {
   assert.equal(compareVersions('1.10.0', '1.9.9'), 1);
   assert.equal(compareVersions('1.0.0', '1.0.0'), 0);

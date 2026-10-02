@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { allComments, client, say } from './github.mjs';
-import { branchFor, canApprove, commandOf, isSubmission } from './registry.mjs';
+import { branchFor, canApprove, commandOf, isSubmission, removalOf } from './registry.mjs';
 
 /**
  * Runs one /approve comment. `api` calls the GitHub API of `repo`. Returns what happened, as
@@ -76,7 +76,9 @@ export async function approve({ api, event, repo }) {
   await say(api, issue.number, comments, [
     `Approved by @${login} and merged in ${pr.html_url}.`,
     '',
-    'The Proteus marketplace lists it once the index workflow finishes, in a minute or two.',
+    removalOf(issue)
+      ? 'The Proteus marketplace stops offering it once the index workflow finishes, in a minute or two.'
+      : 'The Proteus marketplace lists it once the index workflow finishes, in a minute or two.',
   ]);
   await api('PATCH', `/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
   return 'merged';

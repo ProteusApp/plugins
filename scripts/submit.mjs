@@ -26,6 +26,7 @@ import {
   kindOf,
   manifestFor,
   pullRequestBody,
+  removalOf,
   validate,
 } from './registry.mjs';
 
@@ -38,6 +39,8 @@ import {
 export async function submit({ api, event, repo, checkout }) {
   const issue = event.issue;
   if (!issue || issue.pull_request || issue.state !== 'open' || !isSubmission(issue)) return 'ignored';
+  // A request to take something down holds no files. withdraw.mjs handles it.
+  if (removalOf(issue)) return 'ignored';
   // A comment counts only from the person who opened the issue, and a command such as
   // /approve is handled by its own job.
   if (event.comment && event.comment.user?.id !== issue.user.id) return 'ignored';
