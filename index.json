@@ -218,10 +218,11 @@
       "id": "proteus.discord.rpc",
       "name": "Discord Rich Presence",
       "description": "Shows what you are doing in Proteus on your Discord profile.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [],
       "optional": [
+        "proteus.core.settings",
         "proteus.core.commands",
         "proteus.ui.notify",
         "proteus.editor.core"
@@ -239,14 +240,15 @@
       },
       "files": [
         "README.md",
+        "discord_config.lua",
         "discord_presence.lua",
         "drpc.lua",
         "handbook/discord.md",
         "init.lua",
         "tests/discord.test.lua"
       ],
-      "commit": "d950611be79096b701d43adb9f9472c2774a0f3e",
-      "updated": "2026-10-01T18:50:52Z"
+      "commit": "bd4e8f19996508a8cef266b0c24812a8d62eaf6e",
+      "updated": "2026-10-02T05:35:27Z"
     },
     {
       "id": "lang.docker",
@@ -425,7 +427,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.3.1",
+      "version": "1.3.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -470,8 +472,8 @@
         "tests/git_paths.test.lua",
         "tests/git_text.test.lua"
       ],
-      "commit": "e28f26da4eecab0c7e28b14d0ad12dfb6a4899c0",
-      "updated": "2026-10-02T16:40:59Z"
+      "commit": "2df28fe8a817069a6aa7e58582c6d75b283d0725",
+      "updated": "2026-10-02T16:49:20Z"
     },
     {
       "id": "lang.gitfiles",
@@ -752,7 +754,7 @@
       "id": "proteus.kanban",
       "name": "Kanban",
       "description": "Boards of cards in columns, saved in data/kanban. Built with Nodal from graphs/kanban.ndg.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -783,8 +785,8 @@
         "kanban.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
-      "updated": "2026-10-01T15:26:18-06:00"
+      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
+      "updated": "2026-10-02T05:20:34Z"
     },
     {
       "id": "icons.badges",
@@ -1046,7 +1048,7 @@
       "id": "proteus.notes",
       "name": "Notes",
       "description": "Markdown notes in data/notes. Built with Nodal from graphs/notes.ndg.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1077,8 +1079,8 @@
         "notes.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
-      "updated": "2026-10-01T15:26:18-06:00"
+      "commit": "361d290287652ad2d166d8867339a8b1c104a70a",
+      "updated": "2026-10-02T05:20:34Z"
     },
     {
       "id": "theme.outrun",
@@ -1994,7 +1996,7 @@
       "id": "proteus.nodal.terminal",
       "name": "Terminal",
       "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2026,8 +2028,8 @@
         "terminal.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "4573e77dc6ae791e3ce9cee2a5912a11b7bf2a20",
-      "updated": "2026-10-02T05:58:33Z"
+      "commit": "5da876da4275a95b3bcbafa52f662297ae9641e6",
+      "updated": "2026-10-02T16:48:13Z"
     },
     {
       "id": "proteus.terminal",
