@@ -26,6 +26,7 @@
 ---@field input_type? string Such as `'insertText'`.
 ---@field editable? boolean Right-click only. True over editable text.
 ---@field selection? string Right-click only. The selected text.
+---@field paths? string[] `filedrop` only: the full paths of the files and folders dragged in from the system. A restricted plugin hears them with `files`, and only on its own elements.
 
 ---What an event handler may return.
 ---@alias Proteus.EventResult
@@ -438,6 +439,7 @@ function El:scroll_into_view () end
 ---@overload fun(self: Proteus.El, method: 'set_completions', words: string[])
 ---@overload fun(self: Proteus.El, method: 'set_diagnostics', list: Proteus.Diagnostic[])
 ---@overload fun(self: Proteus.El, method: 'set_provider', provider: Proteus.CodeProvider?)
+---@overload fun(self: Proteus.El, method: 'set_schema', schema: string|(fun(): string?)|nil)
 ---@overload fun(self: Proteus.El, method: 'set_highlight', lines: integer[])
 ---@overload fun(self: Proteus.El, method: 'replace_text', text: string)
 ---@param method string
@@ -457,6 +459,7 @@ function El:widget (method, ...) end
 ---@field program? string The system shell when empty.
 ---@field args? string[]
 ---@field cwd? string The home folder when empty.
+---@field env? table<string, string> Variables added to the app's own.
 ---@field font_size? number
 ---@field autostart? boolean Starts once it has a size. True when nil.
 ---@field on_started? fun()
@@ -474,6 +477,7 @@ function El:widget (method, ...) end
 ---@field on_scroll? fun(first: integer, last: integer) Runs with the first and last lines on screen, from 1, when they change.
 ---@field on_select? fun(ranges: { first: integer, last: integer }[]) Runs with the lines each selection covers, from 1, when they change.
 ---@field provider? Proteus.CodeProvider Smarter help from a language server.
+---@field schema? string|fun(): string? A JSON schema as JSON text, or a function that returns it each time it is needed. A JSON file gets completion, hover help and checks from it.
 
 ---A position inside a document. Both start at 0, as in the Language Server Protocol.
 ---@class Proteus.CodePosition

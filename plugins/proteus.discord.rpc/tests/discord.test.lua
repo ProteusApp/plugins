@@ -191,3 +191,55 @@ test ('build pads a one-byte line, which Discord would refuse', function ()
   local layers = { { owner = 'a', presence = { state = 'x' } } }
   eq (presence.build (preset ('notes'), layers, {}, opts ()).state, 'x ')
 end)
+
+-- settings -------------------------------------------------------------------------------
+
+local config = require ('discord_config') --[[@as Discord.ConfigModule]]
+
+test ('the settings read with their defaults', function ()
+  local c = config.read (config.default)
+  eq (c.enabled, false)
+  eq (c.show_names, true)
+  eq (c.idle_minutes, 10)
+  eq (c.client_id, config.CLIENT_ID)
+  eq (c.images, {})
+  local mine = config.read (function (key)
+    return ({
+      ['discord.enabled'] = true,
+      ['discord.client_id'] = '123',
+      ['discord.images'] = { default = 'logo' },
+    })[key]
+  end)
+  eq (mine.enabled, true)
+  eq (mine.client_id, '123')
+  eq (mine.images, { default = 'logo' })
+end)
+
+test (
+  'the older settings file moves into the settings the user has not set',
+  function ()
+    local moved = config.moved ({
+      enabled = true,
+      show_names = false,
+      idle_minutes = 'soon',
+      client_id = '123',
+      images = { git = 'git-logo' },
+      other = 1,
+    }, function (key)
+      return key == 'discord.client_id'
+    end)
+    eq (moved, {
+      ['discord.enabled'] = true,
+      ['discord.show_names'] = false,
+      ['discord.images'] = { git = 'git-logo' },
+    })
+  end
+)
+
+test ('every setting is under discord. and has a default', function ()
+  for _, s in ipairs (config.SETTINGS) do
+    ok (s.key:find ('^discord%.'), s.key)
+    ok (s.spec.default ~= nil, s.key)
+    ok (s.spec.description, s.key)
+  end
+end)

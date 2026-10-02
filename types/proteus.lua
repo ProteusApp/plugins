@@ -33,7 +33,7 @@
 ---@field deactivate? fun(app: Proteus.App) Runs when the plugin stops, before its cleanup functions.
 
 ---@alias Proteus.Permission
----| 'net' # Sends HTTP requests and opens web pages in the browser.
+---| 'net' # Sends HTTP requests, opens web pages in the browser and connects to servers on this computer.
 ---| 'clipboard' # Reads the clipboard, and pastes.
 ---| 'midi' # Hears MIDI keyboards: notes and controls, never SysEx, and nothing sent back.
 ---| 'files' # Reads and writes files anywhere on disk. Amounts to full access.
@@ -142,8 +142,9 @@ function PluginFiles.list (rel) end
 ---| 'editor:changed' # Receives the Proteus.DocInfo of an edited document. A restricted plugin needs `files`.
 ---| 'editor:closed' # Receives the closed document's path. A restricted plugin needs `files` to hear about a file outside the workspace.
 ---| 'editor:dirty' # A document gained or lost unsaved edits. Receives its path and true while it has them. A restricted plugin needs `files` to hear about a file outside the workspace.
----| 'nodal:changed' # The Nodal document changed. Receives the new Nodal.Snapshot.
+---| 'nodal:changed' # The Nodal document changed, or the values of the app running in the Preview did. Receives the new Nodal.Snapshot.
 ---| 'nodal:selected' # The Nodal selection changed. Receives the node id, or nil.
+---| 'nodal:debug' # The Nodal watch list or breakpoints changed.
 
 ---The table each plugin receives in `activate`. Everything a plugin does goes through it.
 ---@class Proteus.App
@@ -162,7 +163,7 @@ function PluginFiles.list (rel) end
 ---@field window Proteus.Window
 ---@field system Proteus.System
 ---@field process Proteus.Process Runs programs such as language servers.
----@field net Proteus.Net Sends HTTP requests.
+---@field net Proteus.Net Sends HTTP requests and connects to servers on this computer.
 ---@field kernel Proteus.Kernel Lists, starts and reloads plugins, and switches profiles.
 ---@field trusted boolean True when the plugin ships with the app, or is a workspace edit of one. Every other plugin is restricted to its `permissions`.
 ---@field permissions Proteus.Permission[] The permissions the plugin runs with. A trusted plugin has them all.
@@ -254,7 +255,7 @@ function App.provide_scoped (name, make, opts) end
 ---@overload fun(name: 'console'): Proteus.Console
 ---@overload fun(name: 'tools'): Proteus.Tools
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics
----@overload fun(name: 'lsp'): Proteus.Lsp
+---@overload fun(name: 'luals'): Proteus.Luals
 ---@overload fun(name: 'discord'): Proteus.Discord
 ---@overload fun(name: 'project'): Proteus.Project
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace
@@ -290,7 +291,7 @@ function App.use (name) end
 ---@overload fun(name: 'console'): Proteus.Console?
 ---@overload fun(name: 'tools'): Proteus.Tools?
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics?
----@overload fun(name: 'lsp'): Proteus.Lsp?
+---@overload fun(name: 'luals'): Proteus.Luals?
 ---@overload fun(name: 'discord'): Proteus.Discord?
 ---@overload fun(name: 'project'): Proteus.Project?
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace?
@@ -404,6 +405,13 @@ function Fs.stat (path) end
 ---@return string[]
 function Fs.files () end
 
+---The full path on disk of a workspace path, with `/`, such as
+---`C:/Users/ana/.proteus/plugins/mine/my.clock`. `''` is the workspace folder itself. Nil in a
+---browser, where the workspace is not on disk. A restricted plugin needs `files`.
+---@param path string
+---@return string?
+function Fs.disk_path (path) end
+
 ---@param path string
 ---@return Proteus.FileSource
 function Fs.source (path) end
@@ -482,6 +490,13 @@ function Fs.delete_path (path, cb) end
 ---@param cb? fun(ok: any, err: string?)
 function Fs.trash_path (path, cb) end
 
+---Brings back what `trash_path` last moved to the trash from `path`, as an undo of the
+---delete. It fails when something is at `path` again, and on macOS, whose Trash lets only
+---the user put things back. Needs the desktop app.
+---@param path string
+---@param cb? fun(ok: any, err: string?)
+function Fs.untrash_path (path, cb) end
+
 ---Moves or renames a file or folder on disk. Fails when `to` exists already, unless only the
 ---case of its letters differs. Folders above `to` are made as needed. Needs the desktop app.
 ---@param from string
@@ -504,12 +519,29 @@ function Fs.copy_path (from, to, cb) end
 function Fs.walk_dir (path, opts, cb) end
 
 ---Finds text in every file under a folder on disk. It reads the same files `walk_dir` lists,
----and skips binary files and files over 2 MB. Needs the desktop app.
+---and skips binary files and files over 2 MB. `cancel` on the handle stops the search, and
+---`cb` is not called. Needs the desktop app.
 ---@param path string
 ---@param query string
 ---@param opts? Proteus.SearchOptions
 ---@param cb fun(result: Proteus.SearchResult?, err: string?)
+---@return Proteus.SearchHandle
 function Fs.search_dir (path, query, opts, cb) end
+
+---The names in a folder on disk that `.gitignore` leaves out, as `walk_dir` would, with `/`
+---after folders. The rules of the folders above count too. Needs the desktop app.
+---@param path string
+---@param cb fun(names: string[]?, err: string?)
+function Fs.ignored_names (path, cb) end
+
+---Puts `opts.replace` in place of every match of a search in `text`, as `search_dir` finds
+---them: line by line, keeping each line's ending. `cb` gets the new text and how many matches
+---changed. Needs the desktop app.
+---@param text string
+---@param query string
+---@param opts Proteus.SearchOptions
+---@param cb fun(result: { text: string, count: integer }?, err: string?)
+function Fs.replace_text (text, query, opts, cb) end
 
 ---Watches a folder on disk and everything in it. `fn` gets the changes in batches, a moment
 ---after they happen. The watcher stops when the plugin stops, or on `close`. Needs the
@@ -542,6 +574,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field case? boolean Letters must match in case.
 ---@field word? boolean Matches whole words only.
 ---@field regex? boolean The query is a regular expression.
+---@field replace? string Text to put in place of each match. With `regex`, `$1` or `${name}` stands for a group, and `${1}` keeps a group apart from letters after it. Each match then carries `with`.
 
 ---One match. The line is split around it, so the matched text can be marked.
 ---@class Proteus.SearchMatch
@@ -551,6 +584,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field before string The line before the match, cut short when long.
 ---@field hit string The matched text.
 ---@field after string The line after the match, cut short when long.
+---@field with? string What the match becomes, when the search has `replace`.
 
 ---@class Proteus.SearchResult
 ---@field matches Proteus.SearchMatch[]
@@ -567,6 +601,9 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@field changes Proteus.DirChange[]
 ---@field overflow boolean Too much changed to list, so read everything again.
 ---@field git boolean Git's own records changed, such as the branch or a new commit.
+
+---@class Proteus.SearchHandle
+---@field cancel fun() Stops the search. Its callback is not called.
 
 ---@class Proteus.WatchHandle
 ---@field close fun() Stops watching.
