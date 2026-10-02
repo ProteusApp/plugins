@@ -102,7 +102,9 @@ local EXCEL_WIDTH = 64
 local CHAR_PX = 7
 local MAX_ROWS = 1048576
 local MAX_COLS = 16384
--- A `<col>` range that reaches this far means the rest of the sheet.
+-- A `<col>` range that reaches this far means the rest of the sheet. A row past this that
+-- holds only a height, a hidden flag or a style counts only up to the last row with cells, so
+-- one styled row at the bottom of the sheet does not make a sheet of a million rows.
 local REST_OF_SHEET = 1000
 -- Excel counts dates in a 1904 workbook from 1904-01-01, 1462 days after this app's day 0.
 local DAYS_1904 = 1462
@@ -327,6 +329,10 @@ local function entity (name)
     or (code >= 0xD800 and code <= 0xDFFF)
   then
     return nil
+  end
+  -- XML has no NUL character, and a cell never holds one.
+  if code == 0 then
+    return ''
   end
   return utf8.char (code)
 end
@@ -625,6 +631,20 @@ end
 ---@return string
 local function to_excel (text)
   return outside_quotes (text, add_prefixes)
+end
+
+---True when formula text as Excel stores it reads another workbook, as `[1]Sheet1!A1` does.
+---@param text string
+---@return boolean
+local function external (text)
+  local found = false
+  outside_quotes (string.gsub (text, "'", ''), function (part)
+    if string.find (part, '%[%d+%]') then
+      found = true
+    end
+    return part
+  end)
+  return found
 end
 
 ---------------------------------------------------------------------------------------------
@@ -994,6 +1014,9 @@ local function string_of (node)
       if code >= 0xD800 and code <= 0xDFFF then
         return nil
       end
+      if code == 0 then
+        return ''
+      end
       return utf8.char (code)
     end)
   end
@@ -1172,6 +1195,14 @@ local LEFT_OUT = {
   { 'sparklines', 'Sparklines in %s were left out.' },
   { 'protection', 'Protection in %s was left out.' },
   { 'rich', 'Mixed text formatting inside cells in %s was left out.' },
+  {
+    'external',
+    'Formulas in %s that read other workbooks were left out. Their last values are kept.',
+  },
+  {
+    'outside',
+    'Cells in %s past row 1048576 or column XFD were left out.',
+  },
 }
 
 -- Worksheet elements that mean a feature is there.
@@ -1292,118 +1323,142 @@ local function read_sheet (src, path, name, book, warnings)
   local shared = {} ---@type table<string, { row: integer, col: integer, text: string }>
   local waiting = {} ---@type Sheet.XlsxShared[]
   local last_row = 0 ---@type integer
+  local styled_rows = {} ---@type integer[]
   for _, row in ipairs (children (child (root, 'sheetData'), 'row')) do
     local a = row.attrs
     local r = int (a.r) or last_row + 1 ---@type integer
     last_row = r
-    local key = string.format ('%d', r)
-    local ht = tonumber (a.ht)
-    local touched = false
-    if ht and a.customHeight and flag (a.customHeight) then
-      heights[key] = round (ht * 4 / 3)
-      touched = true
-    end
-    if a.hidden and flag (a.hidden) then
-      hidden_rows[#hidden_rows + 1] = r
-      touched = true
-    end
-    local row_style = nil ---@type Sheet.Style?
-    local rs = int (a.s)
-    if rs and a.customFormat and flag (a.customFormat) then
-      row_style = book.xf_styles[rs]
-      if row_style and not is_empty (row_style) then
-        row_styles[key] = own_style (row_style, nil)
+    -- A row past the last row of a sheet is left out.
+    if r >= 1 and r <= MAX_ROWS then
+      local key = string.format ('%d', r)
+      local ht = tonumber (a.ht)
+      local touched = false
+      if ht and a.customHeight and flag (a.customHeight) then
+        heights[key] = round (ht * 4 / 3)
         touched = true
-      else
-        row_style = nil
       end
-    end
-    if touched then
-      max_row = math.max (max_row, r)
-    end
-    local last_col = 0 ---@type integer
-    for _, c in ipairs (row.children) do
-      if bare (c.name) == 'c' then
-        local cr, cc = nil, nil ---@type integer?, integer?
-        if c.attrs.r then
-          cr, cc = formula.parse_address (c.attrs.r)
+      if a.hidden and flag (a.hidden) then
+        hidden_rows[#hidden_rows + 1] = r
+        touched = true
+      end
+      local row_style = nil ---@type Sheet.Style?
+      local rs = int (a.s)
+      if rs and a.customFormat and flag (a.customFormat) then
+        row_style = book.xf_styles[rs]
+        if row_style and not is_empty (row_style) then
+          row_styles[key] = own_style (row_style, nil)
+          touched = true
+        else
+          row_style = nil
         end
-        if not cr or not cc then
-          cr, cc = r, last_col + 1
-        end
-        ---@cast cc integer
-        last_col = cc
-        local addr = formula.address (cr, cc)
-        local t = c.attrs.t or 'n'
-        local v = child (c, 'v')
-        local f = child (c, 'f')
-        local s = int (c.attrs.s) or 0
-        local value = nil ---@type string?
-        if t == 's' and v then
-          local i = int (v.text)
-          local text = i and book.strings[i + 1]
-          if text and text ~= '' then
-            value = typed_text (text, book.typed)
-            found.rich = found.rich or book.rich[i + 1] == true
+      end
+      if touched then
+        styled_rows[#styled_rows + 1] = r
+      end
+      local last_col = 0 ---@type integer
+      for _, c in ipairs (row.children) do
+        if bare (c.name) == 'c' then
+          local cr, cc = nil, nil ---@type integer?, integer?
+          if c.attrs.r then
+            cr, cc = formula.parse_address (c.attrs.r)
           end
-        elseif t == 'inlineStr' then
-          local is = child (c, 'is')
-          if is then
-            local text, rich = string_of (is)
-            if text ~= '' then
+          if not cr or not cc then
+            cr, cc = r, last_col + 1
+          end
+          ---@cast cc integer
+          last_col = cc
+          -- A cell past the last row or column of a sheet is left out.
+          local outside = cr > MAX_ROWS or cc > MAX_COLS
+          local addr = formula.address (cr, cc)
+          local t = c.attrs.t or 'n'
+          local v = child (c, 'v')
+          local f = child (c, 'f')
+          local s = int (c.attrs.s) or 0
+          local value = nil ---@type string?
+          if t == 's' and v then
+            local i = int (v.text)
+            local text = i and book.strings[i + 1]
+            if text and text ~= '' then
               value = typed_text (text, book.typed)
-              found.rich = found.rich or rich
+              found.rich = found.rich or book.rich[i + 1] == true
             end
+          elseif t == 'inlineStr' then
+            local is = child (c, 'is')
+            if is then
+              local text, rich = string_of (is)
+              if text ~= '' then
+                value = typed_text (text, book.typed)
+                found.rich = found.rich or rich
+              end
+            end
+          elseif t == 'b' and v then
+            value = v.text == '1' and 'TRUE' or 'FALSE'
+          elseif t == 'e' and v and v.text ~= '' then
+            value = v.text
+          elseif t == 'str' and v and v.text ~= '' then
+            value = typed_text (v.text, book.typed)
+          elseif t == 'd' and v then
+            local n = iso_date (v.text)
+            value = n and read_number (n)
+          elseif v and v.text ~= '' then
+            local n = tonumber (v.text)
+            if n and book.date1904 and book.xf_dates[s] then
+              n = n + DAYS_1904
+            end
+            value = n and read_number (n)
           end
-        elseif t == 'b' and v then
-          value = v.text == '1' and 'TRUE' or 'FALSE'
-        elseif t == 'e' and v and v.text ~= '' then
-          value = v.text
-        elseif t == 'str' and v and v.text ~= '' then
-          value = typed_text (v.text, book.typed)
-        elseif t == 'd' and v then
-          local n = iso_date (v.text)
-          value = n and read_number (n)
-        elseif v and v.text ~= '' then
-          local n = tonumber (v.text)
-          if n and book.date1904 and book.xf_dates[s] then
-            n = n + DAYS_1904
+          local text = value
+          local kind = f and f.attrs.t
+          if f and external (f.text) then
+            -- This app cannot read another workbook, so the last value stays.
+            found.external = true
+            f = nil
+          elseif f and kind == 'shared' and f.attrs.si then
+            local body = f.text
+            if string.find (body, '%S') then
+              body = from_excel (body)
+              shared[f.attrs.si] = { row = cr, col = cc, text = body }
+              text = '=' .. body
+            else
+              waiting[#waiting + 1] = {
+                addr = addr,
+                row = cr,
+                col = cc,
+                si = f.attrs.si,
+                value = value,
+              }
+            end
+          elseif f and kind ~= 'dataTable' and string.find (f.text, '%S') then
+            text = '=' .. from_excel (f.text)
           end
-          value = n and read_number (n)
-        end
-        local text = value
-        local kind = f and f.attrs.t
-        if f and kind == 'shared' and f.attrs.si then
-          local body = f.text
-          if string.find (body, '%S') then
-            body = from_excel (body)
-            shared[f.attrs.si] = { row = cr, col = cc, text = body }
-            text = '=' .. body
-          else
-            waiting[#waiting + 1] = {
-              addr = addr,
-              row = cr,
-              col = cc,
-              si = f.attrs.si,
-              value = value,
-            }
+          local style =
+            own_style (book.xf_styles[s], overlay (col_style (cc), row_style))
+          if outside then
+            found.outside = true
+          elseif text or style or f then
+            cells[addr] = text
+            styles[addr] = style
+            max_row = math.max (max_row, cr)
+            max_col = math.max (max_col, cc)
           end
-        elseif f and kind ~= 'dataTable' and string.find (f.text, '%S') then
-          text = '=' .. from_excel (f.text)
-        end
-        if text then
-          cells[addr] = text
-        end
-        local style =
-          own_style (book.xf_styles[s], overlay (col_style (cc), row_style))
-        if style then
-          styles[addr] = style
-        end
-        if text or style or f then
-          max_row = math.max (max_row, cr)
-          max_col = math.max (max_col, cc)
         end
       end
+    end
+  end
+  -- Rows that hold only a height, a hidden flag or a style count only up to the last row with
+  -- cells, or up to REST_OF_SHEET.
+  local last_styled = math.max (max_row, REST_OF_SHEET)
+  for _, r in ipairs (styled_rows) do
+    if r <= last_styled then
+      max_row = math.max (max_row, r)
+    else
+      local key = string.format ('%d', r)
+      heights[key], row_styles[key] = nil, nil
+    end
+  end
+  for i = #hidden_rows, 1, -1 do
+    if hidden_rows[i] > last_styled then
+      table.remove (hidden_rows, i)
     end
   end
   for _, cell in ipairs (waiting) do
@@ -1425,7 +1480,15 @@ local function read_sheet (src, path, name, book, warnings)
     local from, to = string.match (ref, '^([^:]+):([^:]+)$')
     local r1, c1 = formula.parse_address (from or '')
     local r2, c2 = formula.parse_address (to or '')
-    if r1 and c1 and r2 and c2 and (r1 ~= r2 or c1 ~= c2) then
+    if
+      r1
+      and c1
+      and r2
+      and c2
+      and (r1 ~= r2 or c1 ~= c2)
+      and math.max (r1, r2) <= MAX_ROWS
+      and math.max (c1, c2) <= MAX_COLS
+    then
       merges[#merges + 1] = string.upper (ref)
       max_row = math.max (max_row, r1, r2)
       max_col = math.max (max_col, c1, c2)

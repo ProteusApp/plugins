@@ -164,6 +164,11 @@ local M = {}
 
 local MANY = 255
 local MAX_DEPTH = 64
+-- The last row and column a sheet has, 1048576 and XFD, as in Excel.
+local LAST_ROW = 1048576
+local LAST_COL = 16384
+M.LAST_ROW = LAST_ROW
+M.LAST_COL = LAST_COL
 -- Serial day numbers count from 1899-12-30, as spreadsheets do, so 1970-01-01 is 25569.
 local EPOCH = 25569
 -- The last day spreadsheets allow, 9999-12-31.
@@ -1240,6 +1245,12 @@ local function text_number (s)
   if count > 0 then
     return M.parse_number (bare)
   end
+  -- An accounting negative such as (5) or ($1,200.50), with no sign of its own inside.
+  local inner = string.match (s, '^%s*%(%s*%$?%s*([^%s%+%-()][^()]-)%s*%)%s*$')
+  if inner then
+    local m = M.parse_number (inner)
+    return m and -m
+  end
   return parse_datetime (s)
 end
 
@@ -1553,11 +1564,21 @@ local function sheet_size (sheet, ctx)
   return rows, cols
 end
 
+---Raises #REF! for a reference past the last row or column of a sheet.
+---@param row integer?
+---@param col integer?
+local function on_sheet (row, col)
+  if (row and row > LAST_ROW) or (col and col > LAST_COL) then
+    raise ('#REF!')
+  end
+end
+
 ---The value of a cell, raising its error when it holds one.
 ---@param a Sheet.Ref
 ---@param ctx Sheet.Context
 ---@return Sheet.Value
 local function cell_value (a, ctx)
+  on_sheet (a.row, a.col)
   local sheet = a.sheet
   if sheet then
     sheet_size (sheet, ctx)
@@ -1574,6 +1595,8 @@ end
 ---@param ctx Sheet.Context
 ---@return Sheet.RangeValue
 local function resolve (a, b, ctx)
+  on_sheet (a.row, a.col)
+  on_sheet (b.row, b.col)
   local sheet = a.sheet
   local rows, cols = ctx.rows, ctx.cols
   if sheet then
@@ -1596,6 +1619,7 @@ end
 ---@param ctx Sheet.Context
 ---@return Sheet.RangeValue
 local function cell_range (a, ctx)
+  on_sheet (a.row, a.col)
   if a.sheet then
     sheet_size (a.sheet, ctx)
   end
@@ -2035,6 +2059,7 @@ local function each (node, ctx, fn)
   end
   if kind == 'ref' then
     local a = node.a --[[@as Sheet.Ref]]
+    on_sheet (a.row, a.col)
     if a.sheet then
       sheet_size (a.sheet, ctx)
     end
@@ -5484,6 +5509,7 @@ define (
       if h < 1 or w < 1 or r1 < 1 or c1 < 1 then
         return raise ('#REF!')
       end
+      on_sheet (r1 + h - 1, c1 + w - 1)
       return {
         is_range = true,
         r1 = r1,
@@ -6462,29 +6488,110 @@ define (
   }
 )
 
----Finds where `f` is zero near `guess` by Newton's method. Returns nil when it does not settle.
+---True for a number that is neither infinite nor NaN.
+---@param y number
+---@return boolean
+local function is_finite (y)
+  return y == y and y ~= math.huge and y ~= -math.huge
+end
+
+---Finds a zero of `f` above -1 by bisection, in the first bracket from a scan of rates that
+---holds a change of sign, looking out from `guess`. Returns nil when there is none.
+---@param f fun(x: number): number
+---@param guess number
+---@return number?
+local function bisect (f, guess)
+  local points = {} ---@type number[]
+  local x = -0.999
+  while x < 1000 do
+    points[#points + 1] = x
+    x = x < 1 and x + 0.01 or x * 1.1
+  end
+  -- Try the brackets nearest the guess first.
+  local pairs_by_distance = {} ---@type integer[]
+  for i = 1, #points - 1 do
+    pairs_by_distance[i] = i
+  end
+  table.sort (pairs_by_distance, function (i, j)
+    return math.abs (points[i] - guess) < math.abs (points[j] - guess)
+  end)
+  for _, i in ipairs (pairs_by_distance) do
+    local lo, hi = points[i], points[i + 1]
+    local flo, fhi = f (lo), f (hi)
+    if is_finite (flo) and is_finite (fhi) and (flo < 0) ~= (fhi < 0) then
+      for _ = 1, 200 do
+        local mid = (lo + hi) / 2
+        local fm = f (mid)
+        if fm == 0 or hi - lo < 1e-15 * math.max (1, math.abs (mid)) then
+          return mid
+        end
+        if (fm < 0) == (flo < 0) then
+          lo, flo = mid, fm
+        else
+          hi = mid
+        end
+      end
+      return (lo + hi) / 2
+    end
+  end
+  return nil
+end
+
+---Finds where `f` is zero near `guess`, above -1, as RATE and IRR need. Newton's method runs
+---first, with its step halved whenever it would land at or below -1 or make things worse.
+---When it does not settle, a scan for a change of sign and bisection take over. Returns nil
+---when there is no zero.
 ---@param f fun(x: number): number
 ---@param guess number
 ---@return number?
 local function solve (f, guess)
+  if guess <= -1 then
+    return nil
+  end
   local x = guess
+  local y = f (x)
   for _ = 1, 100 do
-    local y = f (x)
-    local step = 1e-7 * math.max (1, math.abs (x))
-    local slope = (f (x + step) - y) / step ---@type number
-    if slope == 0 or slope ~= slope then
-      return nil
+    if not is_finite (y) then
+      break
     end
-    local next_x = x - y / slope ---@type number
-    if next_x ~= next_x or next_x <= -1 then
-      return nil
+    if y == 0 then
+      return x
     end
-    if math.abs (next_x - x) < 1e-12 * math.max (1, math.abs (x)) then
+    local h = 1e-7 * math.max (1, math.abs (x))
+    local slope = (f (x + h) - y) / h ---@type number
+    if slope == 0 or not is_finite (slope) then
+      break
+    end
+    local step = y / slope
+    local next_x, next_y = x - step, 0.0
+    local tries = 0
+    while true do
+      if next_x > -1 then
+        next_y = f (next_x)
+        if is_finite (next_y) and math.abs (next_y) <= math.abs (y) * 2 then
+          break
+        end
+      end
+      tries = tries + 1
+      if tries > 60 then
+        break
+      end
+      step = step / 2
+      next_x = x - step
+    end
+    if tries > 60 then
+      break
+    end
+    -- A step cut short by the halving is no sign of having settled.
+    if
+      tries == 0
+      and math.abs (next_x - x) < 1e-12 * math.max (1, math.abs (x))
+    then
       return next_x
     end
-    x = next_x
+    x, y = next_x, next_y
   end
-  return nil
+  return bisect (f, guess)
 end
 
 define (
@@ -6817,7 +6924,10 @@ local function moved (ref, drow, dcol)
   if out.col and not out.col_abs then
     out.col = out.col + dcol
   end
-  if (out.row and out.row < 1) or (out.col and out.col < 1) then
+  if
+    (out.row and (out.row < 1 or out.row > LAST_ROW))
+    or (out.col and (out.col < 1 or out.col > LAST_COL))
+  then
     return nil
   end
   return out

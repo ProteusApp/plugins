@@ -49,11 +49,7 @@ end
 ---@param text string
 ---@return string
 local function safe_name (text)
-  local base = trim ((string.gsub (text, '[\\/:%*%?"<>|]', '-')))
-  if base == '' or string.sub (base, 1, 1) == '.' then
-    return 'Imported'
-  end
-  return base
+  return book_mod.safe_file_name (text)
 end
 
 ---@type Proteus.Plugin
@@ -296,11 +292,9 @@ return {
     ---@param except? string The workbook being renamed, which may keep its name.
     ---@return string?
     local function name_problem (n, except)
-      if n == '' then
-        return 'Type a name.'
-      end
-      if string.find (n, '[\\/:%*%?"<>|]') or string.sub (n, 1, 1) == '.' then
-        return 'A name cannot start with a dot or hold \\ / : * ? " < > |'
+      local problem = book_mod.file_name_problem (n)
+      if problem then
+        return problem
       end
       for _, other in ipairs (file_names ()) do
         if string.lower (other) == string.lower (n) and other ~= except then

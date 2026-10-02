@@ -3356,7 +3356,16 @@ local function filter_column (t)
   return out
 end
 
+---True when a cell lies within the last row and column a sheet can have.
+---@param row integer
+---@param col integer
+---@return boolean
+local function on_sheet (row, col)
+  return row <= formula.LAST_ROW and col <= formula.LAST_COL
+end
+
 ---Fills an empty sheet from file data, without undo. Fields of the wrong type are skipped.
+---Cells past the last row or column a sheet can have are left out.
 ---@param data any
 function Sheet:load (data)
   if type (data) ~= 'table' then
@@ -3364,10 +3373,10 @@ function Sheet:load (data)
   end
   local rows, cols = whole (data.rows), whole (data.cols)
   if rows and rows >= 1 then
-    self.rows = rows
+    self.rows = math.min (rows, formula.LAST_ROW)
   end
   if cols and cols >= 1 then
-    self.cols = cols
+    self.cols = math.min (cols, formula.LAST_COL)
   end
   if type (data.cells) == 'table' then
     for addr, v in
@@ -3378,7 +3387,7 @@ function Sheet:load (data)
         row, col = M.parse_address (addr)
       end
       local text = text_of (v)
-      if row and col and text and text ~= '' then
+      if row and col and text and text ~= '' and on_sheet (row, col) then
         self:put (row, col, { text = text })
       end
     end
@@ -3392,7 +3401,7 @@ function Sheet:load (data)
         row, col = M.parse_address (addr)
       end
       local s = intern (style)
-      if row and col and s then
+      if row and col and s and on_sheet (row, col) then
         self:put (row, col, { text = self:text (row, col), style = s })
       end
     end

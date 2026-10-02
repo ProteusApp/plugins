@@ -217,6 +217,58 @@ test ('reading sizes a sheet to what it uses', function ()
   eq (book.sheets[1].cols, 30)
 end)
 
+test (
+  'reading leaves out rows past the end, and far rows with no cells',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="3" ht="30" customHeight="1"><c r="A3"><v>1</v></c></row>'
+          .. '<row r="900" hidden="1"/><row r="1048576" hidden="1" ht="30" customHeight="1"/>'
+          .. '<row r="1048577"><c r="A1048577"><v>2</v></c></row>'
+          .. '<row r="5"><c r="XFE5"><v>3</v></c><c r="B5"><v>4</v></c></row></sheetData>'
+          .. '<mergeCells><mergeCell ref="A1048576:B1048577"/></mergeCells>'
+      )
+    )
+    local sheet = book.sheets[1]
+    -- A hidden row near the cells stays, and one at the bottom of the sheet does not stretch it.
+    eq (sheet.rows, 900)
+    eq (sheet.hidden_rows, { 900 })
+    eq (sheet.heights, { ['3'] = 40 })
+    eq (sheet.cells, { A3 = '1', B5 = '4' })
+    eq (sheet.merges, nil)
+    eq (
+      warnings,
+      { 'Cells in Data past row 1048576 or column XFD were left out.' }
+    )
+  end
+)
+
+test (
+  'reading keeps the last value of a formula that reads another workbook',
+  function ()
+    local book, warnings = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1"><f>[1]Sheet1!A1*2</f><v>42</v></c>'
+          .. '<c r="B1"><f>\'[2]My data\'!B2</f><v>7</v></c>'
+          .. '<c r="C1"><f>"[1]"&amp;A1</f><v>x</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, { A1 = '42', B1 = '7', C1 = '="[1]"&A1' })
+    eq (warnings, {
+      'Formulas in Data that read other workbooks were left out. Their last values are kept.',
+    })
+  end
+)
+
+test ('reading drops a NUL character', function ()
+  local book = read_ok (
+    one_sheet (
+      '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>a&#0;b_x0000_c</t></is></c></row></sheetData>'
+    )
+  )
+  eq (book.sheets[1].cells, { A1 = 'abc' })
+end)
+
 test ('reading shows numbers with the digits Excel shows', function ()
   local files = one_sheet (
     '<sheetData><row r="1"><c r="A1"><v>0.30000000000000004</v></c><c r="B1"><v>-1.5E-3</v></c><c r="C1"><v>123456789012</v></c><c r="D1" t="d"><v>2026-09-29T12:00:00</v></c></row></sheetData>'

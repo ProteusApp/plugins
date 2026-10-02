@@ -128,6 +128,22 @@ test ('sheet names follow the rules', function ()
   eq (book:free_name ('Budget', true), 'Budget (2)')
   eq (book:free_name ('Budget (2)', true), 'Budget (2)')
 end)
+test ('a workbook name must make a file name on every system', function ()
+  eq (B.file_name_problem (''), 'Type a name.')
+  ok (B.file_name_problem ('a/b') ~= nil)
+  ok (B.file_name_problem ('.hidden') ~= nil)
+  ok (B.file_name_problem ('tab\there') ~= nil)
+  for _, bad in ipairs ({ 'CON', 'nul', 'Aux.backup', 'com1', 'LPT9', 'prn ' }) do
+    ok (B.file_name_problem (bad), bad .. ' should be refused')
+  end
+  for _, good in ipairs ({ 'Console', 'null', 'com10', 'Budget 2026', 'CON 1' }) do
+    eq (B.file_name_problem (good), nil, good)
+  end
+  eq (B.safe_file_name ('NUL'), 'NUL 1')
+  eq (B.safe_file_name ('a:b?'), 'a-b-')
+  eq (B.safe_file_name ('  '), 'Imported')
+  eq (B.safe_file_name ('Budget'), 'Budget')
+end)
 
 test ('formulas read other sheets by name, ignoring case', function ()
   local book = book_of ({ 'Main', 'Data', 'Q1 sales' }, {

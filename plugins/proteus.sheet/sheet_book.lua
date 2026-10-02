@@ -1660,6 +1660,54 @@ local function sheet_json (data)
   return '    {\n' .. table.concat (out, ',\n') .. '\n    }'
 end
 
+-- Names Windows keeps for devices, whatever follows them after a dot.
+local DEVICES = { con = true, prn = true, aux = true, nul = true }
+for i = 0, 9 do
+  DEVICES['com' .. i] = true
+  DEVICES['lpt' .. i] = true
+end
+for _, digit in ipairs ({ '\194\185', '\194\178', '\194\179' }) do
+  DEVICES['com' .. digit] = true
+  DEVICES['lpt' .. digit] = true
+end
+
+---Why a workbook name cannot be a file name, or nil when it can. A name cannot start with a
+---dot, hold `\ / : * ? " < > |` or a control character, or be a name Windows keeps for a
+---device, such as `CON` or `NUL`.
+---@param name string
+---@return string?
+function M.file_name_problem (name)
+  if name == '' then
+    return 'Type a name.'
+  end
+  if
+    string.find (name, '[\\/:%*%?"<>|%c]') or string.sub (name, 1, 1) == '.'
+  then
+    return 'A name cannot start with a dot or hold \\ / : * ? " < > |'
+  end
+  local stem = string.match (string.lower (name), '^([^%.]*)') or ''
+  stem = string.match (stem, '^(.-)[%s]*$')
+  if DEVICES[stem] then
+    return 'Windows keeps the name ' .. string.upper (stem) .. ' for a device.'
+  end
+  return nil
+end
+
+---A workbook name made safe for a file, from any text.
+---@param text string
+---@return string
+function M.safe_file_name (text)
+  local base = string.gsub (text, '[\\/:%*%?"<>|%c]', '-')
+  base = string.match (base, '^%s*(.-)%s*$')
+  if base == '' or string.sub (base, 1, 1) == '.' then
+    return 'Imported'
+  end
+  if M.file_name_problem (base) then
+    return base .. ' 1'
+  end
+  return base
+end
+
 ---Writes a book as the text of its `.sheet.json` file: fixed key order, one cell per line in
 ---reading order, so a small change makes a small difference between saves.
 ---@param book Sheet.Book
