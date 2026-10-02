@@ -3,10 +3,11 @@
 --
 -- Ctrl+` shows or hides the panel, and Ctrl+Shift+` opens another terminal. Each terminal has
 -- a tab along the top of the panel, named after what it runs. The `terminal.shell` setting
--- picks the program. Empty runs the system shell: PowerShell on Windows, or the login shell
--- elsewhere.
+-- picks the program and its arguments, such as `pwsh -NoLogo`. Empty runs the system shell:
+-- PowerShell on Windows, or the login shell elsewhere.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local shell_words = require ('shell_words') --[[@as Terminal.ShellWords]]
 
 -- lang=css
 local CSS = [[
@@ -43,7 +44,7 @@ local CSS = [[
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, which start in the folder open in the Code Editor.',
-  version = '1.0.0',
+  version = '1.1.0',
   -- `process` runs the shell in each terminal. `files` lets it start in the Code Editor's
   -- folder, which the `project` service hands out. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
@@ -72,7 +73,7 @@ return {
       title = 'Terminal program',
       type = 'string',
       default = '',
-      description = 'The program each new terminal runs, such as pwsh, cmd or bash. Empty runs the system shell.',
+      description = 'The program each new terminal runs, with any arguments, such as pwsh -NoLogo or bash -l. Quote a path with spaces. Empty runs the system shell.',
     })
     settings.define ('terminal.font_size', {
       title = 'Terminal font size',
@@ -126,8 +127,10 @@ return {
       next_id = next_id + 1
       local term ---@type CodeTerminal.Term
       local shell = tostring (settings.get ('terminal.shell') or '')
+      local program, args = shell_words.split (shell)
       local widget = ui.widget ('terminal', {
-        program = shell,
+        program = program,
+        args = args,
         cwd = root or '',
         font_size = tonumber (settings.get ('terminal.font_size')) or 13,
         on_started = function ()

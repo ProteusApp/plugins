@@ -45,14 +45,17 @@ app.log (root and ('folder: ' .. root) or 'no folder open')
 
 ## `project.files`
 
-`project.files (cb)` lists every file in the folder as paths from the root, sorted, such as `'src/main.rs'`. It skips what `.gitignore` leaves out, and every folder whose name is in the `project.exclude` setting. The list is kept until files come or go, so a second call answers at once. With no folder open, `cb` gets nil and an error.
+`project.files (cb)` lists every file in the folder as paths from the root, sorted, such as `'src/main.rs'`. It skips what `.gitignore` leaves out, and every folder whose name is in the `project.exclude` setting. The list is kept until files come or go, so a second call answers at once. A change that `.gitignore` or `project.exclude` leaves out, such as build output, keeps the list. The list stops at 50,000 files, and then `cb` gets `true` as its third value. With no folder open, `cb` gets nil and an error.
 
 ```lua
 local project = app.use ('project')
-project.files (function (list, err)
+project.files (function (list, err, truncated)
   if not list then
     app.warn (err)
     return
+  end
+  if truncated then
+    app.log ('Only the first ' .. #list .. ' files are listed.')
   end
   local lua = 0
   for _, rel in ipairs (list) do
@@ -66,7 +69,7 @@ end)
 
 ## `project.relative` and `project.absolute`
 
-`project.relative (path)` turns a full path into a path from the root. It returns `''` for the root itself, and nil for a path outside the folder. `project.absolute (rel)` turns a path from the root into a full path.
+`project.relative (path)` turns a full path into a path from the root. It returns `''` for the root itself, and nil for a path outside the folder. `project.absolute (rel)` turns a path from the root into a full path, or returns nil when no folder is open.
 
 ```lua
 local project = app.use ('project')
@@ -122,7 +125,7 @@ The app can start in a folder: `proteus C:\code\app` or `proteus --folder C:\cod
 
 ## Changes on disk
 
-The service watches the open folder. When files change outside the app, it tells the editor, so open files reload, and sends `code:disk_changed` with the list of changes and the whole event. Each change has `path`, a full path, and `kind`, which says what is at the path now: `'file'`, `'dir'` or `'remove'`.
+The service watches the open folder. When files change outside the app, it tells the editor, so open files reload, and sends `code:disk_changed` with the list of changes and the whole event. Each change has `path`, a full path, `kind`, which says what is at the path now: `'file'`, `'dir'` or `'remove'`, and `ignored`, true when a `.gitignore` leaves the path out. Build output and logs change often during a build, so a listener that cares only about the files a search sees can pass over the ignored ones.
 
 | Field of the event | What it is |
 |--------------------|------------|
