@@ -1751,6 +1751,14 @@ function M.write_xlsx (book)
   book:ensure ()
   return xlsx.write (books.to_data (book), function (index, row, col)
     return book:value_at (index, row, col)
+  end, function (index, row, col)
+    local sheet = book.sheets[index]
+    local cell = sheet and sheet.cells[row * model.KEY + col]
+    local area = cell and cell.spill_area
+    if not area then
+      return nil, nil
+    end
+    return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
   end)
 end
 

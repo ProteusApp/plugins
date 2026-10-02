@@ -1470,6 +1470,136 @@ test ('NPER, RATE and IRR', function ()
 end)
 
 ---------------------------------------------------------------------------------------------
+-- Arrays, LET and LAMBDA
+---------------------------------------------------------------------------------------------
+
+---Works out a formula that gives a block, and shows its values row by row: commas between
+---the values of a row and semicolons between rows, as an array constant writes them.
+---@param formula string
+---@param cells? Cells
+---@return string
+local function rows_of (formula, cells)
+  local body = string.sub (formula, 2)
+  local h = value ('=ROWS(' .. body .. ')', cells)
+  local w = value ('=COLUMNS(' .. body .. ')', cells)
+  if type (h) ~= 'number' or type (w) ~= 'number' then
+    return f.format_value (value (formula, cells))
+  end
+  local out = {} ---@type string[]
+  for i = 1, h do
+    local line = {} ---@type string[]
+    for j = 1, w do
+      line[j] = calc (string.format ('=INDEX(%s, %d, %d)', body, i, j), cells)
+    end
+    out[i] = table.concat (line, ',')
+  end
+  return table.concat (out, ';')
+end
+
+local PEOPLE = {
+  A1 = 'Ann',
+  B1 = 'Sales',
+  C1 = 300,
+  A2 = 'bob',
+  B2 = 'Ops',
+  C2 = 100,
+  A3 = 'Cy',
+  B3 = 'Sales',
+  C3 = 200,
+  A4 = 'ann',
+  B4 = 'Ops',
+  C4 = 100,
+}
+
+test ('SEQUENCE counts up row by row', function ()
+  eq (rows_of ('=SEQUENCE(3)'), '1;2;3')
+  eq (rows_of ('=SEQUENCE(2, 3)'), '1,2,3;4,5,6')
+  eq (rows_of ('=SEQUENCE(2, 2, 10, -5)'), '10,5;0,-5')
+  eq (calc ('=SUM(SEQUENCE(100))'), '5050')
+  eq (calc ('=SEQUENCE(0)'), '#CALC!')
+  eq (calc ('=SEQUENCE(-1)'), '#VALUE!')
+end)
+
+test ('UNIQUE drops repeats, ignoring case', function ()
+  eq (rows_of ('=UNIQUE(B1:B4)', PEOPLE), 'Sales;Ops')
+  eq (rows_of ('=UNIQUE(A1:A4)', PEOPLE), 'Ann;bob;Cy')
+  eq (rows_of ('=UNIQUE(B1:C4)', PEOPLE), 'Sales,300;Ops,100;Sales,200')
+  eq (rows_of ('=UNIQUE(C1:C4, FALSE, TRUE)', PEOPLE), '300;200')
+  eq (rows_of ('=UNIQUE({1,2,1,3}, TRUE)'), '1,2,3')
+  eq (rows_of ('=UNIQUE(A1:A3)', { A1 = 0.3, A2 = 1, A3 = '=0.1+0.2' }), '0.3;1')
+  eq (calc ('=UNIQUE({1;1}, FALSE, TRUE)'), '#CALC!')
+end)
+
+test (
+  'SORT and SORTBY put rows in order and keep equal rows as they were',
+  function ()
+    eq (rows_of ('=SORT(C1:C4)', PEOPLE), '100;100;200;300')
+    eq (
+      rows_of ('=SORT(A1:C4, 3, -1)', PEOPLE),
+      'Ann,Sales,300;Cy,Sales,200;bob,Ops,100;ann,Ops,100'
+    )
+    eq (
+      rows_of ('=SORT(A1:B4, {2,1}, {1,-1})', PEOPLE),
+      'bob,Ops;ann,Ops;Cy,Sales;Ann,Sales'
+    )
+    eq (rows_of ('=SORT({3,1,2}, 1, 1, TRUE)'), '1,2,3')
+    eq (rows_of ('=SORT({"b";2;TRUE;"a";1})'), '1;2;a;b;TRUE')
+    eq (
+      rows_of ('=SORTBY(A1:A4, C1:C4, 1, B1:B4, -1)', PEOPLE),
+      'bob;ann;Cy;Ann'
+    )
+    eq (rows_of ('=SORTBY({"x","y","z"}, {3,1,2})'), 'y,z,x')
+    eq (calc ('=SORT(A1:C4, 4)', PEOPLE), '#VALUE!')
+    eq (calc ('=SORT(A1:C4, 1, 0)', PEOPLE), '#VALUE!')
+    eq (calc ('=SORTBY(A1:A4, C1:C3)', PEOPLE), '#VALUE!')
+  end
+)
+
+test ('FILTER keeps the rows where a test is TRUE', function ()
+  eq (rows_of ('=FILTER(A1:A4, B1:B4="Sales")', PEOPLE), 'Ann;Cy')
+  eq (
+    rows_of ('=FILTER(A1:C4, (B1:B4="Ops")*(C1:C4>50))', PEOPLE),
+    'bob,Ops,100;ann,Ops,100'
+  )
+  eq (rows_of ('=FILTER({1,2,3}, {TRUE,FALSE,TRUE})'), '1,3')
+  eq (calc ('=FILTER(A1:A4, C1:C4>1000)', PEOPLE), '#CALC!')
+  eq (calc ('=FILTER(A1:A4, C1:C4>1000, "none")', PEOPLE), 'none')
+  eq (calc ('=FILTER(A1:A4, C1:C3>1)', PEOPLE), '#VALUE!')
+  eq (calc ('=SUM(FILTER(C1:C4, B1:B4="Sales"))', PEOPLE), '500')
+end)
+
+test ('LET names values inside a formula', function ()
+  eq (calc ('=LET(x, 2, y, x*10, x+y)'), '22')
+  eq (calc ('=LET(total, SUM(C1:C4), total/4)', PEOPLE), '175')
+  -- A name can hold a block of cells, and functions that need a reference take it.
+  eq (calc ('=LET(r, C1:C4, ROWS(r) & "/" & MAX(r))', PEOPLE), '4/300')
+  eq (calc ('=LET(x, 1, LET(x, 2, x) + x)'), '3')
+  eq (calc ('=LET(x, 1)'), '#VALUE!')
+  eq (calc ('=LET(A1, 1, 2)'), '#VALUE!')
+  eq (calc ('=x+1'), '#NAME?')
+  eq (calc ('=LET(x, 1/0, 5)'), '#DIV/0!')
+end)
+
+test ('LAMBDA makes a function that LET, MAP and their kin call', function ()
+  eq (calc ('=LAMBDA(a, b, a*b)(6, 7)'), '42')
+  eq (calc ('=LET(double, LAMBDA(n, n*2), double(21))'), '42')
+  eq (calc ('=LET(k, 3, add, LAMBDA(n, n+k), add(1))'), '4')
+  eq (calc ('=LAMBDA(x, x)'), '#CALC!')
+  eq (calc ('=LAMBDA(x, x)(1, 2)'), '#VALUE!')
+  eq (calc ('=LET(x, 5, x(1))'), '#VALUE!')
+  eq (rows_of ('=MAP({1,2;3,4}, LAMBDA(x, x*x))'), '1,4;9,16')
+  eq (rows_of ('=MAP({1,2}, {10,20}, LAMBDA(a, b, a+b))'), '11,22')
+  eq (rows_of ('=MAP({1,0}, LAMBDA(x, 1/x))'), '1,#DIV/0!')
+  eq (calc ('=REDUCE(0, C1:C4, LAMBDA(acc, x, acc+x))', PEOPLE), '700')
+  eq (calc ('=REDUCE(, {1,2,3}, LAMBDA(acc, x, acc+x))'), '6')
+  eq (rows_of ('=SCAN(0, {1,2,3}, LAMBDA(acc, x, acc+x))'), '1,3,6')
+  eq (rows_of ('=BYROW({1,2;3,4}, LAMBDA(row, SUM(row)))'), '3;7')
+  eq (rows_of ('=BYCOL({1,2;3,4}, LAMBDA(col, MAX(col)))'), '3,4')
+  eq (rows_of ('=MAKEARRAY(2, 3, LAMBDA(r, c, r*10+c))'), '11,12,13;21,22,23')
+  eq (calc ('=MAP({1}, 5)'), '#VALUE!')
+end)
+
+---------------------------------------------------------------------------------------------
 -- Every function
 ---------------------------------------------------------------------------------------------
 
@@ -1485,6 +1615,8 @@ local EVERY = {
   'AVERAGEA',
   'AVERAGEIF',
   'AVERAGEIFS',
+  'BYCOL',
+  'BYROW',
   'CEILING',
   'CEILING.MATH',
   'CHAR',
@@ -1518,6 +1650,7 @@ local EVERY = {
   'EXP',
   'FACT',
   'FALSE',
+  'FILTER',
   'FIND',
   'FIXED',
   'FLOOR',
@@ -1549,15 +1682,19 @@ local EVERY = {
   'ISOWEEKNUM',
   'ISREF',
   'ISTEXT',
+  'LAMBDA',
   'LARGE',
   'LCM',
   'LEFT',
   'LEN',
+  'LET',
   'LN',
   'LOG',
   'LOG10',
   'LOOKUP',
   'LOWER',
+  'MAKEARRAY',
+  'MAP',
   'MATCH',
   'MAX',
   'MAXIFS',
@@ -1601,6 +1738,7 @@ local EVERY = {
   'RANK.AVG',
   'RANK.EQ',
   'RATE',
+  'REDUCE',
   'REPLACE',
   'REPT',
   'RIGHT',
@@ -1609,12 +1747,16 @@ local EVERY = {
   'ROUNDUP',
   'ROW',
   'ROWS',
+  'SCAN',
   'SEARCH',
   'SECOND',
+  'SEQUENCE',
   'SIGN',
   'SIN',
   'SLOPE',
   'SMALL',
+  'SORT',
+  'SORTBY',
   'SQRT',
   'STDEV',
   'STDEV.P',
@@ -1642,6 +1784,7 @@ local EVERY = {
   'TYPE',
   'UNICHAR',
   'UNICODE',
+  'UNIQUE',
   'UPPER',
   'VALUE',
   'VAR',

@@ -527,6 +527,122 @@ test (
   end
 )
 
+---------------------------------------------------------------------------------------------
+-- Spilled blocks
+---------------------------------------------------------------------------------------------
+
+test ('a formula that gives a block spills into the cells around it', function ()
+  local book = book_of ({ 'Sheet1' }, {
+    Sheet1 = {
+      A1 = '=SEQUENCE(3)',
+      C1 = '=SUM(A1:A3)',
+      C2 = '=A3*10',
+      C3 = '=A4',
+      E1 = '=B1:B2*2',
+      B1 = '5',
+      B2 = '6',
+    },
+  })
+  local s = book.sheets[1]
+  eq ({ shown (s, 'A1'), shown (s, 'A2'), shown (s, 'A3') }, { '1', '2', '3' })
+  eq ({ s:value (2, 1), s:value (4, 1) }, { 2, nil })
+  eq (text (s, 'A2'), '')
+  eq ({ shown (s, 'C1'), shown (s, 'C2'), shown (s, 'C3') }, { '6', '30', '0' })
+  eq ({ shown (s, 'E1'), shown (s, 'E2') }, { '10', '12' })
+  -- A longer block reaches the formulas that read the cells it newly covers.
+  set (s, 'A1', '=SEQUENCE(4, 1, 10)')
+  eq (
+    { shown (s, 'A4'), shown (s, 'C1'), shown (s, 'C3') },
+    { '13', '33', '13' }
+  )
+  -- A shorter one leaves them empty.
+  set (s, 'A1', '=SEQUENCE(2)')
+  eq ({ shown (s, 'A3'), shown (s, 'C2'), shown (s, 'C3') }, { '', '0', '0' })
+  s:undo ()
+  eq (shown (s, 'C3'), '13')
+  -- Clearing the formula takes the block away.
+  set (s, 'A1', '')
+  eq ({ shown (s, 'A2'), shown (s, 'C1') }, { '', '0' })
+end)
+
+test ('a block with no room shows #SPILL! until the room is free', function ()
+  local book = book_of ({ 'Sheet1' }, {
+    Sheet1 = { A1 = '=SEQUENCE(3)', B1 = '=A1', B2 = '=A2' },
+  })
+  local s = book.sheets[1]
+  eq (shown (s, 'B2'), '2')
+  set (s, 'A3', 'in the way')
+  eq ({ shown (s, 'A1'), shown (s, 'A2'), shown (s, 'B1'), shown (s, 'B2') }, {
+    '#SPILL!',
+    '',
+    '#SPILL!',
+    '0',
+  })
+  set (s, 'A3', '')
+  eq ({ shown (s, 'A1'), shown (s, 'B2') }, { '1', '2' })
+  -- Another block is in the way too, and so are merged cells.
+  set (s, 'D2', '=SEQUENCE(1, 3)')
+  set (s, 'E1', '=SEQUENCE(2)')
+  eq (
+    { shown (s, 'D2'), shown (s, 'E1'), shown (s, 'E2') },
+    { '1', '#SPILL!', '2' }
+  )
+  s:merge (m.parse_range ('A5:B5') --[[@as Sheet.Rect]])
+  set (s, 'A4', '=SEQUENCE(2)')
+  eq (shown (s, 'A4'), '#SPILL!')
+end)
+
+test ('A1# reads the whole block the formula in A1 spills', function ()
+  local book = book_of ({ 'Sheet1', 'Other' }, {
+    Sheet1 = {
+      A1 = '=SEQUENCE(3)',
+      C1 = '=SUM(A1#)',
+      C2 = '=ROWS(A1#)',
+      C3 = '=C1#',
+      C4 = '=SUM(A1#*2)',
+    },
+    Other = { A1 = '=COUNT(Sheet1!A1#)' },
+  })
+  local s = book.sheets[1]
+  eq ({ shown (s, 'C1'), shown (s, 'C2'), shown (s, 'C3'), shown (s, 'C4') }, {
+    '6',
+    '3',
+    '#REF!',
+    '12',
+  })
+  eq (shown (book.sheets[2], 'A1'), '3')
+  set (s, 'A1', '=SEQUENCE(5)')
+  eq ({ shown (s, 'C1'), shown (s, 'C2') }, { '15', '5' })
+  eq (shown (book.sheets[2], 'A1'), '5')
+  eq (f.shift ('=SUM(A1#)+Data!$B$2#', 1, 1), '=SUM(B2#)+Data!$B$2#')
+end)
+
+test (
+  'copying a spilled block copies its formula, or the values without it',
+  function ()
+    local book = book_of ({ 'Sheet1' }, { Sheet1 = { A1 = '=SEQUENCE(3)' } })
+    local s = book.sheets[1]
+    local part = s:copy (m.parse_range ('A2:A3') --[[@as Sheet.Rect]])
+    eq (part.texts, { { '2' }, { '3' } })
+    local whole = s:copy (m.parse_range ('A1:A3') --[[@as Sheet.Rect]])
+    eq (whole.texts, { { '=SEQUENCE(3)' }, { '' }, { '' } })
+    whole.cut = true
+    s:paste (1, 3, whole)
+    eq ({ shown (s, 'A2'), shown (s, 'C1'), shown (s, 'C3') }, { '', '1', '3' })
+  end
+)
+
+test ('other sheets read a spilled block', function ()
+  local book = book_of ({ 'Data', 'Report' }, {
+    Data = { A1 = '=UNIQUE(B1:B4)', B1 = 'x', B2 = 'y', B3 = 'x', B4 = 'z' },
+    Report = { A1 = '=COUNTA(Data!A1:A9)', A2 = '=Data!A3' },
+  })
+  local report = book.sheets[2]
+  eq ({ shown (report, 'A1'), shown (report, 'A2') }, { '3', 'z' })
+  set (book.sheets[1], 'B4', 'x')
+  eq ({ shown (report, 'A1'), shown (report, 'A2') }, { '2', '0' })
+end)
+
 test ('begin and finish make one step across sheets', function ()
   local book = book_of ({ 'One', 'Two' }, {})
   local one, two = book.sheets[1], book.sheets[2]

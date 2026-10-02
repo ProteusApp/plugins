@@ -132,6 +132,8 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field points table<integer, table<Sheet.Cell, boolean>> Small blocks, cell by cell.
 ---@field big table<Sheet.WatchArea, boolean> Blocks of more than 64 cells.
 ---@field by_col table<integer, table<Sheet.Cell, boolean>> The formulas of each column.
+---@field spills table<integer, Sheet.Cell> The formula whose block shows in each cell around it.
+---@field blocked table<Sheet.Cell, Sheet.Rect> Formulas whose block cannot spill, and the cells it needs.
 
 ---One change inside an undo step. `cell` changes a cell's text and style. `prop` changes one
 ---entry of a sheet's map, or a whole field when `key` is nil. `state` swaps everything a sheet
@@ -187,6 +189,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field full boolean True when every formula needs working out again.
 ---@field stale boolean True when the volatile formulas need working out again.
 ---@field edited Sheet.Position[] Cells whose text changed since the last recalculation.
+---@field spill_moved Sheet.Position[] Cells a block spilled into, or left, since the formulas that read them were worked out.
 ---@field volatile table<Sheet.Cell, boolean>
 ---@field by_name table<string, Sheet.Sheet> Sheets by lower-case name.
 ---@field name_cache table<string, Sheet.Sheet|false> Sheets by name as a formula writes it.
@@ -213,6 +216,9 @@ local DEPTH = 32
 local HUGE = math.huge
 local KEY = model.KEY
 local CYCLE = formula.error ('#CYCLE!')
+local SPILL = formula.error ('#SPILL!')
+-- How many times in a row a recalculation goes round again for blocks that spilled further.
+local SPILL_ROUNDS = 8
 local BROKEN = formula.error ('#ERROR!')
 local MAX_NAME = 100
 
@@ -279,6 +285,7 @@ local function blank_book (opts)
   self.full = true
   self.stale = false
   self.edited = {}
+  self.spill_moved = {}
   self.volatile = {}
   self.by_name = {}
   self.name_cache = {}
@@ -826,6 +833,7 @@ function Book:cell_changed (sheet, row, col, old, new)
   end
   if old and old.formula then
     self:unwatch (sheet, old)
+    self:place (sheet, old, nil)
   end
   if new and new.formula then
     self:watch (sheet, new)
@@ -865,9 +873,17 @@ function Book:context (sheet)
         end
         target = found
       end
-      local cell = target.cells[row * KEY + col]
-      if not cell then
-        return nil
+      local key = row * KEY + col
+      local cell = target.cells[key]
+      if not cell or cell.text == '' then
+        local anchor = target.watch.spills[key]
+        if not anchor then
+          return nil
+        end
+        if anchor.pending then
+          book:on_demand (anchor)
+        end
+        return (target:spilled (row, col))
       end
       if cell.pending then
         return book:on_demand (cell)
@@ -880,6 +896,28 @@ function Book:context (sheet)
         return nil, nil
       end
       return found.rows, found.cols
+    end,
+    spill = function (row, col, name)
+      local target = sheet
+      if name then
+        local found = book:find (name)
+        if not found then
+          return nil, nil
+        end
+        target = found
+      end
+      local cell = target.cells[row * KEY + col]
+      if not cell or not cell.formula then
+        return nil, nil
+      end
+      if cell.pending then
+        book:on_demand (cell)
+      end
+      local area = cell.spill_area
+      if not area then
+        return nil, nil
+      end
+      return area.r2 - area.r1 + 1, area.c2 - area.c1 + 1
     end,
   }
   sheet.ctx = ctx
@@ -897,7 +935,9 @@ function Book:compute (cell)
   cell.busy = true
   local ast = cell.ast
   if ast then
-    cell.value = formula.evaluate (ast, ctx)
+    local value, block = formula.evaluate (ast, ctx, true)
+    cell.value = value
+    self:place (sheet, cell, block)
   else
     cell.value = BROKEN
   end
@@ -905,6 +945,111 @@ function Book:compute (cell)
   cell.pending = nil
   ctx.row, ctx.col = row, col
   self.evaluated = self.evaluated + 1
+end
+
+---True when a block cannot spill into the cells it needs: one of them holds text, or another
+---formula's block, or sits in merged cells.
+---@param sheet Sheet.Sheet
+---@param cell Sheet.Cell
+---@param area Sheet.Rect
+---@return boolean
+local function spill_blocked (sheet, cell, area)
+  if area.r2 > formula.LAST_ROW or area.c2 > formula.LAST_COL then
+    return true
+  end
+  local spills = sheet.watch.spills
+  for r = area.r1, area.r2 do
+    for c = area.c1, area.c2 do
+      if r ~= cell.row or c ~= cell.col then
+        local key = r * KEY + c
+        local other = sheet.cells[key]
+        if other and other.text ~= '' then
+          return true
+        end
+        local owner = spills[key]
+        if owner and owner ~= cell then
+          return true
+        end
+      end
+    end
+  end
+  for _, m in ipairs (sheet.merges) do
+    if model.overlaps (m, area) then
+      return true
+    end
+  end
+  return false
+end
+
+---Puts the block a formula gave into the cells around it, or takes it away when `block` is
+---nil. A block with no room shows #SPILL! in the formula's cell. The cells the block newly
+---covers go on `spill_moved`, so the formulas that read them are worked out again.
+---@param sheet Sheet.Sheet
+---@param cell Sheet.Cell
+---@param block Sheet.Array?
+function Book:place (sheet, cell, block)
+  local w = sheet.watch
+  local old = cell.spill_area
+  if old then
+    for r = old.r1, old.r2 do
+      for c = old.c1, old.c2 do
+        local key = r * KEY + c
+        if w.spills[key] == cell then
+          w.spills[key] = nil
+        end
+      end
+    end
+  end
+  w.blocked[cell] = nil
+  cell.spill, cell.spill_area = nil, nil
+  local area = nil ---@type Sheet.Rect?
+  if block then
+    area = {
+      r1 = cell.row,
+      c1 = cell.col,
+      r2 = cell.row + block.h - 1,
+      c2 = cell.col + block.w - 1,
+    }
+    if spill_blocked (sheet, cell, area) then
+      cell.value = SPILL
+      w.blocked[cell] = area
+      area = nil
+    else
+      for r = area.r1, area.r2 do
+        for c = area.c1, area.c2 do
+          if r ~= cell.row or c ~= cell.col then
+            w.spills[r * KEY + c] = cell
+          end
+        end
+      end
+      cell.spill, cell.spill_area = block, area
+      sheet:grow (area.r2, area.c2)
+    end
+  end
+  -- The formulas that read the cells the block left are already due when the formula is.
+  -- Those that read the cells it newly covers are not.
+  local moved = self.spill_moved
+  if area then
+    for r = area.r1, area.r2 do
+      for c = area.c1, area.c2 do
+        local before = old
+          and r >= old.r1
+          and r <= old.r2
+          and c >= old.c1
+          and c <= old.c2
+        if not before then
+          moved[#moved + 1] = { sheet = sheet, row = r, col = c }
+        end
+      end
+    end
+  end
+  if old and not area then
+    for r = old.r1, old.r2 do
+      for c = old.c1, old.c2 do
+        moved[#moved + 1] = { sheet = sheet, row = r, col = c }
+      end
+    end
+  end
 end
 
 ---Works out a cell that a formula reads before its turn came. A cell already being worked
@@ -999,6 +1144,7 @@ function Book:recalc ()
   self.full = false
   self.stale = false
   self.edited = {}
+  self.spill_moved = {}
   self.volatile = {}
   for _, sheet in ipairs (self.sheets) do
     sheet.watch = model.new_watch ()
@@ -1008,6 +1154,7 @@ function Book:recalc ()
   for _, sheet in ipairs (self.sheets) do
     for _, cell in pairs (sheet.cells) do
       if cell.formula then
+        cell.spill, cell.spill_area = nil, nil
         self:watch (sheet, cell)
         list[#list + 1] = cell
         dirty[cell] = true
@@ -1015,6 +1162,24 @@ function Book:recalc ()
     end
   end
   self:run (list, dirty, true)
+  self:settle ()
+end
+
+---Works out again the formulas that read cells a block spilled into or left, until the blocks
+---stop moving. A block that keeps moving stops after a few rounds.
+function Book:settle ()
+  local rounds = 0
+  while #self.spill_moved > 0 and rounds < SPILL_ROUNDS do
+    rounds = rounds + 1
+    local last = self.last
+    self:update ()
+    self.last = {
+      full = last.full,
+      evaluated = last.evaluated + self.last.evaluated,
+      dirty = last.dirty + self.last.dirty,
+    }
+  end
+  self.spill_moved = {}
 end
 
 ---Works out the formulas that read the cells edited since the last time, directly or
@@ -1028,24 +1193,57 @@ function Book:update ()
     if not dirty[cell] then
       dirty[cell] = true
       list[#list + 1] = cell
-      queue[#queue + 1] = {
-        sheet = cell.home --[[@as Sheet.Sheet]],
-        row = cell.row,
-        col = cell.col,
-      }
+      local home = cell.home --[[@as Sheet.Sheet]]
+      queue[#queue + 1] = { sheet = home, row = cell.row, col = cell.col }
+      -- What reads the block a formula spilled is due along with it.
+      local area = cell.spill_area
+      if area then
+        for r = area.r1, area.r2 do
+          for c = area.c1, area.c2 do
+            if r ~= cell.row or c ~= cell.col then
+              queue[#queue + 1] = { sheet = home, row = r, col = c }
+            end
+          end
+        end
+      end
     end
   end
   local edited = self.edited
+  local moved = self.spill_moved
   self.edited = {}
+  self.spill_moved = {}
   self.stale = false
   for _, pos in ipairs (edited) do
     if self.live[pos.sheet] then
-      local cell = pos.sheet.cells[pos.row * KEY + pos.col]
+      local key = pos.row * KEY + pos.col
+      local cell = pos.sheet.cells[key]
       if cell and cell.formula then
         mark (cell)
       else
         queue[#queue + 1] = pos
       end
+      -- Typing into a block's cells stops it spilling, and clearing a cell may give a block
+      -- that had no room the room it needs.
+      local w = pos.sheet.watch
+      local anchor = w.spills[key]
+      if anchor and anchor ~= cell then
+        mark (anchor)
+      end
+      for other, area in pairs (w.blocked) do
+        if
+          pos.row >= area.r1
+          and pos.row <= area.r2
+          and pos.col >= area.c1
+          and pos.col <= area.c2
+        then
+          mark (other)
+        end
+      end
+    end
+  end
+  for _, pos in ipairs (moved) do
+    if self.live[pos.sheet] then
+      queue[#queue + 1] = pos
     end
   end
   for cell in pairs (self.volatile) do
@@ -1065,8 +1263,9 @@ end
 function Book:ensure ()
   if self.full then
     self:recalc ()
-  elseif #self.edited > 0 or self.stale then
+  elseif #self.edited > 0 or #self.spill_moved > 0 or self.stale then
     self:update ()
+    self:settle ()
   end
 end
 

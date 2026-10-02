@@ -378,7 +378,9 @@ function M.table_html (sheet, geo, opts)
   for _, c in ipairs (scroll_cols) do
     seg_end[c] = geo.cols
   end
+  sheet.book:ensure ()
   local cells = sheet.cells
+  local spills = sheet.watch.spills
   local row_styles, col_styles = sheet.row_styles, sheet.col_styles
   local notes = sheet.notes
   local areas = look_areas (sheet)
@@ -417,7 +419,7 @@ function M.table_html (sheet, geo, opts)
             look.text = ''
           end
           info = { style = look.style, look = look }
-        elseif cell or wide then
+        elseif cell or wide or spills[k] then
           local look = ops.look (sheet, r, c)
           info = { style = look.style, look = look }
         elseif rs or col_styles[c] or notes[k] then

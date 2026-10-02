@@ -40,15 +40,16 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field b? Sheet.Ref The second end of a range.
 ---@field sheet? string The sheet a reference names, without quotes.
 ---@field sheet_text? string The sheet part of a reference as written, with its quotes and "!".
+---@field spill? boolean True for a reference to the block a formula spills, such as `A1#`.
 
----@alias Sheet.NodeKind 'number'|'string'|'bool'|'error'|'ref'|'range'|'name'|'call'|'unary'|'binary'|'percent'|'empty'|'array'
+---@alias Sheet.NodeKind 'number'|'string'|'bool'|'error'|'ref'|'range'|'spill'|'name'|'call'|'invoke'|'unary'|'binary'|'percent'|'empty'|'array'
 
 ---A node of the formula tree.
 ---@class Sheet.Node
 ---@field kind Sheet.NodeKind
 ---@field value? number|string|boolean
 ---@field op? string
----@field left? Sheet.Node The operand of a unary or percent node, or the left side.
+---@field left? Sheet.Node The operand of a unary or percent node, the left side, or the function an invoke node calls.
 ---@field right? Sheet.Node
 ---@field name? string A function or a name, in upper case.
 ---@field args? Sheet.Node[]
@@ -87,7 +88,19 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 
 ---@alias Sheet.Grid Sheet.RangeValue|Sheet.Array
 
----@alias Sheet.Result Sheet.Value|Sheet.RangeValue|Sheet.Array
+---A function a formula makes with LAMBDA. It keeps the names around it when it was made.
+---@class Sheet.Lambda
+---@field is_lambda true
+---@field params string[] The names of its arguments, in upper case.
+---@field body Sheet.Node
+---@field scope? Sheet.Scope
+
+---Names that LET and LAMBDA give values, inside the part of a formula they cover.
+---@class Sheet.Scope
+---@field names table<string, Sheet.Result|Sheet.Lambda>
+---@field parent? Sheet.Scope
+
+---@alias Sheet.Result Sheet.Value|Sheet.RangeValue|Sheet.Array|Sheet.Lambda
 
 ---What the evaluator needs from a workbook.
 ---@class Sheet.Context
@@ -99,6 +112,8 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field random? fun(): number
 ---@field row? integer The row of the cell being worked out, for ROW() with no argument.
 ---@field col? integer The column of the cell being worked out, for COLUMN() with no argument.
+---@field spill? fun(row: integer, col: integer, sheet?: string): integer?, integer? The height and width of the block a formula's cell spills, or nil when it spills none.
+---@field scope? Sheet.Scope The names LET and LAMBDA give, while their part of a formula is worked out.
 
 ---A function the formulas can call. `run` gets the argument trees and works them out as it
 ---needs to. `map` gets the argument values instead, and runs once for each value when an
@@ -189,6 +204,8 @@ M.ERROR_CODES = {
   '#CYCLE!',
   '#ERROR!',
   '#NULL!',
+  '#SPILL!',
+  '#CALC!',
 }
 
 ---@type table<string, Sheet.Error>
@@ -727,12 +744,16 @@ local function read_word (src, i)
     end
   end
   if a and shape == 'cell' and not joins_word (string.sub (src, j, j)) then
+    -- A1# is the block the formula in A1 spills.
+    local spill = string.sub (src, j, j) == '#'
+    local stop = spill and j or j - 1
     return {
       kind = 'ref',
-      text = string.sub (src, i, j - 1),
+      text = string.sub (src, i, stop),
       from = i,
-      to = j - 1,
+      to = stop,
       a = a,
+      spill = spill or nil,
     }
   end
   local num = string.match (src, '^%d*%.?%d*', i) or ''
@@ -1093,7 +1114,7 @@ local function primary (p)
     }
   end
   if kind == 'ref' then
-    return { kind = 'ref', a = t.a }
+    return { kind = t.spill and 'spill' or 'ref', a = t.a }
   end
   if kind == 'range' then
     return { kind = 'range', a = t.a, b = t.b }
@@ -1127,6 +1148,15 @@ end
 ---@return Sheet.Node
 local function postfix (p)
   local node = primary (p)
+  -- A function call right after a call, as in LAMBDA(x, x*2)(5), calls what it gave.
+  while node.kind == 'call' or node.kind == 'invoke' do
+    if not looking_at (p, 'open') then
+      break
+    end
+    p.i = p.i + 1
+    local args = call_args (p, node.name or 'the function').args
+    node = { kind = 'invoke', left = node, args = args }
+  end
   while looking_at (p, 'op', '%') do
     p.i = p.i + 1
     node = { kind = 'percent', left = node }
@@ -1614,6 +1644,35 @@ local function resolve (a, b, ctx)
   }
 end
 
+---The block a formula's cell spills, for a reference such as `A1#`. A cell that spills
+---nothing is #REF!.
+---@param a Sheet.Ref
+---@param ctx Sheet.Context
+---@return Sheet.RangeValue
+local function spill_range (a, ctx)
+  on_sheet (a.row, a.col)
+  if a.sheet then
+    sheet_size (a.sheet, ctx)
+  end
+  local row = a.row --[[@as integer]]
+  local col = a.col --[[@as integer]]
+  local h, w = nil, nil ---@type integer?, integer?
+  if ctx.spill then
+    h, w = ctx.spill (row, col, a.sheet)
+  end
+  if not h or not w then
+    return raise ('#REF!')
+  end
+  return {
+    is_range = true,
+    r1 = row,
+    c1 = col,
+    r2 = row + h - 1,
+    c2 = col + w - 1,
+    sheet = a.sheet,
+  }
+end
+
 ---A reference to one cell as a block.
 ---@param a Sheet.Ref
 ---@param ctx Sheet.Context
@@ -1642,6 +1701,11 @@ end
 ---@param ctx Sheet.Context
 ---@return Sheet.Result
 local function single (v, ctx)
+  if
+    (v --[[@as table]]).is_lambda
+  then
+    return raise ('#CALC!')
+  end
   local h, w = dims (v)
   if h ~= 1 or w ~= 1 then
     return v
@@ -1832,10 +1896,115 @@ local function call_map (spec, args, n, ctx)
   return map (vals --[[@as Sheet.Values]], n, ctx)
 end
 
+-- What a name holds when LET gives it an empty value, since a table cannot hold nil.
+local EMPTY = {}
+
+---True for a function that LAMBDA made.
+---@param v any
+---@return boolean
+local function is_lambda (v)
+  return type (v) == 'table' and v.is_lambda == true
+end
+
+---The value LET or LAMBDA gave a name, and whether one did.
+---@param ctx Sheet.Context
+---@param name string
+---@return Sheet.Result|Sheet.Lambda
+---@return boolean
+local function lookup (ctx, name)
+  local scope = ctx.scope
+  while scope do
+    local v = scope.names[name]
+    if v ~= nil then
+      if v == EMPTY then
+        return nil, true
+      end
+      return v, true
+    end
+    scope = scope.parent
+  end
+  return nil, false
+end
+
+---Works out a node with other names in scope, and puts the old ones back after, even when
+---it raises an error.
+---@param ctx Sheet.Context
+---@param scope Sheet.Scope?
+---@param fn fun(): Sheet.Result
+---@return Sheet.Result
+local function within (ctx, scope, fn)
+  local saved = ctx.scope
+  ctx.scope = scope
+  local ok, result = pcall (fn)
+  ctx.scope = saved
+  if not ok then
+    error (result, 0)
+  end
+  return result
+end
+
+---Calls a LAMBDA with values for its arguments. `n` is how many values there are, since an
+---empty one leaves a hole.
+---@param fn Sheet.Lambda
+---@param values table<integer, Sheet.Result>
+---@param n integer
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function apply (fn, values, n, ctx)
+  if n ~= #fn.params then
+    return raise ('#VALUE!')
+  end
+  local names = {} ---@type table<string, Sheet.Result|Sheet.Lambda>
+  for i, name in ipairs (fn.params) do
+    local v = values[i]
+    if v == nil then
+      names[name] = EMPTY
+    else
+      names[name] = v
+    end
+  end
+  return within (ctx, { names = names, parent = fn.scope }, function ()
+    return eval (fn.body, ctx)
+  end)
+end
+
+---Calls what a formula gave as a function, with the arguments in the formula. Anything but a
+---LAMBDA is #VALUE!.
+---@param fn any
+---@param args Sheet.Node[]
+---@param ctx Sheet.Context
+---@return Sheet.Result
+local function invoke (fn, args, ctx)
+  if not is_lambda (fn) then
+    return raise ('#VALUE!')
+  end
+  local values = {} ---@type table<integer, Sheet.Result>
+  for i, arg in ipairs (args) do
+    if arg.kind ~= 'empty' then
+      local kind = arg.kind
+      if kind == 'ref' then
+        values[i] = cell_range (arg.a --[[@as Sheet.Ref]], ctx)
+      elseif kind == 'range' then
+        values[i] =
+          resolve (arg.a --[[@as Sheet.Ref]], arg.b --[[@as Sheet.Ref]], ctx)
+      else
+        values[i] = eval (arg, ctx)
+      end
+    end
+  end
+  return apply (fn --[[@as Sheet.Lambda]], values, #args, ctx)
+end
+
 ---@param node Sheet.Node
 ---@param ctx Sheet.Context
 ---@return Sheet.Result
 local function call (node, ctx)
+  if ctx.scope then
+    local fn, found = lookup (ctx, node.name or '')
+    if found then
+      return invoke (fn, node.args or {}, ctx)
+    end
+  end
   local spec = FUNCS[node.name or '']
   if not spec then
     return raise ('#NAME?')
@@ -1876,6 +2045,9 @@ eval = function (node, ctx)
   if kind == 'range' then
     return resolve (node.a --[[@as Sheet.Ref]], node.b --[[@as Sheet.Ref]], ctx)
   end
+  if kind == 'spill' then
+    return spill_range (node.a --[[@as Sheet.Ref]], ctx)
+  end
   if kind == 'binary' then
     return binary (node, ctx)
   end
@@ -1892,7 +2064,15 @@ eval = function (node, ctx)
     return raise (node.value --[[@as string]])
   end
   if kind == 'name' then
+    local v, found = lookup (ctx, node.name or '')
+    if found then
+      return v
+    end
     return raise ('#NAME?')
+  end
+  if kind == 'invoke' then
+    local fn = eval (node.left --[[@as Sheet.Node]], ctx)
+    return invoke (fn, node.args or {}, ctx)
   end
   local v = eval (node.left --[[@as Sheet.Node]], ctx)
   if type (v) == 'table' then
@@ -1918,14 +2098,48 @@ eval = function (node, ctx)
   return r
 end
 
+---The values of a block as an array, with an empty cell as 0, the way a block spills.
+---@param g Sheet.Grid
+---@param ctx Sheet.Context
+---@return Sheet.Array
+local function spilled (g, ctx)
+  local h, w = dims (g)
+  local out = {} ---@type Sheet.Values
+  for i = 1, h do
+    for j = 1, w do
+      local v = grid_at (g, i, j, ctx)
+      if v == nil then
+        v = 0.0
+      end
+      out[(i - 1) * w + j] = v
+    end
+  end
+  return new_array (h, w, out)
+end
+
 ---Works out the value of a parsed formula. An empty result shows as 0, as in spreadsheets. A
----result that is a block of cells gives its top left value, since nothing spills into other
----cells.
+---result that is a block of cells gives its top left value. With `spill`, a block of more than
+---one cell comes back too, as an array, for the cells around the formula to show.
 ---@param ast Sheet.Node
 ---@param ctx Sheet.Context
+---@param spill? boolean
 ---@return Sheet.Value
-function M.evaluate (ast, ctx)
+---@return Sheet.Array?
+function M.evaluate (ast, ctx, spill)
   local ok, result = pcall (eval, ast, ctx)
+  if ok and is_lambda (result) then
+    return ERRORS['#CALC!']
+  end
+  if ok and spill and is_grid (result) then
+    local h, w = dims (result)
+    if h > 1 or w > 1 then
+      local done, block = pcall (spilled, result --[[@as Sheet.Grid]], ctx)
+      if done then
+        return block.v[1], block
+      end
+      ok, result = false, block
+    end
+  end
   if ok and is_grid (result) then
     ok, result = pcall (grid_at, result --[[@as Sheet.Grid]], 1, 1, ctx)
   end
@@ -2001,7 +2215,12 @@ local function reference (node, ctx)
   if kind == 'range' then
     return resolve (node.a --[[@as Sheet.Ref]], node.b --[[@as Sheet.Ref]], ctx)
   end
-  if kind == 'call' then
+  if
+    kind == 'call'
+    or kind == 'name'
+    or kind == 'invoke'
+    or kind == 'spill'
+  then
     local v = eval (node, ctx)
     if
       type (v) == 'table' and (v --[[@as table]]).is_range
@@ -6655,6 +6874,129 @@ define (
   }
 )
 
+---------------------------------------------------------------------------------------------
+-- More functions
+---------------------------------------------------------------------------------------------
+
+---What the modules with more functions get from the formula language: its helpers, and
+---`define` to add a function and its catalog entry. Each module returns a function that takes
+---the kit, so the functions join the catalog before it is sorted.
+---@class Sheet.FormulaKit
+---@field define fun(name: string, category: Sheet.Category, syntax: string, summary: string, spec: Sheet.Function)
+---@field ERRORS table<string, Sheet.Error>
+---@field MANY integer
+---@field EMPTY table What a name holds when LET gives it an empty value.
+---@field raise fun(code: string): any
+---@field raise_value fun(err: any): any
+---@field is_error fun(v: any): boolean
+---@field is_lambda fun(v: any): boolean
+---@field is_grid fun(v: Sheet.Result): boolean
+---@field dims fun(v: Sheet.Result): integer, integer
+---@field grid_at fun(g: Sheet.Grid, i: integer, j: integer, ctx: Sheet.Context): Sheet.Value
+---@field new_array fun(h: integer, w: integer, v: Sheet.Values): Sheet.Array
+---@field eval fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
+---@field grid_or_value fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Result
+---@field need_grid fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Grid
+---@field need_reference fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.RangeValue
+---@field each fun(node: Sheet.Node, ctx: Sheet.Context, fn: fun(v: Sheet.Value, in_ref: boolean))
+---@field numbers fun(args: Sheet.Node[], ctx: Sheet.Context, first?: integer, last?: integer): number[]
+---@field paired fun(ynode: Sheet.Node, xnode: Sheet.Node, ctx: Sheet.Context): number[], number[]
+---@field apply fun(fn: Sheet.Lambda, values: table<integer, Sheet.Result>, n: integer, ctx: Sheet.Context): Sheet.Result
+---@field within fun(ctx: Sheet.Context, scope: Sheet.Scope?, fn: fun(): Sheet.Result): Sheet.Result
+---@field given fun(node: Sheet.Node?): boolean
+---@field value_of fun(node: Sheet.Node, ctx: Sheet.Context): Sheet.Value
+---@field number_of fun(node: Sheet.Node, ctx: Sheet.Context): number
+---@field int_of fun(node: Sheet.Node, ctx: Sheet.Context): integer
+---@field bool_of fun(node: Sheet.Node, ctx: Sheet.Context): boolean
+---@field text_of fun(node: Sheet.Node, ctx: Sheet.Context): string
+---@field to_number fun(v: Sheet.Value): number
+---@field to_bool fun(v: Sheet.Value): boolean
+---@field to_text fun(v: Sheet.Value): string
+---@field opt fun(v: Sheet.Values, n: integer, i: integer, d: number): number
+---@field opt_int fun(v: Sheet.Values, n: integer, i: integer, d: integer): integer
+---@field opt_bool fun(v: Sheet.Values, n: integer, i: integer, d: boolean): boolean
+---@field trunc fun(n: number): integer
+---@field finite fun(n: number): number
+---@field compare fun(a: Sheet.Value, b: Sheet.Value): integer
+---@field lower fun(s: string): string
+---@field upper fun(s: string): string
+---@field total_of fun(list: number[]): number
+---@field variance fun(list: number[], sample: boolean): number
+---@field fit fun(ys: number[], xs: number[]): number, number
+---@field solve fun(f: fun(x: number): number, guess: number): number?
+---@field date_arg fun(v: Sheet.Value, ctx?: Sheet.Context): number
+---@field ymd fun(serial: number): integer, integer, integer
+---@field make_date fun(y: integer, m: integer, d: integer): integer
+---@field weekday0 fun(serial: number): integer
+---@field holidays fun(node: Sheet.Node?, ctx: Sheet.Context): table<integer, boolean>
+---@field days_in_month fun(y: integer, m: integer): integer
+---@field round_to fun(x: number, digits: integer, mode: 'near'|'up'|'down'): number
+---@field parse_number fun(text: string): number?
+---@field col_name fun(n: integer): string
+---@field address fun(row: integer, col: integer): string
+---@field quote_sheet fun(name: string): string
+
+---@type Sheet.FormulaKit
+local kit = {
+  define = define,
+  ERRORS = ERRORS,
+  MANY = MANY,
+  EMPTY = EMPTY,
+  raise = raise,
+  raise_value = raise_value,
+  is_error = is_error,
+  is_lambda = is_lambda,
+  is_grid = is_grid,
+  dims = dims,
+  grid_at = grid_at,
+  new_array = new_array,
+  eval = eval,
+  grid_or_value = grid_or_value,
+  need_grid = need_grid,
+  need_reference = need_reference,
+  each = each,
+  numbers = numbers,
+  paired = paired,
+  apply = apply,
+  within = within,
+  given = given,
+  value_of = value_of,
+  number_of = number_of,
+  int_of = int_of,
+  bool_of = bool_of,
+  text_of = text_of,
+  to_number = to_number,
+  to_bool = to_bool,
+  to_text = to_text,
+  opt = opt,
+  opt_int = opt_int,
+  opt_bool = opt_bool,
+  trunc = trunc,
+  finite = finite,
+  compare = compare,
+  lower = lower,
+  upper = upper,
+  total_of = total_of,
+  variance = variance,
+  fit = fit,
+  solve = solve,
+  date_arg = date_arg,
+  ymd = ymd,
+  make_date = make_date,
+  weekday0 = weekday0,
+  holidays = holidays,
+  days_in_month = days_in_month,
+  round_to = round_to,
+  parse_number = M.parse_number,
+  col_name = M.col_name,
+  address = M.address,
+  quote_sheet = M.quote_sheet,
+}
+for _, name in ipairs ({ 'sheet_fn_arrays' }) do
+  local add = require (name) --[[@as fun(kit: Sheet.FormulaKit)]]
+  add (kit)
+end
+
 table.sort (CATALOG, function (a, b)
   return a.name < b.name
 end)
@@ -6720,7 +7062,8 @@ end
 function M.refs (ast)
   local out = {} ---@type Sheet.Area[]
   walk (ast, function (node)
-    if node.kind == 'ref' then
+    -- A1# reads the formula in A1, which is worked out again whenever its block changes.
+    if node.kind == 'ref' or node.kind == 'spill' then
       out[#out + 1] = area_of (node.a --[[@as Sheet.Ref]])
     elseif node.kind == 'range' then
       out[#out + 1] = area_of (node.a --[[@as Sheet.Ref]], node.b)
@@ -6854,6 +7197,9 @@ local function token_text (t, a, b)
   local out = (t.sheet_text or '') .. ref_text (a)
   if b then
     out = out .. ':' .. ref_text (b)
+  end
+  if t.spill then
+    out = out .. '#'
   end
   return out
 end
@@ -7031,9 +7377,8 @@ function M.move (text, src, drow, dcol, opts)
   return rewrite (text, function (t)
     local named = t.sheet or opts.own
     local key = sheet_key (named)
-    local a, b =
-      t.a, --[[@as Sheet.Ref]]
-      t.b
+    local a = t.a --[[@as Sheet.Ref]]
+    local b = t.b
     local where = named
     if key == from and inside (t, src) then
       a = copy_ref (a)
@@ -7060,6 +7405,9 @@ function M.move (text, src, drow, dcol, opts)
     local out = head .. ref_text (a)
     if t.kind == 'range' and b then
       out = out .. ':' .. ref_text (b)
+    end
+    if t.spill then
+      out = out .. '#'
     end
     return out
   end)

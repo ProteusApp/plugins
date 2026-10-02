@@ -439,6 +439,14 @@ test (
   end
 )
 
+test ('the cells a formula spills into draw its values', function ()
+  local s = sheet_of ({ A1 = '=SEQUENCE(3, 1, 41)' })
+  local html = table_of (s, 1, 4)
+  for _, n in ipairs ({ '>41<', '>42<', '>43<' }) do
+    ok (string.find (html, n, 1, true), n .. ' is drawn')
+  end
+end)
+
 test ('hidden rows and columns draw nothing', function ()
   local s = sheet_of ({ A1 = 'a', A2 = 'b', B1 = 'c' })
   s:set_hidden ('row', 2, 2, true)

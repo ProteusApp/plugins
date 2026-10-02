@@ -27,6 +27,8 @@ local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 ---@field busy? boolean True while the value is being worked out.
 ---@field deps? Sheet.Cell[]
 ---@field loops? boolean True when the formula reads its own cell.
+---@field spill? Sheet.Array The block of values a formula gives, which the cells around it show.
+---@field spill_area? Sheet.Rect The cells the block covers, the formula's own cell first.
 
 ---The text and style of one cell, as undo keeps them.
 ---@class Sheet.CellState
@@ -189,7 +191,7 @@ end
 
 ---@return Sheet.Watch
 function M.new_watch ()
-  return { points = {}, big = {}, by_col = {} }
+  return { points = {}, big = {}, by_col = {}, spills = {}, blocked = {} }
 end
 
 ---------------------------------------------------------------------------------------------
@@ -850,7 +852,28 @@ end
 function Sheet:value (row, col)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
-  return cell and cell.value
+  if cell and cell.text ~= '' then
+    return cell.value
+  end
+  return (self:spilled (row, col))
+end
+
+---The value a formula's block shows in an empty cell, and the formula's cell, or nil when no
+---block spills there.
+---@param row integer
+---@param col integer
+---@return Sheet.Value
+---@return Sheet.Cell?
+function Sheet:spilled (row, col)
+  local anchor = self.watch.spills[row * KEY + col]
+  if not anchor then
+    return nil, nil
+  end
+  local block, area = anchor.spill, anchor.spill_area
+  if not block or not area then
+    return nil, nil
+  end
+  return block.v[(row - area.r1) * block.w + (col - area.c1) + 1], anchor
 end
 
 ---The style a cell shows: its own style over its row's over its column's, without reset
@@ -1002,6 +1025,20 @@ end
 function Sheet:display (row, col, digits)
   self.book:ensure ()
   local cell = self.cells[row * KEY + col]
+  if not cell or cell.text == '' then
+    local v, anchor = self:spilled (row, col)
+    if anchor then
+      -- A spilled number shows with the cell's format, or the formula's automatic one.
+      local own = self:style_at (row, col).format
+      if not own and type (v) == 'number' then
+        own = self:auto_format (anchor)
+      end
+      if digits and not own then
+        return formula.format_value (v, digits), nil
+      end
+      return format.format (v, own)
+    end
+  end
   if not cell then
     return '', nil
   end
@@ -2681,10 +2718,28 @@ function Sheet:copy (rect)
     for col = r.c1, r.c2 do
       local cell = self.cells[row * KEY + col]
       local style = self:style_at (row, col)
-      t[#t + 1] = cell and cell.text or ''
+      local text = cell and cell.text or ''
+      local value = cell and cell.value
+      if text == '' then
+        -- A cell a block spills into copies as its value, unless the formula comes along.
+        local spilled, anchor = self:spilled (row, col)
+        if
+          anchor
+          and not (
+            anchor.row >= r.r1
+            and anchor.row <= r.r2
+            and anchor.col >= r.c1
+            and anchor.col <= r.c2
+          )
+        then
+          value = spilled
+          text = literal_text (spilled)
+        end
+      end
+      t[#t + 1] = text
       b[#b + 1] = style.bold == true
       st[#st + 1] = style
-      l[#l + 1] = literal_text (cell and cell.value)
+      l[#l + 1] = literal_text (value)
       s[#s + 1] = self:display (row, col)
     end
     texts[#texts + 1], bold[#bold + 1], styles[#styles + 1] = t, b, st

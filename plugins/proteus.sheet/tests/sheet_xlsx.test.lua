@@ -260,6 +260,25 @@ test (
   end
 )
 
+test (
+  'reading an array formula leaves out the last values of its block',
+  function ()
+    local book = read_ok (
+      one_sheet (
+        '<sheetData><row r="1"><c r="A1" cm="1"><f t="array" ref="A1:B2">_xlfn._xlws.SORT(D1:E2)</f><v>1</v></c>'
+          .. '<c r="B1"><v>2</v></c><c r="C1"><f>_xlfn.LET(_xlpm.x,2,_xlpm.x*3)</f><v>6</v></c></row>'
+          .. '<row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c>'
+          .. '<c r="C2"><f>SUM(_xlfn.ANCHORARRAY(A1))</f><v>10</v></c></row></sheetData>'
+      )
+    )
+    eq (book.sheets[1].cells, {
+      A1 = '=SORT(D1:E2)',
+      C1 = '=LET(x,2,x*3)',
+      C2 = '=SUM(A1#)',
+    })
+  end
+)
+
 test ('reading drops a NUL character', function ()
   local book = read_ok (
     one_sheet (
@@ -627,6 +646,78 @@ test ('writing stores the value of each formula when it is given', function ()
     )
   )
 end)
+
+test (
+  'a formula that spills writes as an array formula over its block',
+  function ()
+    local book = {
+      version = 2,
+      sheets = {
+        {
+          name = 'Data',
+          cells = {
+            A1 = '=SEQUENCE(3)',
+            C1 = '=SUM(A1#)',
+            D1 = '=LET(x, 2, f, LAMBDA(n, n*x), f(5))',
+          },
+        },
+      },
+    }
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return Sheet.Value
+    local function values (_, row, col)
+      if col == 1 then
+        return row + 0.0
+      end
+      return col == 3 and 6 or 10
+    end
+    ---@param _ integer
+    ---@param row integer
+    ---@param col integer
+    ---@return integer?
+    ---@return integer?
+    local function spills (_, row, col)
+      if row == 1 and col == 1 then
+        return 3, 1
+      end
+      return nil, nil
+    end
+    local files = x.write (book, values, spills)
+    local sheet = files['xl/worksheets/sheet1.xml']
+    ok (
+      string.find (
+        sheet,
+        '<c r="A1" cm="1"><f t="array" ref="A1:A3">_xlfn.SEQUENCE(3)</f><v>1</v></c>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (string.find (sheet, '<c r="A3"><v>3</v></c>', 1, true), sheet)
+    ok (string.find (sheet, '<f>SUM(_xlfn.ANCHORARRAY(A1))</f>', 1, true), sheet)
+    ok (
+      string.find (
+        sheet,
+        '<f>_xlfn.LET(_xlpm.x, 2, _xlpm.f, _xlfn.LAMBDA(_xlpm.n, _xlpm.n*_xlpm.x), _xlpm.f(5))</f>',
+        1,
+        true
+      ),
+      sheet
+    )
+    ok (files['xl/metadata.xml'], 'the metadata part is written')
+    ok (string.find (files['[Content_Types].xml'], '/xl/metadata.xml', 1, true))
+    ok (
+      string.find (files['xl/_rels/workbook.xml.rels'], 'sheetMetadata', 1, true)
+    )
+    -- Reading it back gives the formulas, and leaves the block's values for the formula to spill.
+    local back = read_ok (files)
+    eq (back.sheets[1].cells, book.sheets[1].cells)
+    -- A book with no spills has no metadata part.
+    eq (x.write (book, values)['xl/metadata.xml'], nil)
+  end
+)
 
 test ('writing types each value and escapes text', function ()
   local files = x.write (sample_book ())
