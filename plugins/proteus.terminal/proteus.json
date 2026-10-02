@@ -1,8 +1,8 @@
 {
   "id": "proteus.terminal",
   "name": "Terminal",
-  "description": "Terminals in the bottom dock, which start in the folder open in the Code Editor.",
-  "version": "1.0.1",
+  "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
+  "version": "2.1.0",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",
@@ -12,7 +12,11 @@
     "proteus.code.project",
     "proteus.core.commands",
     "proteus.core.keys",
-    "proteus.ui.menus"
+    "proteus.ui.menus",
+    "proteus.ui.palette",
+    "proteus.ui.notify",
+    "proteus.editor.core",
+    "proteus.tools.diagnostics"
   ],
   "permissions": [
     "process",
@@ -21,9 +25,11 @@
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.3.0",
+    "proteus": ">=0.3.1",
     "features": [
-      "permissions"
+      "permissions",
+      "terminal-sessions",
+      "terminal-lines"
     ]
   },
   "author": {
@@ -33,6 +39,18 @@
   "issue": null,
   "files": [
     "README.md",
-    "init.lua"
+    "handbook/terminal.md",
+    "init.lua",
+    "shell_words.lua",
+    "terminal_groups.lua",
+    "terminal_profiles.lua",
+    "terminal_session.lua",
+    "terminal_tasks.lua",
+    "tests/groups.test.lua",
+    "tests/panel.test.lua",
+    "tests/profiles.test.lua",
+    "tests/session.test.lua",
+    "tests/shell_words.test.lua",
+    "tests/tasks.test.lua"
   ]
 }

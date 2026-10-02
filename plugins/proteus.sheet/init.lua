@@ -49,19 +49,15 @@ end
 ---@param text string
 ---@return string
 local function safe_name (text)
-  local base = trim ((string.gsub (text, '[\\/:%*%?"<>|]', '-')))
-  if base == '' or string.sub (base, 1, 1) == '.' then
-    return 'Imported'
-  end
-  return base
+  return book_mod.safe_file_name (text)
 end
 
 ---@type Proteus.Plugin
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.2.0',
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'menus' } },
   -- Import and Export read and write CSV and Excel files anywhere on disk, and Paste reads the
   -- clipboard.
   permissions = { 'clipboard', 'files' },
@@ -90,7 +86,15 @@ return {
     local notify = app.try_use ('notify')
     local picker = app.try_use ('picker')
     local menus = app.try_use ('menus')
+    local keys = app.try_use ('keys')
     ui.css (CSS)
+
+    ---A key as menus show it on this computer, such as Ctrl+V, or Cmd+V on a Mac.
+    ---@param combo string
+    ---@return string?
+    local function keys_label (combo)
+      return keys and keys.pretty (keys.normalize (combo)) or nil
+    end
 
     local book = nil ---@type Sheet.Book?
     local file = nil ---@type string?
@@ -296,11 +300,9 @@ return {
     ---@param except? string The workbook being renamed, which may keep its name.
     ---@return string?
     local function name_problem (n, except)
-      if n == '' then
-        return 'Type a name.'
-      end
-      if string.find (n, '[\\/:%*%?"<>|]') or string.sub (n, 1, 1) == '.' then
-        return 'A name cannot start with a dot or hold \\ / : * ? " < > |'
+      local problem = book_mod.file_name_problem (n)
+      if problem then
+        return problem
       end
       for _, other in ipairs (file_names ()) do
         if string.lower (other) == string.lower (n) and other ~= except then
@@ -1609,14 +1611,8 @@ return {
     ---@param id string
     ---@return Proteus.MenuItem
     local function run_item (label, icon, id)
-      return {
-        label = label,
-        icon = icon,
-        disabled = not commands.can_run (id),
-        run = function ()
-          commands.run (id)
-        end,
-      }
+      -- The menu takes the key, the state and the run from the command itself.
+      return { command = id, label = label, icon = icon }
     end
 
     ---Filters the sheet to the rows that show the active cell's value in its column.
@@ -1650,52 +1646,16 @@ return {
       local has_note = s and s:note (grid.sel.r, grid.sel.c) ~= nil
       ---@type Proteus.MenuItem[]
       return {
+        { command = 'sheet.cut' },
+        { command = 'sheet.copy' },
+        -- The cell editor pastes on these keys, so they belong to no command.
+        { command = 'sheet.paste', key = keys_label ('ctrl+v') },
         {
-          label = 'Cut',
-          icon = 'scissors',
-          key = 'Ctrl+X',
-          run = function ()
-            grid.copy (true)
-          end,
+          command = 'sheet.paste_values',
+          key = keys_label ('ctrl+shift+v'),
         },
-        {
-          label = 'Copy',
-          icon = 'copy',
-          key = 'Ctrl+C',
-          run = function ()
-            grid.copy (false)
-          end,
-        },
-        {
-          label = 'Paste',
-          icon = 'clipboard-paste',
-          key = 'Ctrl+V',
-          run = function ()
-            grid.paste ()
-          end,
-        },
-        {
-          label = 'Paste values only',
-          icon = 'clipboard-type',
-          key = 'Ctrl+Shift+V',
-          run = function ()
-            grid.paste ({ only = 'values' })
-          end,
-        },
-        {
-          label = 'Paste formats only',
-          icon = 'clipboard-paste',
-          run = function ()
-            grid.paste ({ only = 'formats' })
-          end,
-        },
-        {
-          label = 'Paste transposed',
-          icon = 'clipboard-paste',
-          run = function ()
-            grid.paste ({ transpose = true })
-          end,
-        },
+        { command = 'sheet.paste_formats' },
+        { command = 'sheet.paste_transposed' },
         { separator = true },
         {
           label = grid.count_label ('Insert %s above', 'row'),
@@ -1740,7 +1700,11 @@ return {
           end,
         },
         { separator = true },
-        { label = 'Clear', icon = 'eraser', key = 'Del', run = grid.clear },
+        {
+          command = 'sheet.clear',
+          label = 'Clear',
+          key = keys_label ('delete'),
+        },
         run_item (
           'Sort A to Z by this column',
           'arrow-up-narrow-wide',

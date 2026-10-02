@@ -34,7 +34,7 @@ local wires_m = require ('wires')
 return {
   name = 'Shader canvas',
   description = 'The node editor for shader graphs: nodes, typed wires, panning and zooming.',
-  version = '1.1.1',
+  version = '1.1.2',
   requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   permissions = {},
   depends = {

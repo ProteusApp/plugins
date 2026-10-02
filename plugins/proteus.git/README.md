@@ -1,6 +1,6 @@
 # Git
 
-A Git client for any folder that holds a repository. It runs the real `git` program and shows the changed files, the diff of each one, and the history. Install the **Git** profile from the marketplace to run it as an app of its own.
+A Git client for any folder that holds a repository. It runs the real `git` program and shows the changed files, the diff of each one, and the history. Install the **Git** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 ## What it does
 
@@ -23,6 +23,15 @@ A Git client for any folder that holds a repository. It runs the real `git` prog
 When the `project` service runs, as in the Code Editor, it works on the open folder. The Changes view becomes Source Control (Ctrl+Shift+G), a diff opens in a tab that can close, and Open File opens the file in the editor. It sends each file's Git state as the `git:status` event, which colours the file tree, and refreshes when the folder sends `code:disk_changed` or a file is saved.
 
 `git:status` carries full paths on disk, so a plugin hears it only with the `files` permission.
+
+## Trusted repositories only
+
+A repository's own settings, in `.git/config`, can make Git run programs: hooks when you commit, filters when it reads the status, and more. A folder that arrives as a zip, on a shared drive or on a USB stick brings that file along. So the client runs Git only in a repository you trust.
+
+- In the Code Editor, that is a folder you trust. Until then the Source Control view says so and offers **Trust Folder**, which also lets the folder's `.proteus` files load.
+- On its own, the client asks the first time it opens a repository, and remembers your answer. A repository you clone here is trusted at once, since a clone brings no settings from elsewhere.
+
+Every command also turns off the settings that run a program without being asked for, such as `core.fsmonitor`, whatever the repository says.
 
 ## What it needs
 
