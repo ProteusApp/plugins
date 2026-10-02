@@ -1,6 +1,6 @@
 # Sheet
 
-A spreadsheet with formulas, formats, charts and several sheets per workbook. Install the **Sheet** profile from the marketplace to run it as an app of its own.
+A spreadsheet with formulas, formats, charts and several sheets per workbook. Install the **Sheet** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 ## What it does
 

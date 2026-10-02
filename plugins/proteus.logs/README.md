@@ -1,6 +1,6 @@
 # Logs
 
-A log viewer. It follows log files and running programs, and shows their lines as they arrive. Install the **Logs** profile from the marketplace to run it as an app of its own.
+A log viewer. It follows log files and running programs, and shows their lines as they arrive. Install the **Logs** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 ## What it does
 

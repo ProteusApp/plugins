@@ -1,6 +1,6 @@
 # API Client
 
-An API client that sends HTTP requests, saves them, and shows the answers. Install the **API Client** profile from the marketplace to run it as an app of its own.
+An API client that sends HTTP requests, saves them, and shows the answers. Install the **API Client** profile from the marketplace to run it as an app of its own. The profile runs the marketplace too, so more plugins install from inside the app: press **Ctrl+Shift+X**.
 
 ## What it does
 
