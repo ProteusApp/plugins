@@ -3,6 +3,7 @@
 -- file may have been edited by hand.
 
 local graph = require ('shader_graph') --[[@as Shader.GraphModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 
 local KIND = 'proteus-shader'
 
@@ -129,6 +130,9 @@ function M.save (doc)
   }
   if doc.preview then
     lines[#lines + 1] = '  "preview": ' .. quote (doc.preview) .. ','
+  end
+  if doc.channels and next (doc.channels) then
+    lines[#lines + 1] = '  "channels": ' .. encode (doc.channels) .. ','
   end
   lines[#lines + 1] = '  "nodes": ['
   for i, n in ipairs (doc.nodes) do
@@ -403,6 +407,16 @@ function M.load (text)
   }
   if data.preview == 'glsl' or data.preview == 'wgsl' then
     doc.preview = data.preview
+  end
+  -- What each channel shows. One that does not read is left to the Preview's default.
+  if type (data.channels) == 'table' then
+    for i = 0, passes.COUNT - 1 do
+      local src = passes.clean_source (data.channels[tostring (i)])
+      if src then
+        doc.channels = doc.channels or {}
+        doc.channels[tostring (i)] = src
+      end
+    end
   end
   local seen = {} ---@type table<string, boolean>
   local node_list = data.nodes ---@type table<string, any>[]

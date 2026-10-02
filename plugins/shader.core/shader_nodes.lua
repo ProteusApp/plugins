@@ -79,6 +79,8 @@ local function add (spec)
     settings = spec.settings or {},
     helpers = spec.helpers,
     unique = spec.unique,
+    texture = spec.texture,
+    uniforms = spec.uniforms,
   }
   NODES[#NODES + 1] = def
 end
@@ -200,6 +202,54 @@ add ({
     ),
     O ('pixels', 'pixels', 'vec2', 'u_mouse.xy', 'u.mouse.xy'),
     O ('down', 'down', 'float', 'u_mouse.z', 'u.mouse.z'),
+  },
+})
+add ({
+  type = 'date',
+  title = 'Date',
+  category = 'input',
+  description = 'The date and the time of day on this computer: the year, the month from 0, the day of the month, and the seconds since midnight.',
+  uniforms = { 'date' },
+  outputs = {
+    O ('seconds', 'seconds', 'float', 'u_date.w', 'u.date.w'),
+    O ('hours', 'hours', 'float', 'u_date.w / 3600.0', 'u.date.w / 3600.0'),
+    O ('date', 'date', 'vec4', 'u_date', 'u.date'),
+  },
+})
+add ({
+  type = 'texture',
+  title = 'Texture',
+  category = 'input',
+  description = 'Reads a channel at a UV. Under Channels, the Preview panel picks what each channel shows: noise, a checker, an image, or a buffer, which is another pass of this shader.',
+  texture = true,
+  inputs = { I ('uv', 'uv', 'vec2', { 0, 0 }, UV) },
+  settings = {
+    {
+      key = 'channel',
+      label = 'channel',
+      kind = 'select',
+      options = { 'iChannel0', 'iChannel1', 'iChannel2', 'iChannel3' },
+      default = 'iChannel0',
+    },
+  },
+  outputs = {
+    -- WGSL counts a texture's rows from its top, so the y of the UV turns over.
+    H (
+      'sample',
+      'vec4',
+      'texture({@channel}, {uv})',
+      'textureSampleLevel({@channel}, {@channel}_sampler, vec2f(({uv}).x, 1.0 - ({uv}).y), 0.0)'
+    ),
+    O ('rgb', 'rgb', 'vec3', '{>sample}.rgb'),
+    O ('alpha', 'alpha', 'float', '{>sample}.a'),
+    O ('rgba', 'rgba', 'vec4', '{>sample}'),
+    O (
+      'size',
+      'size',
+      'vec2',
+      'vec2(textureSize({@channel}, 0))',
+      'vec2f(textureDimensions({@channel}))'
+    ),
   },
 })
 
@@ -419,6 +469,121 @@ gen (
   'atan({y}, {x})',
   'atan2({y}, {x})'
 )
+gen (
+  'ddx',
+  'Change Across',
+  'How much X changes from this pixel to the next one across: the derivative in x.',
+  { I ('x', 'X', 'gen') },
+  'dFdx({x})',
+  'dpdx({x})'
+)
+gen (
+  'ddy',
+  'Change Up',
+  'How much X changes from this pixel to the next one up: the derivative in y.',
+  { I ('x', 'X', 'gen') },
+  'dFdy({x})',
+  'dpdy({x})'
+)
+gen (
+  'fwidth',
+  'Change Width',
+  'How much X changes between neighbouring pixels, across and up together. Smooth Step over it gives edges one pixel wide.',
+  { I ('x', 'X', 'gen') },
+  'fwidth({x})'
+)
+
+-- What Compare offers, and how each language writes it for vectors.
+---@type table<string, { glsl: string }>
+local COMPARE = {
+  ['<'] = { glsl = 'lessThan' },
+  ['<='] = { glsl = 'lessThanEqual' },
+  ['>'] = { glsl = 'greaterThan' },
+  ['>='] = { glsl = 'greaterThanEqual' },
+  ['=='] = { glsl = 'equal' },
+  ['!='] = { glsl = 'notEqual' },
+}
+
+add ({
+  type = 'compare',
+  title = 'Compare',
+  category = 'math',
+  description = '1 where A compares to B as the setting says, and 0 elsewhere, one component at a time. Its result is a predicate for Branch.',
+  inputs = { I ('a', 'A', 'gen'), I ('b', 'B', 'gen', { 0.5 }) },
+  settings = {
+    {
+      key = 'op',
+      label = 'A is',
+      kind = 'select',
+      options = { '<', '<=', '>', '>=', '==', '!=' },
+      default = '<',
+    },
+  },
+  outputs = {
+    O ('out', '', 'gen', function (ctx)
+      local op = COMPARE[ctx.settings.op] and ctx.settings.op or '<'
+      local a, b = ctx.inputs.a, ctx.inputs.b
+      local name = types.name (ctx.T, ctx.lang)
+      if ctx.lang == 'wgsl' then
+        return 'select('
+          .. name
+          .. '(0.0), '
+          .. name
+          .. '(1.0), '
+          .. a
+          .. ' '
+          .. op
+          .. ' '
+          .. b
+          .. ')'
+      end
+      if ctx.T == 'float' then
+        return 'float(' .. a .. ' ' .. op .. ' ' .. b .. ')'
+      end
+      return name .. '(' .. COMPARE[op].glsl .. '(' .. a .. ', ' .. b .. '))'
+    end),
+  },
+})
+add ({
+  type = 'branch',
+  title = 'Branch',
+  category = 'math',
+  description = 'True where the predicate is above 0.5, and False elsewhere, one component at a time. Compare makes a predicate.',
+  inputs = {
+    I ('p', 'predicate', 'gen'),
+    I ('yes', 'true', 'gen', { 1 }),
+    I ('no', 'false', 'gen', { 0 }),
+  },
+  outputs = {
+    O ('out', '', 'gen', function (ctx)
+      local p, yes, no = ctx.inputs.p, ctx.inputs.yes, ctx.inputs.no
+      local half = types.literal ({ 0.5 }, ctx.T, ctx.lang)
+      if ctx.lang == 'wgsl' then
+        return 'select('
+          .. no
+          .. ', '
+          .. yes
+          .. ', '
+          .. p
+          .. ' > '
+          .. half
+          .. ')'
+      end
+      if ctx.T == 'float' then
+        return '(' .. p .. ' > 0.5 ? ' .. yes .. ' : ' .. no .. ')'
+      end
+      return 'mix('
+        .. no
+        .. ', '
+        .. yes
+        .. ', greaterThan('
+        .. p
+        .. ', '
+        .. half
+        .. '))'
+    end),
+  },
+})
 
 -- Vector ------------------------------------------------------------------------------------
 
