@@ -4468,8 +4468,8 @@
     {
       "id": "shader.build",
       "name": "Shader build",
-      "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.",
-      "version": "1.2.0",
+      "description": "Builds the shader in front into complete GLSL and WGSL files, a page that runs it, a list of its uniforms, and a graph for other engines.",
+      "version": "1.3.0",
       "author": "nanoqoi",
       "depends": [
         "shader.core",
@@ -4494,9 +4494,37 @@
       "files": [
         "init.lua"
       ],
-      "commit": "5ecad48bf414aad4b02d17817c9f4aef37740e73",
-      "updated": "2026-10-02T17:09:20Z",
+      "commit": "f23db2bc3bc8c1c9406e252c987823c38d35d63a",
+      "updated": "2026-10-02T21:58:20Z",
       "versions": [
+        {
+          "version": "1.2.0",
+          "depends": [
+            "shader.core",
+            "shader.docs",
+            "core.commands"
+          ],
+          "optional": [
+            "ui.notify",
+            "ui.palette"
+          ],
+          "permissions": [],
+          "folders": [
+            "shaders"
+          ],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "folders"
+            ]
+          },
+          "files": [
+            "init.lua"
+          ],
+          "commit": "5ecad48bf414aad4b02d17817c9f4aef37740e73",
+          "updated": "2026-10-02T17:09:20Z"
+        },
         {
           "version": "1.1.0",
           "depends": [
@@ -4621,7 +4649,7 @@
       "id": "shader.canvas",
       "name": "Shader canvas",
       "description": "The node editor for shader graphs: nodes, typed wires, panning and zooming.",
-      "version": "1.1.2",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -4656,9 +4684,47 @@
         "view.lua",
         "wires.lua"
       ],
-      "commit": "5973fca3be58aa99aca82a34585f572a3c52a114",
-      "updated": "2026-10-02T07:43:55Z",
+      "commit": "f23db2bc3bc8c1c9406e252c987823c38d35d63a",
+      "updated": "2026-10-02T21:58:20Z",
       "versions": [
+        {
+          "version": "1.1.2",
+          "depends": [
+            "lib.ui",
+            "shader.core",
+            "shader.docs",
+            "core.commands"
+          ],
+          "optional": [
+            "ui.palette",
+            "ui.menus",
+            "ui.notify",
+            "core.keys"
+          ],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "commands.lua",
+            "edit.lua",
+            "frames.lua",
+            "gestures.lua",
+            "handbook/canvas.md",
+            "init.lua",
+            "node_html.lua",
+            "style.lua",
+            "tests/node_html.test.lua",
+            "view.lua",
+            "wires.lua"
+          ],
+          "commit": "5973fca3be58aa99aca82a34585f572a3c52a114",
+          "updated": "2026-10-02T07:43:55Z"
+        },
         {
           "version": "1.1.1",
           "depends": [
@@ -4829,8 +4895,8 @@
     {
       "id": "shader.core",
       "name": "Shader core",
-      "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-      "version": "1.3.1",
+      "description": "The logic behind the shader builder: nodes, graphs, made nodes, the GLSL and WGSL compiler, exports to other engines, code shaders and files.",
+      "version": "1.4.0",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -4849,6 +4915,7 @@
         "shader_build.lua",
         "shader_compile.lua",
         "shader_examples.lua",
+        "shader_export.lua",
         "shader_file.lua",
         "shader_format.lua",
         "shader_graph.lua",
@@ -4859,18 +4926,62 @@
         "shader_pages.lua",
         "shader_passes.lua",
         "shader_source.lua",
+        "shader_subgraph.lua",
         "shader_types.lua",
         "tests/build.test.lua",
         "tests/core.test.lua",
         "tests/examples.test.lua",
+        "tests/export.test.lua",
         "tests/format.test.lua",
         "tests/passes.test.lua",
         "tests/source.test.lua",
+        "tests/subgraph.test.lua",
         "types/shader.lua"
       ],
-      "commit": "a7adbd8610c86ea99c33f01c09261195d992a49b",
-      "updated": "2026-10-02T17:10:54Z",
+      "commit": "f23db2bc3bc8c1c9406e252c987823c38d35d63a",
+      "updated": "2026-10-02T21:58:20Z",
       "versions": [
+        {
+          "version": "1.3.1",
+          "depends": [],
+          "optional": [],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "handbook/core.md",
+            "init.lua",
+            "shader_build.lua",
+            "shader_compile.lua",
+            "shader_examples.lua",
+            "shader_file.lua",
+            "shader_format.lua",
+            "shader_graph.lua",
+            "shader_helpers.lua",
+            "shader_history.lua",
+            "shader_layout.lua",
+            "shader_nodes.lua",
+            "shader_pages.lua",
+            "shader_passes.lua",
+            "shader_source.lua",
+            "shader_types.lua",
+            "tests/build.test.lua",
+            "tests/core.test.lua",
+            "tests/examples.test.lua",
+            "tests/format.test.lua",
+            "tests/passes.test.lua",
+            "tests/source.test.lua",
+            "types/shader.lua"
+          ],
+          "commit": "a7adbd8610c86ea99c33f01c09261195d992a49b",
+          "updated": "2026-10-02T17:10:54Z"
+        },
         {
           "version": "1.3.0",
           "depends": [],
@@ -5056,7 +5167,7 @@
       "id": "shader.docs",
       "name": "Shader documents",
       "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-      "version": "1.3.1",
+      "version": "1.4.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -5097,6 +5208,7 @@
         "handbook/colour.md",
         "handbook/debugging.md",
         "handbook/documents.md",
+        "handbook/engines.md",
         "handbook/first-shader.md",
         "handbook/glsl-language.md",
         "handbook/learn-shaders.md",
@@ -5115,9 +5227,71 @@
         "init.lua",
         "tests/docs.test.lua"
       ],
-      "commit": "237b3977133c6c7325a68131d0d5dd8b28280330",
-      "updated": "2026-10-02T07:50:54Z",
+      "commit": "044c6cf507935e2ddd1cc4b3d889f0512d0e6f83",
+      "updated": "2026-10-02T16:59:20Z",
       "versions": [
+        {
+          "version": "1.3.1",
+          "depends": [
+            "lib.ui",
+            "shader.core",
+            "ui.tabs",
+            "core.commands"
+          ],
+          "optional": [
+            "ui.palette",
+            "ui.notify",
+            "core.settings",
+            "core.keys"
+          ],
+          "permissions": [],
+          "folders": [
+            "shaders"
+          ],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "folders",
+              "plugin-files"
+            ]
+          },
+          "files": [
+            "examples/cells.shader.json",
+            "examples/clouds.shader.json",
+            "examples/ink.buffer-a.frag",
+            "examples/ink.frag",
+            "examples/plasma.shader.json",
+            "examples/raymarch.frag",
+            "examples/shadertoy.frag",
+            "examples/shapes.shader.json",
+            "examples/tunnel.wgsl",
+            "examples/waves.frag",
+            "examples/weather.frag",
+            "handbook/colour.md",
+            "handbook/debugging.md",
+            "handbook/documents.md",
+            "handbook/first-shader.md",
+            "handbook/glsl-language.md",
+            "handbook/learn-shaders.md",
+            "handbook/lighting.md",
+            "handbook/node-graphs.md",
+            "handbook/noise.md",
+            "handbook/raymarching.md",
+            "handbook/resources.md",
+            "handbook/shapes.md",
+            "handbook/shaping.md",
+            "handbook/space.md",
+            "handbook/textures.md",
+            "handbook/volumes.md",
+            "handbook/weather.md",
+            "handbook/wgsl.md",
+            "init.lua",
+            "tests/docs.test.lua"
+          ],
+          "commit": "7dac30a355e92d5ed6e33195259990e77cec05de",
+          "updated": "2026-10-02T16:48:32Z"
+        },
         {
           "version": "1.3.0",
           "depends": [
@@ -5456,8 +5630,8 @@
     {
       "id": "shader.preview",
       "name": "Shader preview",
-      "description": "Runs the shader in front live, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.",
-      "version": "1.1.0",
+      "description": "Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.",
+      "version": "1.2.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -5489,9 +5663,44 @@
         "page/preview.js",
         "tests/preview.test.lua"
       ],
-      "commit": "3fe1e7d7736afade0046d70ad2191c78dd0d817d",
-      "updated": "2026-10-02T06:26:50Z",
+      "commit": "044c6cf507935e2ddd1cc4b3d889f0512d0e6f83",
+      "updated": "2026-10-02T16:59:20Z",
       "versions": [
+        {
+          "version": "1.1.0",
+          "depends": [
+            "lib.ui",
+            "shader.core",
+            "shader.docs",
+            "ui.views",
+            "core.commands"
+          ],
+          "optional": [
+            "ui.tabs",
+            "shader.canvas",
+            "ui.statusbar",
+            "ui.notify"
+          ],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "webview",
+              "grants"
+            ]
+          },
+          "files": [
+            "init.lua",
+            "page/preview.css",
+            "page/preview.html",
+            "page/preview.js",
+            "tests/preview.test.lua"
+          ],
+          "commit": "eb43df4747b829269d940c435b5607086e885481",
+          "updated": "2026-10-02T16:52:25Z"
+        },
         {
           "version": "1.0.1",
           "depends": [
