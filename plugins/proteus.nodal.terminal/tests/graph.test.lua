@@ -21,7 +21,7 @@ local GRAPH_FILE = 'terminal.ndg'
 return {
   name = NAME,
   description = 'A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.',
-  version = '1.2.1',
+  version = '1.2.2',
   depends = { 'proteus.lib.ui', 'proteus.ui.views', 'proteus.nodal.app' },
   permissions = { 'process' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
