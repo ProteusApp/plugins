@@ -1186,7 +1186,7 @@
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1218,8 +1218,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "ce160d5c99f5ce5886009670c4f958a29df0359f",
+      "updated": "2026-10-02T05:17:14Z"
     },
     {
       "id": "proteus.code.plugins",
