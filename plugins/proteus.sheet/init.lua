@@ -1706,7 +1706,11 @@ return {
           end,
         },
         { separator = true },
-        { command = 'sheet.clear', label = 'Clear', key = keys_label ('delete') },
+        {
+          command = 'sheet.clear',
+          label = 'Clear',
+          key = keys_label ('delete'),
+        },
         run_item (
           'Sort A to Z by this column',
           'arrow-up-narrow-wide',
