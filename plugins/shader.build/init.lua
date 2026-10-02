@@ -9,7 +9,7 @@ local BUILD_FOLDER = 'shaders/build'
 return {
   name = 'Shader build',
   description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
-  version = '1.0.1',
+  version = '1.0.2',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
   -- Export to Folder writes the build anywhere on disk the user picks.
   permissions = { 'files' },
@@ -121,7 +121,12 @@ return {
         end
         local folder = BUILD_FOLDER .. '/' .. stem
         for _, name in ipairs (sorted_names (files)) do
-          app.fs.write (folder .. '/' .. name, files[name])
+          local ok, err =
+            pcall (app.fs.write, folder .. '/' .. name, files[name])
+          if not ok then
+            warn ('Could not write ' .. name .. ': ' .. tostring (err))
+            return
+          end
         end
         local main = files[stem .. '.frag'] and (stem .. '.frag')
           or (stem .. '.wgsl')

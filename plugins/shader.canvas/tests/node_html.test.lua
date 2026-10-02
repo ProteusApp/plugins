@@ -25,6 +25,7 @@ local function core_require (name)
   return loaded[name]
 end
 
+local format = core_require ('shader_format') --[[@as Shader.FormatModule]]
 local nodes = core_require ('shader_nodes') --[[@as Shader.NodesModule]]
 local types = core_require ('shader_types') --[[@as Shader.TypesModule]]
 
@@ -40,7 +41,12 @@ local function esc (text)
   )
 end
 
-local html = html_m.new ({ catalog = nodes, types = types, esc = esc })
+local html = html_m.new ({
+  catalog = nodes,
+  types = types,
+  esc = esc,
+  format = format,
+})
 
 ---@param text string
 ---@param piece string
@@ -56,13 +62,16 @@ local function node (id, type_id)
   return { id = id, type = type_id, x = 0, y = 0, inputs = {}, settings = {} }
 end
 
-test ('colours and numbers read back the way they are written', function ()
-  eq (html_m.fmt (2), '2')
-  eq (html_m.fmt (0.25), '0.25')
-  eq (html_m.to_hex ({ 1, 0.5, 0 }), '#ff8000')
-  eq (html_m.from_hex ('#ff8000'), { 1, 0.502, 0 })
-  eq (html_m.from_hex ('red'), nil)
+test ('a data-item splits into its parts', function ()
   eq (html_m.split ('n3|num|color|2'), { 'n3', 'num', 'color', '2' })
+end)
+
+test ('a field shows its number the way shader.core writes it', function ()
+  local n = node ('n5', 'sin')
+  n.inputs.x = { 0.25 }
+  local def = assert (nodes.get ('sin'))
+  local text = html.node_html (n, def, html.info_of (n, nil, {}, {}, {}))
+  ok (has (text, 'data-item="n5|num|x|1" value="0.25"'))
 end)
 
 test ('a node shows a row for each output, input and setting', function ()

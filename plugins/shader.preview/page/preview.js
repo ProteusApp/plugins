@@ -10,7 +10,7 @@
 //   { type: 'play' } { type: 'pause' } { type: 'restart' } { type: 'scale', scale }
 // Messages to the plugin:
 //   { type: 'status', ok, language, errors }   after each compile
-//   { type: 'stats', fps, time, frame }        about twice a second while it draws
+//   { type: 'stats', fps, time, frame }        about twice a second while it draws and shows
 
 (() => {
   'use strict';
@@ -443,14 +443,21 @@
 
   // The loop --------------------------------------------------------------------------------
 
+  // A hidden panel has no size. The loop stops then, and starts again when the panel shows.
+  let stopped = false;
+  const hidden = () => document.hidden || document.body.clientWidth === 0 || document.body.clientHeight === 0;
+
   function draw() {
-    if (document.body.clientWidth === 0 || document.body.clientHeight === 0) return;
     if (language === 'glsl') glDraw();
     else gpuDraw();
   }
 
   function tick(now) {
     raf = 0;
+    if (hidden()) {
+      stopped = true;
+      return;
+    }
     delta = Math.min(0.25, (now - last) / 1000);
     last = now;
     if (playing) {
@@ -470,6 +477,12 @@
   function requestDraw() {
     if (!raf) {
       last = performance.now();
+      if (stopped) {
+        // The frame rate counts from now, not from before the panel hid.
+        stopped = false;
+        fpsFrames = 0;
+        fpsSince = last;
+      }
       raf = requestAnimationFrame(tick);
     }
   }
@@ -514,6 +527,7 @@
   document.addEventListener('pointerup', up);
   document.addEventListener('pointercancel', up);
   new ResizeObserver(() => requestDraw()).observe(document.body);
+  document.addEventListener('visibilitychange', () => requestDraw());
 
   proteus.on((msg) => {
     if (!msg || typeof msg !== 'object') return;

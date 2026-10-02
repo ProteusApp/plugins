@@ -2,7 +2,7 @@
   "id": "shader.library",
   "name": "Shader library",
   "description": "Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "depends": [
     "lib.ui",
     "shader.core",

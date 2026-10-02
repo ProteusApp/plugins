@@ -1,11 +1,13 @@
 -- shader.core: the pure logic of the shader builder, shared with the other shader plugins as
 -- the `shader` service. It has no UI and does no I/O: the node catalog, graph operations,
--- the GLSL and WGSL compiler, code shaders, the file format, builds and undo.
+-- the GLSL and WGSL compiler, code shaders, the file format, builds, undo, and how numbers
+-- and colours show in fields.
 
 local build = require ('shader_build') --[[@as Shader.BuildModule]]
 local compile = require ('shader_compile') --[[@as Shader.CompileModule]]
 local examples = require ('shader_examples') --[[@as Shader.ExamplesModule]]
 local file = require ('shader_file') --[[@as Shader.FileModule]]
+local format = require ('shader_format') --[[@as Shader.FormatModule]]
 local graph = require ('shader_graph') --[[@as Shader.GraphModule]]
 local helpers = require ('shader_helpers') --[[@as Shader.HelpersModule]]
 local history = require ('shader_history') --[[@as Shader.HistoryModule]]
@@ -18,7 +20,7 @@ local types = require ('shader_types') --[[@as Shader.TypesModule]]
 return {
   name = 'Shader core',
   description = 'The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   activate = function (app)
@@ -32,6 +34,7 @@ return {
       layout = layout,
       source = source,
       file = file,
+      format = format,
       history = history,
       examples = examples,
       build = build,

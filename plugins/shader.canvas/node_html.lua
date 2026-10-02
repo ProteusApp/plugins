@@ -1,6 +1,6 @@
 -- What a node shows, as an HTML string, and what it shows it from. All of it is pure: the
--- catalog, the types and the escape function come in through `new`, so the tests reach it
--- without the app.
+-- catalog, the types, the escape function and the number format come in through `new`, so
+-- the tests reach it without the app.
 --
 -- Every element a press or a field needs to tell apart carries a `data-item`, such as
 -- `n3|head` or `n3|num|color|2`. Node ids are plain names, so `|` never appears inside one.
@@ -9,6 +9,7 @@
 ---@field catalog Shader.NodesModule
 ---@field types Shader.TypesModule
 ---@field esc fun(text: string): string
+---@field format Shader.FormatModule
 
 ---@class ShaderCanvas.Html
 ---@field node_html fun(n: Shader.Node, def: Shader.NodeDef, info: ShaderCanvas.NodeInfo): string, string
@@ -30,45 +31,6 @@ M.TYPE_COLORS = {
   vec3 = '#fbbf24',
   vec4 = '#f472b6',
 }
-
----@param v number
----@return string
-function M.fmt (v)
-  if v == math.floor (v) and math.abs (v) < 1e9 then
-    return string.format ('%d', v)
-  end
-  return (string.format ('%.4f', v):gsub ('0+$', ''):gsub ('%.$', ''))
-end
-local fmt = M.fmt
-
----A colour as #rrggbb from numbers from 0 to 1.
----@param rgb number[]
----@return string
-function M.to_hex (rgb)
-  local parts = {} ---@type string[]
-  for i = 1, 3 do
-    local v = math.max (0, math.min (1, tonumber (rgb[i]) or 0))
-    parts[i] = string.format ('%02x', math.floor (v * 255 + 0.5))
-  end
-  return '#' .. table.concat (parts)
-end
-local to_hex = M.to_hex
-
----Numbers from 0 to 1 from #rrggbb.
----@param hex string
----@return number[]?
-function M.from_hex (hex)
-  local r, g, b = tostring (hex):match ('^#(%x%x)(%x%x)(%x%x)$')
-  if not r then
-    return nil
-  end
-  ---@param h string
-  ---@return number
-  local function part (h)
-    return math.floor (tonumber (h, 16) / 255 * 1000 + 0.5) / 1000
-  end
-  return { part (r), part (g), part (b) }
-end
 
 ---The parts of a `data-item`, split at each `|`.
 ---@param text string
@@ -120,6 +82,7 @@ end
 ---@return ShaderCanvas.Html
 function M.new (deps)
   local catalog, types, esc = deps.catalog, deps.types, deps.esc
+  local fmt, to_hex = deps.format.fmt, deps.format.to_hex
   -- The part of each signature that comes from the node itself, kept while the node is the
   -- same table. Graph operations share the nodes they did not change.
   local node_parts = setmetatable ({}, { __mode = 'k' }) ---@type table<Shader.Node, string>

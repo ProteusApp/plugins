@@ -36,9 +36,19 @@ function M.attach (ctx)
     return by_id[id]
   end
 
+  -- The pan and zoom save a moment after they stop changing, not at every wheel step.
+  local save_timer = nil ---@type fun()?
+
   function ctx.save_view ()
+    if save_timer then
+      save_timer ()
+    end
     local v = ctx.view
-    app.store.set ('view:' .. ctx.path, { x = v.x, y = v.y, zoom = v.zoom })
+    local saved = { x = v.x, y = v.y, zoom = v.zoom }
+    save_timer = app.timer.after (300, function ()
+      save_timer = nil
+      app.store.set ('view:' .. ctx.path, saved)
+    end)
   end
 
   function ctx.apply_view ()

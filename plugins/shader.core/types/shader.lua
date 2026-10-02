@@ -310,6 +310,11 @@
 ---@field decode fun(text: string): any, string?
 ---@field load fun(text: string): Shader.Doc?, string?
 
+---@class Shader.FormatModule
+---@field fmt fun(v: number, places?: integer): string A number without the zeros at its end.
+---@field to_hex fun(rgb: number[]): string A colour as #rrggbb from numbers from 0 to 1.
+---@field from_hex fun(hex: string): number[]? Numbers from 0 to 1 from #rrggbb.
+
 ---@class Shader.HistoryModule
 ---@field new fun(doc: Shader.Doc): Shader.History
 ---@field push fun(h: Shader.History, doc: Shader.Doc, key?: string, now?: number)
@@ -340,6 +345,7 @@
 ---@field layout Shader.LayoutModule
 ---@field source Shader.SourceModule
 ---@field file Shader.FileModule
+---@field format Shader.FormatModule
 ---@field history Shader.HistoryModule
 ---@field examples Shader.ExamplesModule
 ---@field build Shader.BuildModule
@@ -358,8 +364,10 @@
 ---@field stage 'fragment'|'vertex' For code.
 ---@field title string
 ---@field text string For code: the text now.
----@field saved string The text last saved.
+---@field saved string The file's text as last read or written.
+---@field saved_doc? Shader.Doc For a graph: the document as last read or written.
 ---@field dirty boolean
+---@field missing boolean True once its file was deleted. It stays open, unsaved, until a save writes the file again.
 ---@field version integer Goes up with each change.
 ---@field history? Shader.History For a graph: its document and undo.
 ---@field selection string[] For a graph: the picked nodes.
@@ -376,7 +384,7 @@
 ---@field get fun(path: string): Shader.OpenDoc?
 ---@field active fun(): Shader.OpenDoc? The shader whose tab was in front last.
 ---@field list fun(): Shader.OpenDoc[]
----@field files fun(): string[] Every shader in shaders/, apart from builds.
+---@field files fun(): string[] Every shader in shaders/, apart from builds. Kept until a file there changes, so do not change the list.
 ---@field change fun(path: string, doc: Shader.Doc, key?: string) Records a new graph. Quick changes with the same key merge into one undo step.
 ---@field set_text fun(path: string, text: string)
 ---@field undo fun(path: string): boolean
@@ -387,6 +395,8 @@
 ---@field program fun(path: string, lang?: Shader.Lang): Shader.Program?, Shader.CompileError[] What the Preview runs.
 ---@field set_language fun(path: string, lang: Shader.Lang)
 ---@field set_uniform fun(path: string, key: string, value: number[])
+---@field remove fun(path: string): boolean Deletes a shader's file and closes its tab. A changed example goes back to the original, and its tab shows that.
+---@field rename fun(path: string, to: string): boolean, string? Renames a shader's file. An open shader moves to a new tab with its undo and unsaved changes. False and why when it cannot.
 ---@field new_graph fun(name?: string): Shader.OpenDoc?
 ---@field new_code fun(lang: Shader.Lang|'vertex', name?: string, template?: string): Shader.OpenDoc?
 

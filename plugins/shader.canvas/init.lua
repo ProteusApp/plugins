@@ -34,7 +34,7 @@ local wires_m = require ('wires')
 return {
   name = 'Shader canvas',
   description = 'The node editor for shader graphs: nodes, typed wires, panning and zooming.',
-  version = '1.1.0',
+  version = '1.1.1',
   requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -59,6 +59,7 @@ return {
       catalog = core.nodes,
       types = core.types,
       esc = app.util.escape,
+      format = core.format,
     })
 
     ---@param text string
@@ -412,7 +413,7 @@ return {
       viewport:on ('input', function (ev)
         local item = ev.item and html_m.split (ev.item) or {}
         local id, kind, key = item[1], item[2], item[3]
-        local rgb = html_m.from_hex (ev.value or '')
+        local rgb = core.format.from_hex (ev.value or '')
         if not id or not key or not rgb then
           return nil
         end

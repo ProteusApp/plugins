@@ -31,7 +31,7 @@ local CSS = [[
 return {
   name = 'Shader library',
   description = 'Lists the shaders in shaders/ and every node, and adds nodes to the graph in front.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.2.0', features = { 'permissions' } },
   permissions = {},
   depends = {
@@ -139,7 +139,7 @@ return {
           return nil
         end
         local stat = app.fs.stat (path)
-        return {
+        local items = {
           {
             label = 'Open',
             icon = 'file',
@@ -154,31 +154,52 @@ return {
               app.system.clipboard (path)
             end,
           },
-          { separator = true },
-          {
-            label = stat.builtin and 'Revert to the Example' or 'Delete',
-            icon = stat.builtin and 'undo-2' or 'trash-2',
-            danger = true,
-            disabled = stat.builtin and not stat.user,
+        } ---@type Proteus.MenuItem[]
+        -- Renaming and deleting both ask first, so they need the picker.
+        if not picker then
+          return items
+        end
+        if not stat.builtin then
+          items[#items + 1] = {
+            label = 'Rename…',
+            icon = 'pencil',
             run = function ()
-              local function go ()
-                app.fs.remove (path)
-                draw_files ()
-              end
-              if picker then
-                picker.confirm ({
-                  message = stat.builtin
-                      and ('Throw away your changes to ' .. path .. '?')
-                    or ('Delete ' .. path .. '?'),
-                  yes = stat.builtin and 'Revert' or 'Delete',
-                  on_yes = go,
-                })
-              else
-                go ()
-              end
+              picker.input ({
+                prompt = 'Rename ' .. path .. ' to',
+                value = path,
+                on_submit = function (text)
+                  local done, why = docs.rename (path, text)
+                  if not done and notify then
+                    notify.warn (
+                      'Could not rename ' .. path .. ': ' .. tostring (why)
+                    )
+                  end
+                end,
+              })
             end,
-          },
+          }
+        end
+        items[#items + 1] = { separator = true }
+        items[#items + 1] = {
+          label = stat.builtin and 'Revert to the Example' or 'Delete',
+          icon = stat.builtin and 'undo-2' or 'trash-2',
+          danger = true,
+          disabled = stat.builtin and not stat.user,
+          run = function ()
+            picker.confirm ({
+              message = stat.builtin
+                  and ('Throw away your changes to ' .. path .. '?')
+                or ('Delete ' .. path .. '?'),
+              yes = stat.builtin and 'Revert' or 'Delete',
+              on_yes = function ()
+                -- shader.docs closes an open tab too, so a later save cannot write the file back.
+                docs.remove (path)
+                draw_files ()
+              end,
+            })
+          end,
         }
+        return items
       end)
     end
 
