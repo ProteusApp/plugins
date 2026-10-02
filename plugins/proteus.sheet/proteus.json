@@ -79,6 +79,9 @@
     "sheet_toolbar.lua",
     "sheet_xlsx.lua",
     "sheet_xlsx_parts.lua",
+    "sheet_xlsx_read.lua",
+    "sheet_xlsx_write.lua",
+    "sheet_xml.lua",
     "tests/sheet.test.lua",
     "tests/sheet_book.test.lua",
     "tests/sheet_chart.test.lua",
@@ -92,6 +95,7 @@
     "tests/sheet_model_style.test.lua",
     "tests/sheet_ops.test.lua",
     "tests/sheet_panels.test.lua",
-    "tests/sheet_xlsx.test.lua"
+    "tests/sheet_xlsx.test.lua",
+    "tests/sheet_xml.test.lua"
   ]
 }
