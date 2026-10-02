@@ -48,7 +48,12 @@ function M.install (ctx)
         end
         program = found
         tool.set_version ((result.stdout:gsub ('%s+$', '')))
-        if settings.get ('rust.rustfmt_enabled') == true then
+        if ctx.untrusted then
+          tool.set_state (
+            'stopped',
+            'waits until you trust this folder (File: Trust This Folder)'
+          )
+        elseif settings.get ('rust.rustfmt_enabled') == true then
           tool.set_state ('ready')
         else
           tool.set_state (
@@ -65,7 +70,11 @@ function M.install (ctx)
   ---@param done fun(text: string?)
   local function format (doc, text, done)
     local exe = program
-    if not exe or settings.get ('rust.rustfmt_enabled') ~= true then
+    if
+      not exe
+      or ctx.untrusted
+      or settings.get ('rust.rustfmt_enabled') ~= true
+    then
       done (nil)
       return
     end

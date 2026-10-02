@@ -48,3 +48,57 @@ test ('runs_directly refuses npm scripts on Windows only', function ()
     true
   )
 end)
+
+test (
+  'a folder the user does not trust is untrusted only in the Code Editor',
+  function ()
+    ---@param root string?
+    ---@param trusted? boolean
+    ---@return Proteus.Project
+    local function project (root, trusted)
+      return {
+        root = function ()
+          return root
+        end,
+        trusted = trusted ~= nil and function ()
+          return trusted
+        end or nil,
+      } --[[@as Proteus.Project]]
+    end
+    local layer = { loaded = false, trusted = false } ---@type Proteus.ProjectLayer
+    eq (launch.untrusted (nil, layer), false, 'no project service')
+    eq (launch.untrusted (project (nil, false), layer), false, 'no folder open')
+    eq (launch.untrusted (project ('C:/code/app', false), layer), true)
+    eq (launch.untrusted (project ('C:/code/app', true), layer), false)
+    eq (
+      launch.untrusted (
+        project ('C:/code/app'),
+        { loaded = false, trusted = true }
+      ),
+      false,
+      'an older project service: the kernel says'
+    )
+    eq (launch.untrusted (project ('C:/code/app'), layer), true)
+  end
+)
+
+test (
+  'choose_libraries keeps the project’s TypeScript out unless it may be used',
+  function ()
+    local both = {
+      path = 'C:/app/node_modules/typescript/lib',
+      fallback = 'C:/g/typescript/lib',
+    }
+    eq (launch.choose_libraries (both, true), both)
+    eq (launch.choose_libraries (both, false), { path = 'C:/g/typescript/lib' })
+    eq (
+      launch.choose_libraries (
+        { path = 'C:/app/node_modules/typescript/lib' },
+        false
+      ),
+      nil,
+      'with no other, the server would find the project’s by itself'
+    )
+    eq (launch.choose_libraries ({}, true), {})
+  end
+)
