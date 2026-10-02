@@ -67,6 +67,7 @@
     "sheet_grid_edit.lua",
     "sheet_grid_tabs.lua",
     "sheet_model.lua",
+    "sheet_model_style.lua",
     "sheet_ops.lua",
     "sheet_panel_find.lua",
     "sheet_panel_pop.lua",
@@ -85,6 +86,7 @@
     "tests/sheet_formula_parts.test.lua",
     "tests/sheet_grid.test.lua",
     "tests/sheet_model.test.lua",
+    "tests/sheet_model_style.test.lua",
     "tests/sheet_ops.test.lua",
     "tests/sheet_panels.test.lua",
     "tests/sheet_xlsx.test.lua"
