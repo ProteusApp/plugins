@@ -197,7 +197,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },

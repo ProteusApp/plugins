@@ -5,6 +5,8 @@
 -- Status comes from `git status -z`. `parse_status` also reads the output without `-z`, where
 -- Git quotes a path that holds a space or an unusual character, and `unquote` reads it back.
 
+local T = require ('git_text') --[[@as Git.TextModule]]
+
 ---@alias Git.Kind 'modified'|'added'|'deleted'|'renamed'|'copied'|'typechange'|'untracked'|'conflicted'
 
 ---One changed file in the Staged list or the Changes list.
@@ -239,60 +241,8 @@ local HTML_ESCAPES = {
   ["'"] = '&#39;',
 }
 
----------------------------------------------------------------------------------------------
--- Small text helpers
----------------------------------------------------------------------------------------------
-
----Splits on one plain character and keeps empty fields.
----@param s string
----@param sep string
----@return string[]
-local function split (s, sep)
-  local out = {} ---@type string[]
-  local start = 1
-  while true do
-    local i = s:find (sep, start, true)
-    if not i then
-      out[#out + 1] = s:sub (start)
-      return out
-    end
-    out[#out + 1] = s:sub (start, i - 1)
-    start = i + 1
-  end
-end
-
----Splits text into lines. A newline at the very end does not start another line.
----@param text string
----@return string[]
-local function lines_of (text)
-  local out = split (text, '\n')
-  if out[#out] == '' then
-    out[#out] = nil
-  end
-  return out
-end
-
----@param s string
----@return string
-local function trim (s)
-  local out = s:gsub ('^%s+', ''):gsub ('%s+$', '')
-  return out
-end
-
----@param s string
----@return string
-local function strip_cr (s)
-  if s:sub (-1) == '\r' then
-    return s:sub (1, -2)
-  end
-  return s
-end
-
----@param s string?
----@return integer
-local function int (s)
-  return math.floor (tonumber (s) or 0)
-end
+local int, lines_of, split, strip_cr, trim =
+  T.int, T.lines_of, T.split, T.strip_cr, T.trim
 
 ---Escapes text for HTML, attribute values included.
 ---@param s any
