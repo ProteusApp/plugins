@@ -41,6 +41,7 @@
     "README.md",
     "api_core.lua",
     "api_css.lua",
+    "api_editor.lua",
     "api_envs.lua",
     "api_history.lua",
     "api_list.lua",
