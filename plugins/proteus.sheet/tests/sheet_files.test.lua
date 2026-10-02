@@ -164,6 +164,9 @@ local function install_parts (files)
   local menus = {} ---@type (fun(ev: table): Proteus.MenuItem[]?)[]
   ---@type Sheet.AppEnv
   local env = {
+    keys_label = function (combo)
+      return combo
+    end,
     views = anything () --[[@as Proteus.Views]],
     commands = anything ({
       register = function (spec)
