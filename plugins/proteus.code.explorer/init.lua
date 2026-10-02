@@ -209,7 +209,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.1.0',
+  version = '1.1.1',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -1088,8 +1088,9 @@ return {
     end
 
     ---Copies or moves the clipboard's items into `dir`. A copy that meets a name already
-    ---there gets a free name instead. Every item is worked out first, then they all go at
-    ---once, and the tree is read again when the last one is done.
+    ---there, or one an earlier item of this paste takes, gets a free name instead. Every item
+    ---is worked out first, then they all go at once, and the tree is read again when the last
+    ---one is done.
     ---@param dir string
     local function paste (dir)
       local c = clip
@@ -1097,6 +1098,14 @@ return {
         return
       end
       local moves = {} ---@type CodeExplorer.Move[]
+      -- The paths this paste has given out, compared the way the system compares names.
+      local claimed = {} ---@type table<string, boolean>
+      ---@param path string
+      ---@return boolean
+      local function taken (path)
+        return known (path) ~= nil
+          or claimed[fold and path:lower () or path] == true
+      end
       for _, from in ipairs (c.paths) do
         local name = from:match ('[^/]+$') or from ---@type string
         local to, problem = nil, nil ---@type string?, string?
@@ -1105,11 +1114,11 @@ return {
         else
           local entry = known (from)
           to = paths.join (dir, name)
-          if known (to) then
+          if taken (to) then
             to = paths.join (
               dir,
               paths.copy_name (name, entry ~= nil and entry.dir, function (n)
-                return known (paths.join (dir, n)) ~= nil
+                return taken (paths.join (dir, n))
               end)
             )
           end
@@ -1118,6 +1127,7 @@ return {
         if problem then
           report (problem)
         elseif to then
+          claimed[fold and to:lower () or to] = true
           moves[#moves + 1] = { from = from, to = to }
         end
       end

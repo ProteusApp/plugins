@@ -198,7 +198,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.3.2',
+  version = '1.3.3',
   requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
@@ -2563,8 +2563,23 @@ return {
           refresh ()
         end)
       end
-      -- proteus.code.project sends what changed in the folder as `code:disk_changed`.
-      app.on ('code:disk_changed', refresh_soon)
+      -- proteus.code.project sends what changed in the folder as `code:disk_changed`. What
+      -- .gitignore leaves out, such as build output and logs, changes often during a build and
+      -- leaves Git's status as it was, so a batch of only those changes is passed over.
+      app.on ('code:disk_changed', function (changes, ev)
+        if type (ev) == 'table' and (ev.overflow or ev.git) then
+          refresh_soon ()
+          return
+        end
+        for _, change in
+          ipairs (changes or {} --[[@as Proteus.DirChange[] ]])
+        do
+          if not change.ignored then
+            refresh_soon ()
+            return
+          end
+        end
+      end)
       app.on ('editor:saved', refresh_soon)
     end
 

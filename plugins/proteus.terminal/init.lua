@@ -66,7 +66,7 @@ local CSS = [[
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.',
-  version = '2.0.0',
+  version = '2.0.1',
   -- `process` runs the shell in each terminal. `files` lets it start in a folder on disk, such
   -- as the Code Editor's, which the `project` service hands out, and lets Run Selection read
   -- the editor. `clipboard` is for Paste in its menu.
@@ -99,7 +99,7 @@ return {
       title = 'Terminal program',
       type = 'string',
       default = '',
-      description = 'The program the default profile runs, such as pwsh, cmd or bash. Empty runs the system shell.',
+      description = 'The program the default profile runs, with any arguments, such as pwsh -NoLogo or bash -l. Quote a path with spaces. Empty runs the system shell.',
       sensitive = true,
     })
     settings.define ('terminal.profiles', {

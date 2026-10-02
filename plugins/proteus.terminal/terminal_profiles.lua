@@ -6,6 +6,8 @@
 --
 -- Nothing here touches the app, so the tests load it as it is.
 
+local shell_words = require ('shell_words') --[[@as Terminal.ShellWords]]
+
 ---A program a terminal runs, with what it starts with.
 ---@class Terminal.Profile
 ---@field name string `''` for the default profile.
@@ -18,12 +20,13 @@
 ---@class Terminal.Profiles
 local M = {}
 
----The program and arguments of the `terminal.shell` setting.
+---The program and arguments of the `terminal.shell` setting, split by `shell_words`, so
+---`pwsh -NoLogo` runs pwsh with one argument and quotes keep a path with spaces together.
 ---@param shell string
 ---@return string program
 ---@return string[] args
 function M.from_shell (shell)
-  return (shell:match ('^%s*(.-)%s*$') or ''), {}
+  return shell_words.split (shell)
 end
 
 ---A list of text, from a list of text or numbers. Anything else gives nil.

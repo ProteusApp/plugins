@@ -565,6 +565,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@class Proteus.DirChange
 ---@field path string A full path, with `/`.
 ---@field kind 'file'|'dir'|'remove' What is at the path now.
+---@field ignored? boolean True when a `.gitignore` leaves the path out, as `walk_dir` does.
 
 ---A batch of changes in a watched folder.
 ---@class Proteus.DirEvent

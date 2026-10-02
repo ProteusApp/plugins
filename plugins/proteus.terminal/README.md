@@ -13,7 +13,7 @@ The panel is shared, so other plugins may show it, as the Code Editor's folder p
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `terminal.shell` | empty | The program the default profile runs, such as `pwsh`, `cmd` or `bash`. Empty runs the system shell. |
+| `terminal.shell` | empty | The program the default profile runs, with any arguments, such as `pwsh -NoLogo`, `cmd` or `bash -l`. Quotes keep a path with spaces in one piece, as in `"C:\Program Files\Git\bin\bash.exe" -l`. Empty runs the system shell. |
 | `terminal.profiles` | none | More profiles: `[{ "name": "Git Bash", "program": "C:/Program Files/Git/bin/bash.exe", "args": ["-l"] }]`, each with optional `args`, `env` and `cwd`. |
 | `terminal.default_profile` | empty | The name of the profile a new terminal runs. |
 | `terminal.font_size` | `13` | The terminals' font size. |

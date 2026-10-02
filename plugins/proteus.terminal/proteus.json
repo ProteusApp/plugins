@@ -2,7 +2,7 @@
   "id": "proteus.terminal",
   "name": "Terminal",
   "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "depends": [
     "proteus.lib.ui",
     "proteus.ui.views",
@@ -38,9 +38,11 @@
     "README.md",
     "handbook/terminal.md",
     "init.lua",
+    "shell_words.lua",
     "terminal_groups.lua",
     "terminal_profiles.lua",
     "tests/groups.test.lua",
-    "tests/profiles.test.lua"
+    "tests/profiles.test.lua",
+    "tests/shell_words.test.lua"
   ]
 }
