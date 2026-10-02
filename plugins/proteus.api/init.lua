@@ -13,6 +13,7 @@
 local CSS = require ('api_css') --[[@as string]]
 local core = require ('api_core') --[[@as ApiApp.Core]]
 local envs_m = require ('api_envs') --[[@as ApiApp.EnvsModule]]
+local history_m = require ('api_history') --[[@as ApiApp.HistoryModule]]
 
 local DIR = 'data/proteus.api'
 local ENV_PATH = DIR .. '/environments.json'
@@ -90,19 +91,27 @@ local FOLDER_AUTH_OPTIONS = {
 ---@field status? Proteus.Status
 ---@field picker? Proteus.Picker
 ---@field toolbar? Proteus.Toolbar
+---@field menus? Proteus.Menus
 ---@field DIR string The folder the requests live in.
 ---@field ENV_PATH string The file the environments live in.
 ---@field envs Http.Envs
 ---@field env_problem? string What is wrong with the environments file, if anything.
+---@field history Http.HistoryEntry[] The requests sent, newest first.
 ---@field env_code? Proteus.El The editor of the environments file, once it is made.
 ---@field env_timer? fun() Cancels the check of the environments text that is waiting.
 ---@field say fun(text: string)
 ---@field complain fun(text: string)
 ---@field change_files fun(what: string, fn: fun()): boolean
 ---@field load_envs fun()
+---@field show fun(doc: ApiApp.Doc?)
+---@field add_new fun(req: Http.Request, folder: string): ApiApp.Doc
+---@field badge fun(method: string): string
 ---@field render_env fun() From api_envs.
 ---@field edit_envs fun()
 ---@field choose_env fun()
+---@field render_history fun() From api_history.
+---@field clear_history fun()
+---@field history_side Proteus.El The History view.
 
 ---@type Proteus.Plugin
 return {
@@ -185,7 +194,6 @@ return {
     local res_view = app.store.get ('res_view', 'body') ---@type string
     local raw = app.store.get ('raw', false) == true
     local top_px = app.store.get ('split', nil) ---@type number?
-    local history = {} ---@type Http.HistoryEntry[]
     local file_cache = {} ---@type table<string, ApiApp.FileInfo>
     local list_timer = nil ---@type fun()?
     local drafts_timer = nil ---@type fun()?
@@ -208,11 +216,13 @@ return {
       status = status,
       picker = picker,
       toolbar = toolbar,
+      menus = menus,
       DIR = DIR,
       ENV_PATH = ENV_PATH,
       say = say,
       complain = complain,
       envs = assert (http.parse_envs (nil)),
+      history = {},
     }
     local ctx = shared --[[@as ApiApp.Ctx]]
 
@@ -1862,14 +1872,14 @@ return {
         doc.pending = nil
         doc.call = nil
         doc.result = result
-        history = http.add_history (history, {
+        ctx.history = http.add_history (ctx.history, {
           method = built.method,
           url = built.url,
           status = result.status or 0,
           time = app.util.now (),
           request = snapshot,
         }, HISTORY_MAX)
-        app.store.set ('history', history)
+        app.store.set ('history', ctx.history)
         render_history ()
         if doc == current then
           render_send ()
@@ -2774,111 +2784,10 @@ return {
 
     -- History -----------------------------------------------------------------------------
 
-    do
-      local stored = app.store.get ('history', {}) ---@type table<string, any>[]
-      for _, e in ipairs (type (stored) == 'table' and stored or {}) do
-        if type (e) == 'table' and type (e.url) == 'string' then
-          history[#history + 1] = {
-            method = http.normalize ({ method = e.method }).method,
-            url = e.url,
-            status = math.floor (tonumber (e.status) or 0),
-            time = tonumber (e.time) or 0,
-            request = http.normalize (e.request),
-          }
-        end
-      end
-    end
-
-    local function clear_history ()
-      local function go ()
-        history = {}
-        app.store.set ('history', history)
-        render_history ()
-      end
-      if #history == 0 then
-        return
-      end
-      if picker then
-        picker.confirm ({
-          message = 'Clear the history of sent requests?',
-          yes = 'Clear',
-          on_yes = go,
-        })
-      else
-        go ()
-      end
-    end
-
-    local hist_list = ui.div ({ class = 'api-list' })
-    local hist_empty = ui.div ({
-      class = 'api-empty',
-      ui.div ({ 'No requests sent yet' }),
-      ui.div ({ 'Each request that goes out shows up here.' }),
-    })
-    local hist_box = ui.div ({ class = 'api-list-box', hist_list, hist_empty })
-    local history_side = ui.div ({
-      class = 'api-side',
-      ui.div ({
-        class = 'api-side-bar',
-        ui.span ({ class = 'api-side-title', 'The last 50 sent' }),
-        ui.span ({ class = 'api-grow' }),
-        ui.button ({
-          'Clear',
-          icon = 'eraser',
-          variant = 'ghost',
-          class = 'api-small',
-          onclick = function ()
-            clear_history ()
-            return nil
-          end,
-        }),
-      }),
-      hist_box,
-    })
-
-    render_history = function ()
-      hist_empty:show (#history == 0)
-      local now = app.util.now ()
-      local parts = {} ---@type string[]
-      for i, h in ipairs (history) do
-        local answered = h.status > 0
-        parts[#parts + 1] = '<div class="api-hrow" data-item="'
-          .. i
-          .. '" title="'
-          .. esc (h.method .. ' ' .. h.url)
-          .. '"><div class="api-hline">'
-          .. badge (h.method)
-          .. '<span class="api-hurl">'
-          .. esc (h.url)
-          .. '</span></div><div class="api-hmeta"><span class="api-s-'
-          .. (answered and http.status_class (h.status) or 'none')
-          .. '">'
-          .. (answered and esc (http.status_line (h.status)) or 'No answer')
-          .. '</span><span>'
-          .. http.ago (h.time, now)
-          .. '</span></div></div>'
-      end
-      hist_list:html (table.concat (parts))
-    end
-
-    ---@param entry Http.HistoryEntry
-    local function open_history (entry)
-      local req = http.copy (entry.request)
-      -- It opens as a new request, so it takes no name from the one it came from.
-      req.name = ''
-      show (add_new (req, ''))
-    end
-
-    hist_list:on ('click', function (ev)
-      local entry = history[math.floor (tonumber (ev.item or '') or 0)]
-      if entry then
-        open_history (entry)
-      end
-      return nil
-    end)
-    app.timer.every (60000, function ()
-      render_history ()
-    end)
+    ctx.badge, ctx.show, ctx.add_new = badge, show, add_new
+    history_m.attach (ctx)
+    render_history = ctx.render_history
+    local clear_history = ctx.clear_history
 
     -- Environments ------------------------------------------------------------------------
 
@@ -2975,7 +2884,7 @@ return {
       title = 'History',
       icon = 'history',
       order = 2,
-      content = history_side,
+      content = ctx.history_side,
       on_show = function ()
         render_history ()
       end,
@@ -3096,37 +3005,6 @@ return {
             run = import_collection,
           },
         }
-      end)
-
-      menus.attach (hist_box, function (ev)
-        local entry = history[math.floor (tonumber (ev.item or '') or 0)]
-        if entry then
-          return {
-            {
-              label = 'Open',
-              icon = 'file-text',
-              run = function ()
-                open_history (entry)
-              end,
-            },
-            {
-              label = 'Copy Address',
-              icon = 'copy',
-              run = function ()
-                app.system.clipboard (entry.url)
-                say ('Copied the address.')
-              end,
-            },
-            { separator = true },
-            {
-              label = 'Clear History',
-              icon = 'eraser',
-              danger = true,
-              run = clear_history,
-            },
-          }
-        end
-        return nil
       end)
     end
 
@@ -3261,7 +3139,7 @@ return {
         title = 'Clear History',
         icon = 'eraser',
         when = function ()
-          return #history > 0
+          return #ctx.history > 0
         end,
         run = clear_history,
       },
