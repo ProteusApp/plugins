@@ -28,7 +28,7 @@ local FIRST_EXAMPLES = {
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.3.0',
+  version = '1.3.1',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },

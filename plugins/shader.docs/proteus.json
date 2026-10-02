@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -46,6 +46,7 @@
     "examples/weather.frag",
     "handbook/colour.md",
     "handbook/debugging.md",
+    "handbook/documents.md",
     "handbook/first-shader.md",
     "handbook/glsl-language.md",
     "handbook/learn-shaders.md",
