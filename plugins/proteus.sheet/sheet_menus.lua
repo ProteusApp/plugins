@@ -13,6 +13,7 @@ function M.install (env)
   local commands, menus, grid, emit =
     env.commands, env.menus, env.grid, env.emit
   local files = env.files
+  local keys_label = env.keys_label
   local list, new_workbook, open_file =
     files.list, files.new_workbook, files.open_file
   local rename_file, duplicate_file, delete_file =
@@ -24,14 +25,8 @@ function M.install (env)
   ---@param id string
   ---@return Proteus.MenuItem
   local function run_item (label, icon, id)
-    return {
-      label = label,
-      icon = icon,
-      disabled = not commands.can_run (id),
-      run = function ()
-        commands.run (id)
-      end,
-    }
+    -- The menu takes the key, the state and the run from the command itself.
+    return { command = id, label = label, icon = icon }
   end
 
   ---Filters the sheet to the rows that show the active cell's value in its column.
@@ -66,52 +61,16 @@ function M.install (env)
     local has_link = s and s:link (grid.sel.r, grid.sel.c) ~= nil
     ---@type Proteus.MenuItem[]
     local items = {
+      { command = 'sheet.cut' },
+      { command = 'sheet.copy' },
+      -- The cell editor pastes on these keys, so they belong to no command.
+      { command = 'sheet.paste', key = keys_label ('ctrl+v') },
       {
-        label = 'Cut',
-        icon = 'scissors',
-        key = 'Ctrl+X',
-        run = function ()
-          grid.copy (true)
-        end,
+        command = 'sheet.paste_values',
+        key = keys_label ('ctrl+shift+v'),
       },
-      {
-        label = 'Copy',
-        icon = 'copy',
-        key = 'Ctrl+C',
-        run = function ()
-          grid.copy (false)
-        end,
-      },
-      {
-        label = 'Paste',
-        icon = 'clipboard-paste',
-        key = 'Ctrl+V',
-        run = function ()
-          grid.paste ()
-        end,
-      },
-      {
-        label = 'Paste values only',
-        icon = 'clipboard-type',
-        key = 'Ctrl+Shift+V',
-        run = function ()
-          grid.paste ({ only = 'values' })
-        end,
-      },
-      {
-        label = 'Paste formats only',
-        icon = 'clipboard-paste',
-        run = function ()
-          grid.paste ({ only = 'formats' })
-        end,
-      },
-      {
-        label = 'Paste transposed',
-        icon = 'clipboard-paste',
-        run = function ()
-          grid.paste ({ transpose = true })
-        end,
-      },
+      { command = 'sheet.paste_formats' },
+      { command = 'sheet.paste_transposed' },
       { separator = true },
       {
         label = grid.count_label ('Insert %s above', 'row'),
@@ -156,7 +115,11 @@ function M.install (env)
         end,
       },
       { separator = true },
-      { label = 'Clear', icon = 'eraser', key = 'Del', run = grid.clear },
+      {
+        command = 'sheet.clear',
+        label = 'Clear',
+        key = keys_label ('delete'),
+      },
       run_item (
         'Sort A to Z by this column',
         'arrow-up-narrow-wide',

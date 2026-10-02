@@ -40,8 +40,8 @@ local CSS = [[
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
-  version = '1.2.1',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.3.1',
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'menus' } },
   -- Import, Export and opening a file in place read and write CSV and Excel files anywhere on
   -- disk, and Paste reads the clipboard. The Excel reader runs here in Lua, so it needs the
   -- file itself, which `files` gives and a file grant, made for web views, does not.
@@ -73,8 +73,22 @@ return {
     local notify = app.try_use ('notify')
     local picker = app.try_use ('picker')
     local menus = app.try_use ('menus')
+    local keys = app.try_use ('keys')
     ui.css (CSS)
 
+    ---A key as menus show it on this computer, such as Ctrl+V, or Cmd+V on a Mac.
+    ---@param combo string
+    ---@return string?
+    local function keys_label (combo)
+      return keys and keys.pretty (keys.normalize (combo)) or nil
+    end
+
+    local book = nil ---@type Sheet.Book?
+    local file = nil ---@type string?
+    local disk = nil ---@type Sheet.DiskFile?
+    local pending = false
+    local cancel_save = nil ---@type fun()?
+    local tab = nil ---@type Proteus.Tab?
     local on, emit = ctl_mod.events ()
 
     ---@param kind 'info'|'success'|'warn'|'error'
@@ -236,6 +250,7 @@ return {
       files = files,
       on = on,
       emit = emit,
+      keys_label = keys_label,
     }
     commands_mod.install (env)
     menus_mod.install (env)

@@ -200,4 +200,50 @@ function M.build (name)
   return make and make () or nil
 end
 
+---A new graph buffer. It reads its own last frame on iChannel0 and fades it, with a spot that
+---circles, or follows the mouse while it is down, so it draws a trail.
+---@param pass Shader.PassId
+---@return Shader.Doc
+function M.buffer (pass)
+  local doc = build ('Buffer ' .. pass:upper (), {
+    nodes = {
+      { 'last', 'texture', 40, 60 },
+      { 'uv', 'uv', 40, 260 },
+      { 'time', 'time', 40, 400 },
+      { 'mouse', 'mouse', 40, 540 },
+      {
+        'spot',
+        'expression',
+        340,
+        360,
+        settings = {
+          expr = 'mix(vec2(0.5 + 0.3 * cos(b), 0.5 + 0.3 * sin(b * 1.3)), c, step(0.5, d))',
+          type = 'vec2',
+        },
+      },
+      {
+        'draw',
+        'expression',
+        640,
+        160,
+        settings = {
+          expr = 'max(a * 0.97, vec3(1.0 - smoothstep(0.0, 0.03, distance(b, c))))',
+          type = 'vec3',
+        },
+      },
+      { 'out', 'output', 940, 160 },
+    },
+    wires = {
+      { 'time.time', 'spot.b' },
+      { 'mouse.position', 'spot.c' },
+      { 'mouse.down', 'spot.d' },
+      { 'last.rgb', 'draw.a' },
+      { 'uv.uv', 'draw.b' },
+      { 'spot.out', 'draw.c' },
+      { 'draw.out', 'out.color' },
+    },
+  })
+  return graph.set_channel (doc, 0, { kind = 'buffer', buffer = pass })
+end
+
 return M

@@ -26,3 +26,13 @@ globals:
       - type: string
   update:
     property: read-only
+  plugin_ids:
+    args: []
+  load_plugin:
+    args:
+      - type: string
+  shader_check:
+    args:
+      - type: string
+      - type: string
+      - type: string

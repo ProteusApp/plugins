@@ -2,6 +2,9 @@
 -- into GLSL and WGSL both. A code shader builds in its own language, with everything a short
 -- shader leaves out filled in. Each build also writes a page that runs the shader in any
 -- browser, the list of its uniforms, and a README.
+--
+-- A build goes into shaders/build in the workspace, the one folder it writes. It asks for no
+-- permission, so it reaches no other file on disk.
 
 local BUILD_FOLDER = 'shaders/build'
 
@@ -9,10 +12,8 @@ local BUILD_FOLDER = 'shaders/build'
 return {
   name = 'Shader build',
   description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
-  version = '1.0.2',
+  version = '1.2.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
-  -- Export to Folder writes the build anywhere on disk the user picks.
-  permissions = { 'files' },
   folders = { 'shaders' },
   depends = { 'shader.core', 'shader.docs', 'core.commands' },
   optional = { 'ui.notify', 'ui.palette' },
@@ -41,42 +42,105 @@ return {
       end
     end
 
-    ---What the shader in front builds into, or why it cannot build.
-    ---@return Shader.BuildInput?, string?
-    local function input_of_front ()
-      local d = docs.active ()
-      if not d then
-        return nil, 'Open a shader to build it.'
+    ---The name of a shader's file, without its folder and ending.
+    ---@param path string
+    ---@return string
+    local function stem_of (path)
+      local name = path:match ('([^/]+)$') or path
+      if name:lower ():sub (-#core.file.EXTENSION) == core.file.EXTENSION then
+        return name:sub (1, -#core.file.EXTENSION - 1)
       end
-      if d.kind == 'graph' then
-        local result = docs.compiled (d.path) --[[@as Shader.CompileResult]]
+      return (name:gsub ('%.[%w]+$', ''))
+    end
+
+    ---A pass's code in each language it has, or why it cannot build.
+    ---@param path string
+    ---@param label string
+    ---@return { glsl?: Shader.Program, wgsl?: Shader.Program }?, string?
+    local function code_of (path, label)
+      if docs.kind_of (path) == 'graph' then
+        local result = docs.compiled (path)
+        if not result then
+          return nil, 'There is no file at ' .. path .. '.'
+        end
         if not result.ok then
           return nil,
-            'The graph has problems: '
+            label
+              .. ' has problems: '
               .. result.errors[1].message
               .. ' Fix them to build it.'
         end
-        return {
-          name = d.history.doc.name ~= '' and d.history.doc.name or d.title,
-          glsl = result.glsl,
-          wgsl = result.wgsl,
-        }
+        return { glsl = result.glsl, wgsl = result.wgsl }
       end
-      local program, errors = docs.program (d.path)
+      local program, errors = docs.program (path)
       if not program then
         return nil,
           errors and errors[1] and errors[1].message or 'Nothing to build.'
       end
       for _, e in ipairs (errors or {}) do
         if e.severity ~= 'warning' then
-          return nil, e.message
+          return nil, label .. ': ' .. e.message
         end
       end
-      local stem = d.title:gsub ('%.[%w]+$', '')
-      if program.language == 'wgsl' then
-        return { name = stem, wgsl = program }
+      return { [program.language] = program }
+    end
+
+    ---What the shader in front builds into, or why it cannot build. A buffer in front builds
+    ---the whole shader it belongs to.
+    ---@return Shader.BuildInput?, string?
+    local function input_of_front ()
+      local d = docs.active ()
+      if not d then
+        return nil, 'Open a shader to build it.'
       end
-      return { name = stem, glsl = program }
+      local set = docs.passes (d.path)
+      local image = set.image
+      if not image then
+        return nil,
+          'This shader has buffers but no image, such as '
+            .. set.base
+            .. '.frag. Add one to build it.'
+      end
+      local code, err = code_of (image, 'The shader')
+      if not code then
+        return nil, err
+      end
+      local open_doc = docs.get (image)
+      local name = stem_of (image)
+      if open_doc and open_doc.history and open_doc.history.doc.name ~= '' then
+        name = open_doc.history.doc.name
+      end
+      ---@type Shader.BuildInput
+      local input = {
+        name = name,
+        glsl = code.glsl,
+        wgsl = code.wgsl,
+        channels = docs.channels (image),
+        buffers = {},
+      }
+      local any = { glsl = code.glsl ~= nil, wgsl = code.wgsl ~= nil }
+      for _, b in ipairs (core.passes.BUFFERS) do
+        local path = set.buffers[b]
+        if path then
+          local label = core.passes.pass_label (b)
+          local pass, why = code_of (path, label)
+          if not pass then
+            return nil, why
+          end
+          any.glsl = any.glsl and pass.glsl ~= nil
+          any.wgsl = any.wgsl and pass.wgsl ~= nil
+          input.buffers[#input.buffers + 1] = {
+            id = b,
+            glsl = pass.glsl,
+            wgsl = pass.wgsl,
+            channels = docs.channels (path),
+          }
+        end
+      end
+      if not any.glsl and not any.wgsl then
+        return nil, 'Every pass needs its code in one language to build.'
+      end
+      return input
     end
 
     ---@return table<string, string>?, string?
@@ -136,70 +200,6 @@ return {
             docs.open (folder .. '/' .. main)
           end,
         })
-      end,
-    })
-
-    commands.register ({
-      id = 'shader.export',
-      category = 'Shader',
-      title = 'Export to Folder...',
-      menu = 'Build',
-      icon = 'folder-output',
-      when = function ()
-        return docs.active () ~= nil and app.platform == 'tauri'
-      end,
-      run = function ()
-        local files, stem = files_of_front ()
-        if not files then
-          warn (stem or 'Nothing to build.')
-          return
-        end
-        app.fs.pick_open ({
-          title = 'Export the shader into a folder',
-          directory = true,
-        }, function (paths)
-          local dir = paths and paths[1]
-          if not dir then
-            return
-          end
-          local target = dir:gsub ('\\', '/'):gsub ('/$', '') .. '/' .. stem
-          app.fs.make_dir (target, function (_, err)
-            if err then
-              warn ('Could not make ' .. target .. ': ' .. tostring (err))
-              return
-            end
-            local names = sorted_names (files)
-            local left = #names
-            local failed = nil ---@type string?
-            for _, name in ipairs (names) do
-              app.fs.write_file (
-                target .. '/' .. name,
-                files[name],
-                function (_, write_err)
-                  if write_err then
-                    failed = failed or write_err
-                  end
-                  left = left - 1
-                  if left == 0 then
-                    if failed then
-                      warn ('Some files did not write: ' .. failed)
-                    else
-                      say (
-                        'Exported ' .. #names .. ' files to ' .. target .. '.',
-                        {
-                          label = 'Show Folder',
-                          run = function ()
-                            app.system.open_path (target)
-                          end,
-                        }
-                      )
-                    end
-                  end
-                end
-              )
-            end
-          end)
-        end)
       end,
     })
 

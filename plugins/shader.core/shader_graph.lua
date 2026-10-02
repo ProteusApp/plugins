@@ -3,6 +3,7 @@
 -- list that did not change with the old one, so undo keeps many documents cheaply.
 
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 
 local FORMAT = 1
 
@@ -34,12 +35,16 @@ M.copy = copy
 
 ---The document with new top-level fields. Lists it does not name stay shared.
 ---@param doc Shader.Doc
----@param fields { nodes?: Shader.Node[], edges?: Shader.Edge[], name?: string, canvas?: Shader.CanvasData|false }
+---@param fields { nodes?: Shader.Node[], edges?: Shader.Edge[], name?: string, canvas?: Shader.CanvasData|false, channels?: table<string, Shader.ChannelSource>|false }
 ---@return Shader.Doc
 local function with (doc, fields)
   local canvas = doc.canvas ---@type Shader.CanvasData?
   if fields.canvas ~= nil then
     canvas = fields.canvas or nil
+  end
+  local channels = doc.channels ---@type table<string, Shader.ChannelSource>?
+  if fields.channels ~= nil then
+    channels = fields.channels or nil
   end
   ---@type Shader.Doc
   return {
@@ -49,6 +54,7 @@ local function with (doc, fields)
     nodes = fields.nodes or doc.nodes,
     edges = fields.edges or doc.edges,
     canvas = canvas,
+    channels = channels,
   }
 end
 
@@ -521,6 +527,22 @@ function M.set_canvas (doc, data)
     return nil, refusal
   end
   return with (doc, { canvas = clean or false })
+end
+
+---Sets what a channel shows, 0 to 3. Nil leaves the channel to the Preview's default.
+---@param doc Shader.Doc
+---@param index integer
+---@param source Shader.ChannelSource?
+---@return Shader.Doc
+function M.set_channel (doc, index, source)
+  local out = {} ---@type table<string, Shader.ChannelSource>
+  for k, v in pairs (doc.channels or {}) do
+    out[k] = v
+  end
+  if index >= 0 and index < passes.COUNT then
+    out[tostring (index)] = passes.clean_source (source)
+  end
+  return with (doc, { channels = next (out) and out or false })
 end
 
 ---@param doc Shader.Doc

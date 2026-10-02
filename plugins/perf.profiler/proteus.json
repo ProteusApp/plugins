@@ -1,0 +1,41 @@
+{
+  "id": "perf.profiler",
+  "name": "Profiler",
+  "description": "Shows which plugin works the hardest, and why the window lags.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.core.commands"
+  ],
+  "optional": [
+    "proteus.ui.tabs",
+    "proteus.ui.views",
+    "proteus.ui.statusbar",
+    "proteus.ui.notify",
+    "proteus.ui.palette",
+    "proteus.core.keys",
+    "proteus.ui.menus"
+  ],
+  "permissions": [
+    "kernel"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "perf"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "perf_model.lua",
+    "tests/model.test.lua"
+  ]
+}

@@ -36,6 +36,8 @@ test ('each example code shader has what the preview needs', function ()
     'raymarch.frag',
     'shadertoy.frag',
     'weather.frag',
+    'ink.frag',
+    'ink.buffer-a.frag',
   }) do
     local _, errors = source.glsl_program (read (EXAMPLES .. name))
     eq (errors, {}, name)

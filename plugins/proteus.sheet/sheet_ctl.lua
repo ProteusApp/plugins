@@ -42,6 +42,7 @@
 ---@field view fun(): Sheet.ViewOptions
 ---@field on fun(event: Sheet.CtlEvent, fn: fun(...: any)): fun() Listens for an event. Returns a function that stops listening.
 ---@field emit fun(event: Sheet.CtlEvent, ...: any)
+---@field keys_label fun(combo: string): string? A key as menus show it on this computer.
 ---@field say fun(kind: 'info'|'success'|'warn'|'error', text: string) Shows a message.
 
 ---The formatting toolbar, from sheet_toolbar.lua.
