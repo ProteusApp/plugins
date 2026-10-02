@@ -38,6 +38,8 @@ local core = {
   history = core_require ('shader_history'),
   examples = core_require ('shader_examples'),
   build = core_require ('shader_build'),
+  subgraph = core_require ('shader_subgraph'),
+  export = core_require ('shader_export'),
 }
 
 ---@param path string
@@ -432,4 +434,90 @@ test ('the page names the pass a problem is in', function ()
   end
   -- The short buffer gets seven lines above it, so line 12 is its line 5.
   eq (where, 'Buffer A line 5')
+end)
+
+---The menu of what the picture shows on.
+---@param run PreviewTest.Run
+---@return table?
+local function view_menu (run)
+  for i = #run.elements, 1, -1 do
+    local e = run.elements[i]
+    if e.tag == 'select' and e.spec.class == 'sp-view' then
+      return e
+    end
+  end
+  return nil
+end
+
+---The last view message the page got.
+---@param run PreviewTest.Run
+---@return string?
+local function last_view (run)
+  for i = #run.posts, 1, -1 do
+    if run.posts[i].type == 'view' then
+      return run.posts[i].shape
+    end
+  end
+  return nil
+end
+
+test ('the View menu puts the shader on a mesh', function ()
+  local run = start ()
+  eq (last_view (run), 'flat')
+  local menu = assert (view_menu (run), 'the bar has a View menu')
+  menu.spec.onchange ({ value = 'torus' })
+  eq (last_view (run), 'torus')
+end)
+
+test (
+  'a graph runs on a mesh as its surface, and a Shadertoy shader as a picture',
+  function ()
+    local run = start ()
+    local d = assert (run.docs.new_graph ('Mesh'))
+    run.flush ()
+    local message = assert (last_run (run))
+    eq (message.passes[1].program.surface, true)
+    ink (run)
+    assert (run.docs.open (IMAGE))
+    run.flush ()
+    message = assert (last_run (run))
+    eq (message.passes[2].program.surface, false)
+    ok (d.path)
+  end
+)
+
+---A string constant of the page's script, with `${...}` filled in from `values`.
+---@param name string
+---@param values? table<string, string>
+---@return string
+local function page_constant (name, values)
+  local js = read ('plugins/shader.preview/page/preview.js')
+  local text = assert (
+    js:match ('const ' .. name .. ' = `(.-)`;'),
+    name .. ' is in the page'
+  )
+  return (
+    text:gsub ('%${([%w_]+)}', function (key)
+      return assert ((values or {})[key], key)
+    end)
+  )
+end
+
+test ('the page draws meshes with code that compiles', function ()
+  local graph = core.graph
+  local result = core.compile.compile (graph.new ('Mesh'))
+  local vertex = page_constant ('GL_MESH_VERTEX')
+  local good, messages = shader_check ('glsl', 'vertex', vertex)
+  ok (good ~= false, messages)
+  local module = result.wgsl.source
+    .. '\n'
+    .. page_constant ('GPU_MESH_VERTEX', { GPU_MESH_GROUP = '2' })
+  good, messages = shader_check ('wgsl', 'fragment', module)
+  ok (good ~= false, messages)
+  good, messages =
+    shader_check ('wgsl', 'fragment', page_constant ('GPU_MESH_COPY'))
+  ok (good ~= false, messages)
+  -- The graph's fragment shader reads the UV the mesh's vertex stage writes.
+  ok (result.glsl.source:find ('in vec2 v_uv;', 1, true) ~= nil)
+  ok (vertex:find ('out vec2 v_uv;', 1, true) ~= nil)
 end)

@@ -2,7 +2,7 @@
 title: shader: the Shader Builder's core
 section: Shader Builder
 order: 318
-keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format shader.core
+keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format subgraph made node make unpack expand surface mesh v_uv export hlsl godot three.js unity ir shader.core
 ---
 
 # shader: the Shader Builder's core
@@ -19,12 +19,14 @@ local shader = app.use ('shader') --[[@as Shader.Core]]
 |--------|---------------|
 | `nodes` | The node catalog: `list`, `categories`, and `get (type_id)` for one node's inputs, outputs and settings. |
 | `graph` | Graph operations. Each returns a new graph, or nil and why not. |
+| `subgraph` | Made nodes: a group of nodes made into one node, and unpacked again. |
 | `compile` | `compile (doc)`, which turns a graph into GLSL and WGSL. |
 | `source` | Code shaders: their uniforms, their programs, and the templates for new files. |
 | `passes` | Channels and buffers: which file is which pass, and what each channel shows. |
 | `file` | Reading and writing `*.shader.json` files. |
 | `history` | Undo and redo for a graph. |
 | `build` | The files a build writes. |
+| `export` | A graph written for other engines: HLSL, Godot, three.js and Unity. |
 | `examples` | The example graphs, and the start of a new graph buffer. |
 | `format` | Numbers and colours as the fields show them. |
 | `types`, `helpers`, `layout` | Port types, the helper functions the code calls, and the WGSL uniform layout. |
@@ -55,9 +57,33 @@ The node ids are the `type` of each entry in `nodes.list`, such as `'time'`, `'m
 
 Other operations change inputs and settings (`set_input`, `set_setting`), remove and move nodes, copy and paste, and keep the canvas's frames (`set_canvas`). `graph.set_channel (doc, index, source)` sets what channel `index` shows, from 0 to 3. See [Channels and passes](#channels-and-passes).
 
+`graph.def (doc, type_id)` gives a node type as the graph reads it: an entry of the catalog, or a node made from a group in this graph. Use it instead of `nodes.get` for a node of a graph.
+
+## Made nodes
+
+`subgraph.make (doc, ids, name)` makes one node from a group of nodes. A wire from outside into the group becomes an input, and a wire out of it an output. The graph keeps the group in `doc.subgraphs`, by an id such as `'s1'`, and the made node's type is `'subgraph:s1'`. `subgraph.unpack (doc, id)` puts the nodes back, wired as before:
+
+```lua
+local shader = app.use ('shader') --[[@as Shader.Core]]
+local doc = shader.graph.new ('Glow')
+local made, id = shader.subgraph.make (doc, { 'n1' }, 'Place')
+if not made then
+  app.log (id)
+  return
+end
+local back, ids = shader.subgraph.unpack (made, id)
+if back then
+  app.log (#ids .. ' nodes back')
+end
+```
+
+`subgraph.rename (doc, sid, name)` renames a group, and every node made from it shows the new name. `subgraph.list (doc)` lists the groups with the type a new node made from each takes, for `graph.add_node`. Copy and paste carry a made node's group, and a group no node uses any more is dropped.
+
+The compiler never sees a made node: `compile` calls `subgraph.expand (doc)` first, which puts each one's nodes in its place, with ids such as `n5_n1` inside `n5`. What the result says of those nodes it says of the made node, so a problem inside one shows on it. A graph with made nodes saves as format 2, which an older Shader Builder refuses rather than misreads.
+
 ## Compiling
 
-`compile.compile (doc)` returns a `Shader.CompileResult`. `ok` is true when the graph has no errors, `errors` lists the problems, each with the node it comes from, and `glsl` and `wgsl` are the two programs:
+`compile.compile (doc)` returns a `Shader.CompileResult`. `ok` is true when the graph has no errors, `errors` lists the problems, each with the node it comes from, `glsl` and `wgsl` are the two programs, and `ir` is the graph before it is written in a language:
 
 ```lua
 local shader = app.use ('shader') --[[@as Shader.Core]]
@@ -71,7 +97,7 @@ else
 end
 ```
 
-A program holds the code in `source`, the uniforms the Preview shows controls for, and the channels it reads. `lines` maps a line of the code to the node that wrote it.
+A program holds the code in `source`, the uniforms the Preview shows controls for, and the channels it reads. `lines` maps a line of the code to the node that wrote it. A graph's code finds its place from the UV the vertex stage passes, `v_uv` in GLSL, and `fragCoord` is that UV times `u_resolution`. Such a program is marked `surface`, and the Preview runs it as the fragment shader of a mesh's surface. A GLSL code shader is marked `surface` when it reads `v_uv` and not `gl_FragCoord`.
 
 ## Code shaders
 
@@ -135,4 +161,28 @@ for name in pairs (files) do
 end
 ```
 
+`input.ir`, a graph's `result.ir`, adds a file for each engine `export` writes to.
+
 `examples.build (name)` makes one of the example graphs in `examples.names`, and `examples.buffer (pass)` makes a new graph buffer that reads its own last frame.
+
+## Other engines
+
+`export.export (id, ir)` writes a compiled graph for another engine. `ir` is `result.ir` from `compile`: each value in order as a GLSL expression, the helpers they call, the uniforms and the channels. `export.TARGETS` lists the engines, each with its `id`, `title`, the `ending` of its file's name and what the file holds:
+
+| `id` | What it writes |
+|------|----------------|
+| `hlsl` | HLSL for Direct3D 11 and later: a constant buffer, the channels as textures, `VSMain` and `PSMain` |
+| `godot` | A Godot 4 canvas item shader |
+| `three` | A JavaScript module whose `createMaterial ()` makes a three.js `ShaderMaterial` |
+| `unity` | An unlit Unity shader in ShaderLab for the built-in render pipeline |
+
+```lua
+local shader = app.use ('shader') --[[@as Shader.Core]]
+local result = shader.compile.compile (shader.graph.new ('Gradient'))
+for _, target in ipairs (shader.export.TARGETS) do
+  local text = shader.export.export (target.id, result.ir)
+  app.log (target.title, text and #text or 0)
+end
+```
+
+Each export reads its place from the UV the vertex stage passes, so it colours the surface of any mesh, and `fragCoord` is the UV times `u_resolution`. `export.rewrite (text, dialect, used)` is the rewriter they share: it turns GLSL into HLSL, such as `mix` into `lerp` and `vec3(x)` into a cast.

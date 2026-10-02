@@ -25,6 +25,18 @@ local function picked_nodes (ctx)
   return n
 end
 
+---The made node picked, when it is the only node picked.
+---@param ctx ShaderCanvas.Ctx
+---@return string?
+local function made_picked (ctx)
+  local ids = ctx.picked_nodes ()
+  local n = #ids == 1 and ctx.node (ids[1])
+  if n and ctx.core.graph.subgraph_id (n.type) then
+    return n.id
+  end
+  return nil
+end
+
 ---Finds a node or a frame by name, then picks it and brings it into view.
 ---@param ctx ShaderCanvas.Ctx
 local function find (ctx)
@@ -203,6 +215,29 @@ function M.register (app, commands, front, toggle_snap)
     key = 'ctrl+f',
   }, find)
   command ({
+    id = 'shader.make_node',
+    title = 'Make a Node from the Selected Nodes...',
+    icon = 'boxes',
+    when = function (ctx)
+      return picked_nodes (ctx) > 0
+    end,
+  }, function (ctx)
+    ctx.ask_make_node ()
+  end)
+  command ({
+    id = 'shader.unpack_node',
+    title = 'Unpack the Selected Made Node',
+    icon = 'ungroup',
+    when = function (ctx)
+      return made_picked (ctx) ~= nil
+    end,
+  }, function (ctx)
+    local id = made_picked (ctx)
+    if id then
+      ctx.unpack_node (id)
+    end
+  end)
+  command ({
     id = 'shader.frame',
     title = 'Frame the Selected Nodes',
     icon = 'square-dashed',
@@ -375,6 +410,11 @@ function M.menu (ctx, menus)
           run = ctx.frame_picked,
         },
         {
+          label = 'Make a Node from These...',
+          icon = 'boxes',
+          run = ctx.ask_make_node,
+        },
+        {
           label = 'Show Its Code',
           icon = 'code',
           run = function ()
@@ -382,6 +422,22 @@ function M.menu (ctx, menus)
           end,
         },
       } ---@type Proteus.MenuItem[]
+      if made_picked (ctx) then
+        items[#items + 1] = {
+          label = 'Unpack',
+          icon = 'ungroup',
+          run = function ()
+            ctx.unpack_node (id)
+          end,
+        }
+        items[#items + 1] = {
+          label = 'Rename Made Node...',
+          icon = 'pencil',
+          run = function ()
+            ctx.ask_rename_node (id)
+          end,
+        }
+      end
       if picked_nodes (ctx) > 1 then
         items[#items + 1] = { separator = true }
         for _, a in ipairs (ALIGN) do

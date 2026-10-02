@@ -5,7 +5,12 @@
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
 local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 
-local FORMAT = 1
+-- The newest file format this reads. A graph with made nodes saves as format 2, so an older
+-- shader builder refuses it instead of losing its made nodes.
+local FORMAT = 2
+
+-- A made node's type is this, then the id of its subgraph in the document.
+local SUBGRAPH = 'subgraph:'
 
 -- A wire passes through at most this many reroute points.
 local MAX_POINTS = 32
@@ -13,6 +18,7 @@ local MAX_POINTS = 32
 local M = {}
 
 M.FORMAT = FORMAT
+M.SUBGRAPH = SUBGRAPH
 
 ---A deep copy, for a caller that wants to change a document of its own.
 ---@generic T
@@ -35,7 +41,7 @@ M.copy = copy
 
 ---The document with new top-level fields. Lists it does not name stay shared.
 ---@param doc Shader.Doc
----@param fields { nodes?: Shader.Node[], edges?: Shader.Edge[], name?: string, canvas?: Shader.CanvasData|false, channels?: table<string, Shader.ChannelSource>|false }
+---@param fields { nodes?: Shader.Node[], edges?: Shader.Edge[], name?: string, canvas?: Shader.CanvasData|false, channels?: table<string, Shader.ChannelSource>|false, subgraphs?: table<string, Shader.Subgraph>|false }
 ---@return Shader.Doc
 local function with (doc, fields)
   local canvas = doc.canvas ---@type Shader.CanvasData?
@@ -46,6 +52,10 @@ local function with (doc, fields)
   if fields.channels ~= nil then
     channels = fields.channels or nil
   end
+  local subgraphs = doc.subgraphs ---@type table<string, Shader.Subgraph>?
+  if fields.subgraphs ~= nil then
+    subgraphs = fields.subgraphs or nil
+  end
   ---@type Shader.Doc
   return {
     format = doc.format,
@@ -55,8 +65,134 @@ local function with (doc, fields)
     edges = fields.edges or doc.edges,
     canvas = canvas,
     channels = channels,
+    subgraphs = subgraphs,
   }
 end
+
+M.with = with
+
+-- Made nodes ----------------------------------------------------------------------------------
+
+---The subgraph id in a made node's type, or nil for any other type.
+---@param type_id string
+---@return string?
+function M.subgraph_id (type_id)
+  if type (type_id) ~= 'string' or type_id:sub (1, #SUBGRAPH) ~= SUBGRAPH then
+    return nil
+  end
+  return type_id:sub (#SUBGRAPH + 1)
+end
+
+-- The node each subgraph reads as, made once for each subgraph table. Subgraphs never change
+-- in place, so a table always reads the same.
+local made_defs = setmetatable ({}, { __mode = 'k' }) ---@type table<Shader.Subgraph, Shader.NodeDef>
+
+---What a made node shows and takes, from its subgraph.
+---@param type_id string
+---@param sg Shader.Subgraph
+---@return Shader.NodeDef
+local function made_def (type_id, sg)
+  local hit = made_defs[sg]
+  if hit and hit.type == type_id then
+    return hit
+  end
+  local inputs = {} ---@type Shader.PortDef[]
+  for i, p in ipairs (sg.inputs) do
+    inputs[i] = {
+      key = p.key,
+      label = p.label,
+      type = p.type,
+      default = p.default or { 0 },
+      builtin = p.builtin,
+      color = p.color,
+    }
+  end
+  local outputs = {} ---@type Shader.OutputDef[]
+  for i, p in ipairs (sg.outputs) do
+    outputs[i] = { key = p.key, label = p.label, type = p.type, glsl = '' }
+  end
+  ---@type Shader.NodeDef
+  local def = {
+    type = type_id,
+    title = sg.name,
+    category = 'custom',
+    description = 'Made from '
+      .. #sg.nodes
+      .. (#sg.nodes == 1 and ' node' or ' nodes')
+      .. '. Unpack it to change what is inside.',
+    inputs = inputs,
+    outputs = outputs,
+    settings = {},
+  }
+  made_defs[sg] = def
+  return def
+end
+
+---A node type as this document reads it: a node of the catalog, or a node made from a group
+---of nodes in this document.
+---@param doc Shader.Doc
+---@param type_id string
+---@return Shader.NodeDef?
+function M.def (doc, type_id)
+  local found = nodes.get (type_id)
+  if found then
+    return found
+  end
+  local sid = M.subgraph_id (type_id)
+  local sg = sid and doc.subgraphs and doc.subgraphs[sid]
+  if not sg then
+    return nil
+  end
+  return made_def (type_id, sg)
+end
+
+---The subgraphs nodes of these lists use, and the ones those use in turn.
+---@param doc Shader.Doc
+---@param list Shader.Node[]
+---@return table<string, boolean>
+function M.used_subgraphs (doc, list)
+  local used = {} ---@type table<string, boolean>
+  local subs = doc.subgraphs or {}
+  ---@param ns Shader.Node[]
+  local function visit (ns)
+    for _, n in ipairs (ns) do
+      local sid = M.subgraph_id (n.type)
+      if sid and not used[sid] and subs[sid] then
+        used[sid] = true
+        visit (subs[sid].nodes)
+      end
+    end
+  end
+  visit (list)
+  return used
+end
+
+---The document's subgraphs without the ones no node uses any more, or false when none are
+---left.
+---@param doc Shader.Doc
+---@param list Shader.Node[] The document's nodes.
+---@return table<string, Shader.Subgraph>|false
+local function kept_subgraphs (doc, list)
+  if not doc.subgraphs then
+    return false
+  end
+  local used = M.used_subgraphs (doc, list)
+  local out = {} ---@type table<string, Shader.Subgraph>
+  local same = true
+  for sid, sg in pairs (doc.subgraphs) do
+    if used[sid] then
+      out[sid] = sg
+    else
+      same = false
+    end
+  end
+  if same then
+    return doc.subgraphs
+  end
+  return next (out) and out or false
+end
+
+M.kept_subgraphs = kept_subgraphs
 
 ---A node with its own maps of inputs and settings, ready to change.
 ---@param n Shader.Node
@@ -157,7 +293,7 @@ end
 ---@param y number
 ---@return Shader.Doc?, string id_or_refusal
 function M.add_node (doc, type_id, x, y)
-  local def = nodes.get (type_id)
+  local def = M.def (doc, type_id)
   if not def then
     return nil, 'There is no node called ' .. tostring (type_id) .. '.'
   end
@@ -206,7 +342,11 @@ function M.remove_nodes (doc, ids)
       edges[#edges + 1] = e
     end
   end
-  return with (doc, { nodes = kept, edges = edges })
+  return with (doc, {
+    nodes = kept,
+    edges = edges,
+    subgraphs = kept_subgraphs (doc, kept),
+  })
 end
 
 ---@param doc Shader.Doc
@@ -271,7 +411,7 @@ function M.why_not (doc, from, output, to, input)
   if from == to then
     return 'A node cannot feed itself.'
   end
-  local da, db = nodes.get (a.type), nodes.get (b.type)
+  local da, db = M.def (doc, a.type), M.def (doc, b.type)
   if not da or not db or not nodes.output (da, output) then
     return 'That output does not exist.'
   end
@@ -358,7 +498,7 @@ end
 ---@return Shader.Doc?, string? refusal
 function M.set_input (doc, id, key, values)
   local n = M.node (doc, id)
-  local def = n and nodes.get (n.type)
+  local def = n and M.def (doc, n.type)
   if not n or not def or not nodes.input (def, key) then
     return nil, 'That input does not exist.'
   end
@@ -374,7 +514,7 @@ end
 ---@return Shader.Doc?, string? refusal
 function M.set_setting (doc, id, key, value)
   local n = M.node (doc, id)
-  local def = n and nodes.get (n.type)
+  local def = n and M.def (doc, n.type)
   if not n or not def then
     return nil, 'That node is gone.'
   end
@@ -630,7 +770,141 @@ function M.copy_nodes (doc, ids, frame_ids)
       fragment.frames[#fragment.frames + 1] = f
     end
   end
+  -- Made nodes carry their subgraphs, so they paste into another graph.
+  for sid in pairs (M.used_subgraphs (doc, fragment.nodes)) do
+    fragment.subgraphs = fragment.subgraphs or {}
+    fragment.subgraphs[sid] = (doc.subgraphs or {})[sid]
+  end
   return fragment
+end
+
+---True when two values hold the same, all the way down.
+---@param a any
+---@param b any
+---@return boolean
+local function same (a, b)
+  if a == b then
+    return true
+  end
+  if type (a) ~= 'table' or type (b) ~= 'table' then
+    return false
+  end
+  for k, v in
+    pairs (a --[[@as table<any, any>]])
+  do
+    if not same (v, b[k]) then
+      return false
+    end
+  end
+  for k in
+    pairs (b --[[@as table<any, any>]])
+  do
+    if a[k] == nil then
+      return false
+    end
+  end
+  return true
+end
+
+---A subgraph id no subgraph has yet, such as `'s3'`.
+---@param subs table<string, Shader.Subgraph>
+---@return string
+function M.next_subgraph_id (subs)
+  local top = 0
+  for sid in pairs (subs) do
+    local k = tonumber (sid:match ('^s(%d+)$'))
+    if k and k > top then
+      top = k
+    end
+  end
+  return 's' .. (top + 1)
+end
+
+---The nodes with the made nodes among them pointed at new subgraph ids.
+---@param list Shader.Node[]
+---@param map table<string, string> New subgraph ids by old.
+---@return Shader.Node[]
+function M.retype (list, map)
+  local out = {} ---@type Shader.Node[]
+  for i, n in ipairs (list) do
+    local sid = M.subgraph_id (n.type)
+    if sid and map[sid] and map[sid] ~= sid then
+      local c = copy_node (n)
+      c.type = SUBGRAPH .. map[sid]
+      out[i] = c
+    else
+      out[i] = n
+    end
+  end
+  return out
+end
+
+---The document's subgraphs with ones from another graph added. One this graph holds the same
+---is shared. One whose id this graph uses for another gets a new id.
+---@param doc Shader.Doc
+---@param incoming table<string, Shader.Subgraph>?
+---@return table<string, Shader.Subgraph>? subgraphs
+---@return table<string, string> map The id each incoming subgraph has now.
+local function merge_subgraphs (doc, incoming)
+  local map = {} ---@type table<string, string>
+  if not incoming or next (incoming) == nil then
+    return doc.subgraphs, map
+  end
+  local subs = {} ---@type table<string, Shader.Subgraph>
+  for sid, sg in pairs (doc.subgraphs or {}) do
+    subs[sid] = sg
+  end
+  local order = {} ---@type string[]
+  for sid in pairs (incoming) do
+    order[#order + 1] = sid
+  end
+  table.sort (order)
+  local shared = {} ---@type table<string, boolean>
+  for _, sid in ipairs (order) do
+    if subs[sid] and same (subs[sid], incoming[sid]) then
+      shared[sid] = true
+    end
+  end
+  -- A subgraph is shared only when every subgraph inside it is shared too.
+  local changed = true
+  while changed do
+    changed = false
+    for _, sid in ipairs (order) do
+      if shared[sid] then
+        for _, n in ipairs (incoming[sid].nodes) do
+          local inner = M.subgraph_id (n.type)
+          if inner and incoming[inner] and not shared[inner] then
+            shared[sid] = nil
+            changed = true
+          end
+        end
+      end
+    end
+  end
+  for _, sid in ipairs (order) do
+    if shared[sid] then
+      map[sid] = sid
+    elseif not subs[sid] then
+      map[sid] = sid
+      subs[sid] = incoming[sid]
+    else
+      map[sid] = M.next_subgraph_id (subs)
+      subs[map[sid]] = incoming[sid]
+    end
+  end
+  for _, sid in ipairs (order) do
+    local sg = incoming[sid]
+    if not shared[sid] then
+      subs[map[sid]] = {
+        name = sg.name,
+        nodes = M.retype (sg.nodes, map),
+        edges = sg.edges,
+        inputs = sg.inputs,
+        outputs = sg.outputs,
+      }
+    end
+  end
+  return subs, map
 end
 
 ---@param v number
@@ -655,11 +929,12 @@ function M.paste (doc, fragment, dx, dy)
     list[i] = n
     has[n.type] = true
   end
-  local grown = with (doc, { nodes = list })
+  local subgraphs, sub_map = merge_subgraphs (doc, fragment.subgraphs)
+  local grown = with (doc, { nodes = list, subgraphs = subgraphs or false })
   local map = {} ---@type table<string, string>
   local fresh = {} ---@type string[]
-  for _, n in ipairs (fragment.nodes) do
-    local def = nodes.get (n.type)
+  for _, n in ipairs (M.retype (fragment.nodes, sub_map)) do
+    local def = M.def (grown, n.type)
     if def and not (def.unique and has[n.type]) then
       local id = M.next_id (grown)
       local c = copy (n)
@@ -714,7 +989,8 @@ function M.paste (doc, fragment, dx, dy)
     }
     new_frames[#new_frames + 1] = id
   end
-  local out = with (doc, { nodes = list, edges = edges })
+  local out = with (grown, { nodes = list, edges = edges })
+  out = with (out, { subgraphs = kept_subgraphs (out, list) })
   return M.with_canvas (out, frames, routes), fresh, new_frames
 end
 
@@ -741,7 +1017,7 @@ function M.insert (doc, id, wire)
   local to, input = wire:match ('^(.-)|(.*)$')
   local e = to and M.edge_into (doc, to, input)
   local n = M.node (doc, id)
-  local def = n and nodes.get (n.type)
+  local def = n and M.def (doc, n.type)
   if not e or not def or e.from == id or e.to == id then
     return nil
   end

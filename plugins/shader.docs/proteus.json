@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -47,6 +47,7 @@
     "handbook/colour.md",
     "handbook/debugging.md",
     "handbook/documents.md",
+    "handbook/engines.md",
     "handbook/first-shader.md",
     "handbook/glsl-language.md",
     "handbook/learn-shaders.md",

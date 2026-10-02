@@ -117,14 +117,60 @@ end
 
 M.encode = encode
 
+---One node as a line of the file.
+---@param n Shader.Node
+---@return string
+local function node_line (n)
+  local parts = {
+    '"id": ' .. quote (n.id),
+    '"type": ' .. quote (n.type),
+    '"x": ' .. number (n.x or 0),
+    '"y": ' .. number (n.y or 0),
+  }
+  if next (n.inputs or {}) then
+    parts[#parts + 1] = '"inputs": ' .. encode (n.inputs)
+  end
+  if next (n.settings or {}) then
+    parts[#parts + 1] = '"settings": ' .. encode (n.settings)
+  end
+  return '{ ' .. table.concat (parts, ', ') .. ' }'
+end
+
+---One wire as a line of the file.
+---@param e Shader.Edge
+---@return string
+local function edge_line (e)
+  return '{ "from": '
+    .. quote (e.from)
+    .. ', "output": '
+    .. quote (e.output)
+    .. ', "to": '
+    .. quote (e.to)
+    .. ', "input": '
+    .. quote (e.input)
+    .. ' }'
+end
+
+---Lines for a list, one item to a line, with commas between.
+---@param into string[]
+---@param indent string
+---@param items string[]
+local function list_lines (into, indent, items)
+  for i, item in ipairs (items) do
+    into[#into + 1] = indent .. item .. (i < #items and ',' or '')
+  end
+end
+
 ---The file's text.
 ---@param doc Shader.Doc
 ---@return string
 function M.save (doc)
+  local subgraphs = doc.subgraphs and next (doc.subgraphs) and doc.subgraphs
   ---@type string[]
   local lines = {
     '{',
-    '  "format": ' .. graph.FORMAT .. ',',
+    -- Format 2 only when a newer builder is needed to read the file.
+    '  "format": ' .. (subgraphs and 2 or 1) .. ',',
     '  "kind": "' .. KIND .. '",',
     '  "name": ' .. quote (doc.name or 'Untitled') .. ',',
   }
@@ -134,69 +180,121 @@ function M.save (doc)
   if doc.channels and next (doc.channels) then
     lines[#lines + 1] = '  "channels": ' .. encode (doc.channels) .. ','
   end
-  lines[#lines + 1] = '  "nodes": ['
+  -- Each part after the nodes is a list of lines. Commas go between the parts.
+  local parts = {} ---@type string[][]
+  local node_part = { '  "nodes": [' } ---@type string[]
+  local node_items = {} ---@type string[]
   for i, n in ipairs (doc.nodes) do
-    local parts = {
-      '"id": ' .. quote (n.id),
-      '"type": ' .. quote (n.type),
-      '"x": ' .. number (n.x or 0),
-      '"y": ' .. number (n.y or 0),
-    }
-    if next (n.inputs or {}) then
-      parts[#parts + 1] = '"inputs": ' .. encode (n.inputs)
-    end
-    if next (n.settings or {}) then
-      parts[#parts + 1] = '"settings": ' .. encode (n.settings)
-    end
-    lines[#lines + 1] = '    { '
-      .. table.concat (parts, ', ')
-      .. ' }'
-      .. (i < #doc.nodes and ',' or '')
+    node_items[i] = node_line (n)
   end
-  lines[#lines + 1] = '  ],'
-  lines[#lines + 1] = '  "edges": ['
+  list_lines (node_part, '    ', node_items)
+  node_part[#node_part + 1] = '  ]'
+  parts[#parts + 1] = node_part
+  local edge_part = { '  "edges": [' } ---@type string[]
+  local edge_items = {} ---@type string[]
   for i, e in ipairs (doc.edges) do
-    lines[#lines + 1] = '    { "from": '
-      .. quote (e.from)
-      .. ', "output": '
-      .. quote (e.output)
-      .. ', "to": '
-      .. quote (e.to)
-      .. ', "input": '
-      .. quote (e.input)
-      .. ' }'
-      .. (i < #doc.edges and ',' or '')
+    edge_items[i] = edge_line (e)
   end
+  list_lines (edge_part, '    ', edge_items)
+  edge_part[#edge_part + 1] = '  ]'
+  parts[#parts + 1] = edge_part
   -- The canvas's frames and reroute points, one to a line, only when there are some.
   local canvas = (graph.set_canvas (doc, doc.canvas) or doc).canvas
   if canvas then
-    lines[#lines + 1] = '  ],'
-    lines[#lines + 1] = '  "canvas": {'
-    lines[#lines + 1] = '    "frames": ['
+    local canvas_part = { '  "canvas": {', '    "frames": [' } ---@type string[]
+    local frame_items = {} ---@type string[]
     for i, f in ipairs (canvas.frames) do
-      lines[#lines + 1] = '      '
-        .. encode ({
-          id = f.id,
-          title = f.title,
-          x = f.x,
-          y = f.y,
-          w = f.w,
-          h = f.h,
-          color = f.color,
-        })
-        .. (i < #canvas.frames and ',' or '')
+      frame_items[i] = encode ({
+        id = f.id,
+        title = f.title,
+        x = f.x,
+        y = f.y,
+        w = f.w,
+        h = f.h,
+        color = f.color,
+      })
     end
-    lines[#lines + 1] = '    ],'
-    lines[#lines + 1] = '    "routes": ['
+    list_lines (canvas_part, '      ', frame_items)
+    canvas_part[#canvas_part + 1] = '    ],'
+    canvas_part[#canvas_part + 1] = '    "routes": ['
+    local route_items = {} ---@type string[]
     for i, r in ipairs (canvas.routes) do
-      lines[#lines + 1] = '      '
-        .. encode ({ to = r.to, input = r.input, points = r.points })
-        .. (i < #canvas.routes and ',' or '')
+      route_items[i] =
+        encode ({ to = r.to, input = r.input, points = r.points })
     end
-    lines[#lines + 1] = '    ]'
-    lines[#lines + 1] = '  }'
-  else
-    lines[#lines + 1] = '  ]'
+    list_lines (canvas_part, '      ', route_items)
+    canvas_part[#canvas_part + 1] = '    ]'
+    canvas_part[#canvas_part + 1] = '  }'
+    parts[#parts + 1] = canvas_part
+  end
+  -- The groups made nodes come from, each with its own nodes and wires, one to a line.
+  if subgraphs then
+    local sub_part = { '  "subgraphs": {' } ---@type string[]
+    local ids = {} ---@type string[]
+    for sid in pairs (subgraphs) do
+      ids[#ids + 1] = sid
+    end
+    table.sort (ids)
+    for k, sid in ipairs (ids) do
+      local sg = subgraphs[sid]
+      sub_part[#sub_part + 1] = '    ' .. quote (sid) .. ': {'
+      sub_part[#sub_part + 1] = '      "name": ' .. quote (sg.name) .. ','
+      sub_part[#sub_part + 1] = '      "inputs": ['
+      local in_items = {} ---@type string[]
+      for i, p in ipairs (sg.inputs) do
+        local targets = M.array ({}) ---@type table[]
+        for j, t in ipairs (p.targets) do
+          targets[j] = { node = t.node, input = t.input }
+        end
+        in_items[i] = encode ({
+          key = p.key,
+          label = p.label,
+          type = p.type,
+          default = p.default,
+          builtin = p.builtin,
+          color = p.color or nil,
+          targets = targets,
+        })
+      end
+      list_lines (sub_part, '        ', in_items)
+      sub_part[#sub_part + 1] = '      ],'
+      sub_part[#sub_part + 1] = '      "outputs": ['
+      local out_items = {} ---@type string[]
+      for i, p in ipairs (sg.outputs) do
+        out_items[i] = encode ({
+          key = p.key,
+          label = p.label,
+          type = p.type,
+          node = p.node,
+          output = p.output,
+        })
+      end
+      list_lines (sub_part, '        ', out_items)
+      sub_part[#sub_part + 1] = '      ],'
+      sub_part[#sub_part + 1] = '      "nodes": ['
+      local inner_nodes = {} ---@type string[]
+      for i, n in ipairs (sg.nodes) do
+        inner_nodes[i] = node_line (n)
+      end
+      list_lines (sub_part, '        ', inner_nodes)
+      sub_part[#sub_part + 1] = '      ],'
+      sub_part[#sub_part + 1] = '      "edges": ['
+      local inner_edges = {} ---@type string[]
+      for i, e in ipairs (sg.edges) do
+        inner_edges[i] = edge_line (e)
+      end
+      list_lines (sub_part, '        ', inner_edges)
+      sub_part[#sub_part + 1] = '      ]'
+      sub_part[#sub_part + 1] = '    }' .. (k < #ids and ',' or '')
+    end
+    sub_part[#sub_part + 1] = '  }'
+    parts[#parts + 1] = sub_part
+  end
+  for i, part in ipairs (parts) do
+    for j, line in ipairs (part) do
+      local last = j == #part and i < #parts
+      lines[#lines + 1] = line .. (last and ',' or '')
+    end
   end
   lines[#lines + 1] = '}'
   return table.concat (lines, '\n') .. '\n'
@@ -376,6 +474,170 @@ local function clean_setting (value)
   return numbers (value)
 end
 
+---Reads a list of nodes. Nil and why when one does not read.
+---@param raw any
+---@return Shader.Node[]? nodes
+---@return string? error
+---@return table<string, boolean> ids
+local function read_nodes (raw)
+  local seen = {} ---@type table<string, boolean>
+  local out = {} ---@type Shader.Node[]
+  if type (raw) ~= 'table' then
+    return nil, 'The file has no list of nodes.', seen
+  end
+  local node_list = raw ---@type table<string, any>[]
+  for i, n in ipairs (node_list) do
+    if
+      type (n) ~= 'table'
+      or type (n.id) ~= 'string'
+      or not n.id:match ('^[%a_][%w_]*$')
+      or type (n.type) ~= 'string'
+    then
+      return nil, 'Node ' .. i .. ' needs an id and a type.', seen
+    end
+    if seen[n.id] then
+      return nil, 'Two nodes are called ' .. n.id .. '.', seen
+    end
+    seen[n.id] = true
+    local inputs, settings = {}, {} ---@type table<string, number[]>, table<string, any>
+    if type (n.inputs) == 'table' then
+      for k, v in
+        pairs (n.inputs --[[@as table<string, any>]])
+      do
+        inputs[tostring (k)] = numbers (v)
+      end
+    end
+    if type (n.settings) == 'table' then
+      for k, v in
+        pairs (n.settings --[[@as table<string, any>]])
+      do
+        settings[tostring (k)] = clean_setting (v)
+      end
+    end
+    out[#out + 1] = {
+      id = n.id,
+      type = n.type,
+      x = tonumber (n.x) or 0,
+      y = tonumber (n.y) or 0,
+      inputs = inputs,
+      settings = settings,
+    }
+  end
+  return out, nil, seen
+end
+
+---Reads a list of wires between the nodes `seen` names, one at most into each input.
+---@param raw any
+---@param seen table<string, boolean>
+---@return Shader.Edge[]
+local function read_edges (raw, seen)
+  local out = {} ---@type Shader.Edge[]
+  local taken = {} ---@type table<string, boolean>
+  local edge_list = type (raw) == 'table' and raw or {} ---@type table<string, any>[]
+  for _, e in ipairs (edge_list) do
+    if
+      type (e) == 'table'
+      and seen[e.from]
+      and seen[e.to]
+      and type (e.output) == 'string'
+      and type (e.input) == 'string'
+    then
+      local key = tostring (e.to) .. '.' .. tostring (e.input)
+      if not taken[key] then
+        taken[key] = true
+        out[#out + 1] =
+          { from = e.from, output = e.output, to = e.to, input = e.input }
+      end
+    end
+  end
+  return out
+end
+
+local PORT_TYPES = {
+  float = true,
+  vec2 = true,
+  vec3 = true,
+  vec4 = true,
+  gen = true,
+  any = true,
+}
+local BUILTINS = { uv = true, suv = true, frag = true }
+
+---Reads the group a made node comes from, or nil when it does not read.
+---@param raw any
+---@return Shader.Subgraph?
+local function read_subgraph (raw)
+  if type (raw) ~= 'table' then
+    return nil
+  end
+  local inner, _, seen = read_nodes (raw.nodes)
+  if not inner then
+    return nil
+  end
+  ---@type Shader.Subgraph
+  local sg = {
+    name = type (raw.name) == 'string' and raw.name or 'Made node',
+    nodes = inner,
+    edges = read_edges (raw.edges, seen),
+    inputs = {},
+    outputs = {},
+  }
+  local keys = {} ---@type table<string, boolean>
+  ---@param p any
+  ---@return boolean
+  local function port_ok (p)
+    return type (p) == 'table'
+      and type (p.key) == 'string'
+      and p.key:match ('^[%w_]+$') ~= nil
+      and not keys[p.key]
+      and PORT_TYPES[p.type] == true
+  end
+  local in_list = type (raw.inputs) == 'table' and raw.inputs or {} ---@type any[]
+  for _, p in ipairs (in_list) do
+    if not port_ok (p) or type (p.targets) ~= 'table' then
+      return nil
+    end
+    keys[p.key] = true
+    local targets = {} ---@type { node: string, input: string }[]
+    for _, t in
+      ipairs (p.targets --[[@as any[] ]])
+    do
+      if
+        type (t) ~= 'table'
+        or not seen[t.node]
+        or type (t.input) ~= 'string'
+      then
+        return nil
+      end
+      targets[#targets + 1] = { node = t.node, input = t.input }
+    end
+    sg.inputs[#sg.inputs + 1] = {
+      key = p.key,
+      label = type (p.label) == 'string' and p.label or p.key,
+      type = p.type,
+      default = numbers (p.default),
+      builtin = BUILTINS[p.builtin] and p.builtin or nil,
+      color = p.color == true or nil,
+      targets = targets,
+    }
+  end
+  local out_list = type (raw.outputs) == 'table' and raw.outputs or {} ---@type any[]
+  for _, p in ipairs (out_list) do
+    if not port_ok (p) or not seen[p.node] or type (p.output) ~= 'string' then
+      return nil
+    end
+    keys[p.key] = true
+    sg.outputs[#sg.outputs + 1] = {
+      key = p.key,
+      label = type (p.label) == 'string' and p.label or p.key,
+      type = p.type,
+      node = p.node,
+      output = p.output,
+    }
+  end
+  return sg
+end
+
 ---Reads a file's text into a document.
 ---@param text string
 ---@return Shader.Doc? doc, string? error
@@ -394,9 +656,6 @@ function M.load (text)
   local format = tonumber (data.format) or 1
   if format > graph.FORMAT then
     return nil, 'The file comes from a newer version of the shader builder.'
-  end
-  if type (data.nodes) ~= 'table' then
-    return nil, 'The file has no list of nodes.'
   end
   ---@type Shader.Doc
   local doc = {
@@ -418,61 +677,29 @@ function M.load (text)
       end
     end
   end
-  local seen = {} ---@type table<string, boolean>
-  local node_list = data.nodes ---@type table<string, any>[]
-  for i, n in ipairs (node_list) do
-    if
-      type (n) ~= 'table'
-      or type (n.id) ~= 'string'
-      or not n.id:match ('^[%a_][%w_]*$')
-      or type (n.type) ~= 'string'
-    then
-      return nil, 'Node ' .. i .. ' needs an id and a type.'
-    end
-    if seen[n.id] then
-      return nil, 'Two nodes are called ' .. n.id .. '.'
-    end
-    seen[n.id] = true
-    local inputs, settings = {}, {} ---@type table<string, number[]>, table<string, any>
-    if type (n.inputs) == 'table' then
-      for k, v in
-        pairs (n.inputs --[[@as table<string, any>]])
-      do
-        inputs[tostring (k)] = numbers (v)
-      end
-    end
-    if type (n.settings) == 'table' then
-      for k, v in
-        pairs (n.settings --[[@as table<string, any>]])
-      do
-        settings[tostring (k)] = clean_setting (v)
-      end
-    end
-    doc.nodes[#doc.nodes + 1] = {
-      id = n.id,
-      type = n.type,
-      x = tonumber (n.x) or 0,
-      y = tonumber (n.y) or 0,
-      inputs = inputs,
-      settings = settings,
-    }
+  local list, why, seen = read_nodes (data.nodes)
+  if not list then
+    return nil, why
   end
-  local taken = {} ---@type table<string, boolean>
-  local edge_list = type (data.edges) == 'table' and data.edges or {} ---@type table<string, any>[]
-  for _, e in ipairs (edge_list) do
-    if
-      type (e) == 'table'
-      and seen[e.from]
-      and seen[e.to]
-      and type (e.output) == 'string'
-      and type (e.input) == 'string'
-    then
-      local key = tostring (e.to) .. '.' .. tostring (e.input)
-      if not taken[key] then
-        taken[key] = true
-        doc.edges[#doc.edges + 1] =
-          { from = e.from, output = e.output, to = e.to, input = e.input }
+  doc.nodes = list
+  doc.edges = read_edges (data.edges, seen)
+  -- Groups that do not read are left out, and the made nodes that use one show as missing.
+  if type (data.subgraphs) == 'table' then
+    local subs = {} ---@type table<string, Shader.Subgraph>
+    for sid, raw in
+      pairs (data.subgraphs --[[@as table<string, any>]])
+    do
+      local sg = nil ---@type Shader.Subgraph?
+      if type (sid) == 'string' and sid:match ('^[%w_]+$') then
+        sg = read_subgraph (raw)
       end
+      if sg then
+        subs[sid] = sg
+      end
+    end
+    if next (subs) then
+      doc.subgraphs = subs
+      doc.subgraphs = graph.kept_subgraphs (doc, doc.nodes) or nil
     end
   end
   -- Frames and reroute points that do not read leave the canvas bare, rather than losing the

@@ -133,3 +133,25 @@ test ('wgsl problems name their line', function ()
   eq (errors[1].line, 3)
   ok (has (errors[2].message, 'fragment entry point'))
 end)
+
+test (
+  'a code shader runs on a mesh as its surface only when v_uv is its place',
+  function ()
+    local surface = source.glsl_program (
+      'void main() {\n  fragColor = vec4(v_uv, 0.0, 1.0);\n}\n'
+    )
+    eq (surface.surface, true)
+    local pixels = source.glsl_program (
+      'void main() {\n  fragColor = vec4(gl_FragCoord.xy * v_uv, 0.0, 1.0);\n}\n'
+    )
+    eq (pixels.surface, false)
+    local toy = source.glsl_program (source.TEMPLATES.shadertoy)
+    eq (toy.surface, false)
+    local own_vertex = source.glsl_program (
+      'void main() {\n  fragColor = vec4(v_uv, 0.0, 1.0);\n}\n',
+      source.TEMPLATES.vertex
+    )
+    eq (own_vertex.surface, false)
+    eq (source.wgsl_program (source.TEMPLATES.wgsl).surface, nil)
+  end
+)

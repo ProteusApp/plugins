@@ -43,11 +43,13 @@ function plugin_ids () end
 ---@return table
 function load_plugin (id) end
 
----Compiles shader code with a real compiler: glslangValidator for GLSL ES, naga for WGSL.
----True when it compiles, false and the compiler's messages when it does not, and nil and why
----when the compiler is not installed. With SHADER_TOOLS=required, a missing compiler fails.
----@param lang 'glsl'|'wgsl'
+---Compiles shader code with a real compiler: glslangValidator for GLSL ES and HLSL, naga for
+---WGSL. True when it compiles, false and the compiler's messages when it does not, and nil
+---and why when the compiler is not installed. With SHADER_TOOLS=required, a missing compiler
+---fails.
+---@param lang 'glsl'|'wgsl'|'hlsl'
 ---@param stage 'fragment'|'vertex' WGSL checks the whole module.
 ---@param source string
+---@param entry? string The HLSL entry point. `main` when nil.
 ---@return boolean? ok, string? messages
-function shader_check (lang, stage, source) end
+function shader_check (lang, stage, source, entry) end

@@ -316,7 +316,12 @@ function M.glsl_program (text, vertex)
   end
   local vert = compile.GLSL_VERTEX
   local vert_offset = 0
+  -- A shader that finds its place only from v_uv runs on a mesh's surface as it is.
+  local surface = not shadertoy
+    and uses (code, 'v_uv')
+    and not uses (code, 'gl_FragCoord')
   if vertex and vertex:find ('%S') then
+    surface = false
     vert = vertex
     if not strip_comments (vertex):find ('^%s*#%s*version') then
       vert = '#version 300 es\n' .. vertex
@@ -334,6 +339,7 @@ function M.glsl_program (text, vertex)
     shadertoy = shadertoy,
     user_lines = count_lines (text) + 1,
     channels = channels,
+    surface = surface,
   }
   return program, errors
 end

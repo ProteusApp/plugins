@@ -10,6 +10,7 @@ local helpers = require ('shader_helpers') --[[@as Shader.HelpersModule]]
 local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
 local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
+local subgraph = require ('shader_subgraph') --[[@as Shader.SubgraphModule]]
 local types = require ('shader_types') --[[@as Shader.TypesModule]]
 
 -- The uniforms every shader gets, in their WGSL order.
@@ -256,11 +257,10 @@ local function order_from (doc, start, into)
   return order
 end
 
----Compiles a graph. The result always holds shaders that compile, even when the graph has
----problems: nodes with problems are left out, and `errors` says why.
+---Compiles a graph without made nodes.
 ---@param doc Shader.Doc
 ---@return Shader.CompileResult
-function M.compile (doc)
+local function compile_flat (doc)
   local errors = {} ---@type Shader.CompileError[]
   ---@param message string
   ---@param node? string
@@ -336,6 +336,8 @@ function M.compile (doc)
   -- The channels Texture nodes read, and the uniforms nodes ask for beyond the four.
   local reads = {} ---@type table<integer, string[]>
   local wants = {} ---@type table<string, boolean>
+  -- Each value in GLSL, in order, for the exporters to write in other languages.
+  local steps = {} ---@type Shader.Step[]
 
   for _, id in ipairs (order) do
     local n = graph.node (doc, id) --[[@as Shader.Node]]
@@ -468,6 +470,10 @@ function M.compile (doc)
               )
             local list = stmts[lang]
             list[#list + 1] = { text = line, node = id }
+            if lang == 'glsl' then
+              steps[#steps + 1] =
+                { var = var, type = ot, glsl = expr, node = id }
+            end
           end
         end
       end
@@ -610,8 +616,9 @@ function M.compile (doc)
   end
   g[#g + 1] = ''
   g[#g + 1] = 'void main() {'
-  g[#g + 1] = '  vec2 fragCoord = gl_FragCoord.xy;'
-  g[#g + 1] = '  vec2 uv = fragCoord / u_resolution;'
+  -- The place comes from the UV the vertex stage passes, so the shader also runs on a mesh.
+  g[#g + 1] = '  vec2 uv = v_uv;'
+  g[#g + 1] = '  vec2 fragCoord = uv * u_resolution;'
   g[#g + 1] =
     '  vec2 suv = (fragCoord - 0.5 * u_resolution) / u_resolution.y + 0.5;'
   for _, s in ipairs (stmts.glsl) do
@@ -669,11 +676,9 @@ function M.compile (doc)
   end
   w[#w + 1] = ''
   w[#w + 1] = '@fragment'
-  w[#w + 1] =
-    'fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {'
-  w[#w + 1] =
-    '  let fragCoord = vec2f(position.x, u.resolution.y - position.y);'
-  w[#w + 1] = '  let uv = fragCoord / u.resolution;'
+  w[#w + 1] = 'fn fs_main(frag_in: VertexOut) -> @location(0) vec4f {'
+  w[#w + 1] = '  let uv = frag_in.uv;'
+  w[#w + 1] = '  let fragCoord = uv * u.resolution;'
   w[#w + 1] =
     '  let suv = (fragCoord - 0.5 * u.resolution) / u.resolution.y + 0.5;'
   for _, s in ipairs (stmts.wgsl) do
@@ -708,6 +713,7 @@ function M.compile (doc)
       lines = glsl_lines,
       offset = 0,
       channels = channels,
+      surface = true,
     },
     wgsl = {
       language = 'wgsl',
@@ -720,8 +726,74 @@ function M.compile (doc)
       offset = 0,
       channels = channels,
       bindings = bindings,
+      surface = true,
+    },
+    ir = {
+      name = doc.name or 'Untitled',
+      steps = steps,
+      color = final.glsl.color or 'vec3(0.0)',
+      alpha = final.glsl.alpha or '1.0',
+      helpers = helpers.closure (helper_names),
+      uniforms = params,
+      extra = optional,
+      channels = channels,
     },
   }
+  return result
+end
+
+---Compiles a graph. The result always holds shaders that compile, even when the graph has
+---problems: nodes with problems are left out, and `errors` says why. Made nodes are expanded
+---first, and what the result says of their nodes it says of the made node.
+---@param doc Shader.Doc
+---@return Shader.CompileResult
+function M.compile (doc)
+  local flat, expansion = subgraph.expand (doc)
+  local result = compile_flat (flat)
+  if not expansion then
+    return result
+  end
+  local owner = expansion.owner
+  ---@param id string?
+  ---@return string?
+  local function top (id)
+    return id and (owner[id] or id)
+  end
+  for _, e in ipairs (result.errors) do
+    e.node = top (e.node)
+  end
+  for _, p in ipairs ({ result.glsl, result.wgsl }) do
+    for line, id in pairs (p.lines or {}) do
+      p.lines[line] = top (id) --[[@as string]]
+    end
+  end
+  for _, u in ipairs (result.uniforms) do
+    u.node = top (u.node)
+  end
+  for _, c in ipairs (result.glsl.channels or {}) do
+    local seen, list = {}, {} ---@type table<string, boolean>, string[]
+    for _, id in ipairs (c.nodes or {}) do
+      local t = top (id) --[[@as string]]
+      if not seen[t] then
+        seen[t] = true
+        list[#list + 1] = t
+      end
+    end
+    c.nodes = list
+  end
+  -- A made node's ports have the types of the inputs and outputs inside it.
+  for id, ports in pairs (expansion.ports) do
+    local ins, outs = {}, {} ---@type table<string, Shader.Type>, table<string, Shader.Type>
+    for key, targets in pairs (ports.ins) do
+      local t = targets[1]
+      ins[key] = t and (result.types[t.node] or {})[t.input] or nil
+    end
+    for key, o in pairs (ports.outs) do
+      outs[key] = (result.out_types[o.node] or {})[o.output]
+    end
+    result.types[id] = ins
+    result.out_types[id] = outs
+  end
   return result
 end
 
