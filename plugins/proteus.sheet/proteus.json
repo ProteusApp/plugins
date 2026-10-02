@@ -82,6 +82,7 @@
     "tests/sheet_ctl.test.lua",
     "tests/sheet_format.test.lua",
     "tests/sheet_formula.test.lua",
+    "tests/sheet_formula_parts.test.lua",
     "tests/sheet_grid.test.lua",
     "tests/sheet_model.test.lua",
     "tests/sheet_ops.test.lua",
