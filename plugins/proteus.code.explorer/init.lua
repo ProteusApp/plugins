@@ -208,7 +208,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.0.0',
+  version = '1.0.1',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -309,7 +309,16 @@ return {
     local git_kind = {} ---@type table<string, string> Path to what Git says about it.
     local git_inside = {} ---@type table<string, boolean> Folders with changes inside.
     local find_text = ''
-    local tree = ui.div ({ class = 'explorer-tree', attrs = { tabindex = 0 } })
+    -- A tree for a screen reader, with each row's level, and whether it is open and selected.
+    local tree = ui.div ({
+      class = 'explorer-tree',
+      attrs = {
+        tabindex = 0,
+        role = 'tree',
+        ['aria-label'] = 'Files',
+        ['aria-multiselectable'] = 'true',
+      },
+    })
     local find_label = ui.div ({ class = 'tree-find' })
     find_label:show (false)
     local rows = {} ---@type CodeExplorer.Row[]
@@ -410,6 +419,9 @@ return {
       local r = path and row_at[path]
       if r then
         r.row:class (cls, on)
+        if cls == 'selected' then
+          r.row:attr ('aria-selected', on and 'true' or 'false')
+        end
       end
     end
 
@@ -1489,6 +1501,12 @@ return {
       return ui.div ({
         class = classes,
         style = { ['--depth'] = depth },
+        attrs = {
+          role = 'treeitem',
+          ['aria-level'] = depth + 1,
+          ['aria-expanded'] = entry.dir and (open and 'true' or 'false') or nil,
+          ['aria-selected'] = picked[p] and 'true' or 'false',
+        },
         title = p,
         -- Clicks on the row being renamed stay with its text box.
         ['data-item'] = not renaming and p or nil,
