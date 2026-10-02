@@ -425,7 +425,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -449,7 +449,7 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -460,8 +460,8 @@
         "init.lua",
         "tests/git.test.lua"
       ],
-      "commit": "a17675d0242a827c6e9f96d5f192ad946f16c0e1",
-      "updated": "2026-10-02T05:18:47Z"
+      "commit": "d46fbdd916b77ac65392a047cc487ea706c0e119",
+      "updated": "2026-10-02T16:34:18Z"
     },
     {
       "id": "lang.gitfiles",
@@ -1983,7 +1983,7 @@
       "id": "proteus.nodal.terminal",
       "name": "Terminal",
       "description": "A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2015,14 +2015,14 @@
         "terminal.ndg",
         "tests/graph.test.lua"
       ],
-      "commit": "eb9ca018fc252997b91a3ba1c9e44ce061559fd9",
-      "updated": "2026-10-01T15:26:18-06:00"
+      "commit": "54fab442c1f8085a9f993555e4015ef2c5ee9321",
+      "updated": "2026-10-02T05:33:32Z"
     },
     {
       "id": "proteus.terminal",
       "name": "Terminal",
       "description": "Terminals in the bottom dock, which start in the folder open in the Code Editor.",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2051,8 +2051,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "67582143f8ad1b68b30e7eab192c4e7455fb9a80",
-      "updated": "2026-10-02T16:25:47Z"
+      "commit": "d46fbdd916b77ac65392a047cc487ea706c0e119",
+      "updated": "2026-10-02T16:34:18Z"
     },
     {
       "id": "proteus.todo",
