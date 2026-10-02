@@ -45,7 +45,7 @@ The arrow beside **+** lists the profiles, and **New Terminal with Profile…** 
 
 | Key | Type | What it does | Default |
 |-----|------|--------------|---------|
-| `terminal.shell` | string | The program the default profile runs, such as `pwsh`, `cmd` or `bash`. | empty, the system shell |
+| `terminal.shell` | string | The program the default profile runs, with any arguments, such as `pwsh -NoLogo` or `bash -l`. Quotes keep a path with spaces in one piece. | empty, the system shell |
 | `terminal.profiles` | json | More profiles, as above. | none |
 | `terminal.default_profile` | string | The name of the profile a new terminal runs. | empty, the default profile |
 | `terminal.font_size` | number | The terminals' font size. | `13` |

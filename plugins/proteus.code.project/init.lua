@@ -41,7 +41,7 @@ local EXCLUDE = {
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.1.0',
+  version = '1.1.1',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
@@ -268,7 +268,9 @@ return {
 
     local files_cache = nil ---@type string[]?
     local files_known = {} ---@type table<string, boolean>
-    local waiting = nil ---@type (fun(files: string[]?, err: string?))[]?
+    -- True when the walk stopped at its limit, so the list is not every file.
+    local files_cut = false
+    local waiting = nil ---@type (fun(files: string[]?, err: string?, truncated: boolean?))[]?
     -- Goes up each time the list goes stale, so a walk that ends after a change is not kept.
     local generation = 0
 
@@ -280,14 +282,14 @@ return {
 
     settings.watch ('project.exclude', forget_files)
 
-    ---@param cb fun(files: string[]?, err: string?)
+    ---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
     local function files (cb)
       if not root then
         cb (nil, 'No folder is open.')
         return
       end
       if files_cache then
-        cb (files_cache)
+        cb (files_cache, nil, files_cut)
         return
       end
       if waiting then
@@ -300,15 +302,17 @@ return {
         local list = waiting or {}
         waiting = nil
         local found = result and result.files or nil
+        local cut = result ~= nil and result.truncated == true
         if found and started_at == generation then
           files_cache = found
+          files_cut = cut
           files_known = {}
           for _, rel in ipairs (found) do
             files_known[rel] = true
           end
         end
         for _, fn in ipairs (list) do
-          app.try (fn, found, err)
+          app.try (fn, found, err, cut)
         end
       end)
     end
@@ -378,6 +382,25 @@ return {
       end)
     end
 
+    ---True for a path inside a folder that `project.exclude` names, which the list of files
+    ---leaves out.
+    ---@param rel string
+    ---@param names table<string, boolean> The names in `project.exclude`.
+    ---@return boolean
+    local function in_excluded (rel, names)
+      local parts = {} ---@type string[]
+      for part in rel:gmatch ('[^/]+') do
+        parts[#parts + 1] = part
+      end
+      -- The last part is the path itself, and only folders are left out.
+      for i = 1, #parts - 1 do
+        if names[parts[i]] then
+          return true
+        end
+      end
+      return false
+    end
+
     ---True for a path inside the folder's `.proteus` folder, or that folder itself.
     ---@param rel string?
     ---@return boolean
@@ -398,14 +421,23 @@ return {
         app.store.set ('current', false)
       end)
       app.fs.watch_dir (folder, function (ev)
-        -- A file that only changed keeps the list. Anything that came, went or moved does not.
+        -- A file that only changed keeps the list. Anything that came, went or moved does not,
+        -- unless it is where the list never looks: what .gitignore leaves out, such as build
+        -- output and logs, and the folders `project.exclude` names.
         local stale = ev.overflow
+        local names = {} ---@type table<string, boolean>
+        for _, n in ipairs (excluded ()) do
+          names[n] = true
+        end
         for _, change in ipairs (ev.changes) do
           local rel = disk.relative (folder, change.path, app.os)
-          if change.kind ~= 'file' then
+          local unlisted = change.ignored == true
+            or (rel ~= nil and in_excluded (rel, names))
+          if
+            not unlisted
+            and (change.kind ~= 'file' or (rel ~= nil and not files_known[rel]))
+          then
             stale = true
-          else
-            stale = stale or (rel ~= nil and not files_known[rel])
           end
           if
             not layer.loaded
@@ -609,7 +641,7 @@ return {
         return root and disk.relative (root, path, app.os) or nil
       end,
       absolute = function (rel)
-        return disk.join (root or '', rel)
+        return root and disk.join (root, rel) or nil
       end,
       excluded = excluded,
       trusted = function ()

@@ -103,3 +103,15 @@ test ('as_input ends every line with Enter', function ()
   eq (profiles.as_input ('ls'), 'ls\r')
   eq (profiles.as_input ('cd src\r\nls\n'), 'cd src\rls\r')
 end)
+
+test (
+  'the default profile splits terminal.shell into a program and its arguments',
+  function ()
+    local program, args = profiles.from_shell ('pwsh -NoLogo')
+    eq (program, 'pwsh')
+    eq (args, { '-NoLogo' })
+    local list = profiles.read ({}, '"C:/Program Files/Git/bin/bash.exe" -l')
+    eq (list[1].program, 'C:/Program Files/Git/bin/bash.exe')
+    eq (list[1].args, { '-l' })
+  end
+)

@@ -1263,8 +1263,9 @@ function Project.recent () end
 function Project.forget (path) end
 
 ---Every file in the folder, as paths from the root, sorted. What `.gitignore` leaves out and
----the folder names in `excluded` are skipped. The list is kept until files come or go.
----@param cb fun(files: string[]?, err: string?)
+---the folder names in `excluded` are skipped. The list is kept until files come or go. The
+---walk stops at 50,000 files, and then `truncated` is true.
+---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
 function Project.files (cb) end
 
 ---The path from the root, or nil for a path outside the folder. '' is the root itself.
@@ -1272,9 +1273,9 @@ function Project.files (cb) end
 ---@return string?
 function Project.relative (path) end
 
----The full path for a path from the root.
+---The full path for a path from the root, or nil when no folder is open.
 ---@param rel string
----@return string
+---@return string?
 function Project.absolute (rel) end
 
 ---Folder names that search and Go to File leave out, from the `project.exclude` setting.
