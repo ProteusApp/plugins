@@ -31,6 +31,7 @@
     "discord.rpc",
     "editor.core",
     "editor.home",
+    "handbook",
     "lang.luals",
     "lang.prettier",
     "lang.selene",
