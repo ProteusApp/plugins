@@ -1466,6 +1466,36 @@ end
 
 local RANK = { number = 1, string = 2, boolean = 3 }
 
+---Compares two numbers at 15 significant digits, as spreadsheets do, so 0.1+0.2 equals 0.3.
+---Numbers far apart skip the rounding.
+---@param x number
+---@param y number
+---@return integer
+local function num_compare (x, y)
+  if x == y then
+    return 0
+  end
+  local d = x - y
+  if math.abs (d) <= 2e-14 * math.max (math.abs (x), math.abs (y)) then
+    local cx, cy = clean (x), clean (y)
+    if cx == cy then
+      return 0
+    end
+    return cx < cy and -1 or 1
+  end
+  return d < 0 and -1 or 1
+end
+
+M.compare_numbers = num_compare
+
+---True when two numbers agree to 15 significant digits.
+---@param x number
+---@param y number
+---@return boolean
+local function same_number (x, y)
+  return num_compare (x, y) == 0
+end
+
 ---Compares two values the spreadsheet way: numbers before text before TRUE and FALSE, text
 ---without regard to case, and an empty cell as 0, "" or FALSE to suit the other side.
 ---@param a Sheet.Value
@@ -1487,7 +1517,9 @@ local function compare (a, b)
     return ra < rb and -1 or 1
   end
   local x, y = a, b ---@type any, any
-  if ra == 2 then
+  if ra == 1 then
+    return num_compare (x, y)
+  elseif ra == 2 then
     x, y = lower (x), lower (y)
   elseif ra == 3 then
     x, y = x and 1 or 0, y and 1 or 0
@@ -2250,6 +2282,17 @@ end
 ---@param op string
 ---@return boolean
 local function ordered (a, b, op)
+  if type (a) == 'number' and type (b) == 'number' then
+    local c = num_compare (a, b)
+    if op == '<' then
+      return c < 0
+    elseif op == '>' then
+      return c > 0
+    elseif op == '<=' then
+      return c <= 0
+    end
+    return c >= 0
+  end
   if op == '<' then
     return a < b
   elseif op == '>' then
@@ -2260,6 +2303,21 @@ local function ordered (a, b, op)
   return a >= b
 end
 
+---True when a cell holds the number `num`, as a number or as text that reads as one.
+---@param v Sheet.Value
+---@param num number
+---@return boolean
+local function holds_number (v, num)
+  if type (v) == 'number' then
+    return same_number (v, num)
+  end
+  if type (v) == 'string' then
+    local n = M.parse_number (v)
+    return n ~= nil and same_number (n, num)
+  end
+  return false
+end
+
 ---Builds the test for SUMIF, COUNTIF and their kin: `5`, `">5"`, `"<>x"`, `"=abc"`, `""` for an
 ---empty cell, and `*` and `?` as wildcards in text, with `~` before one to mean the character.
 ---@param crit Sheet.Value
@@ -2267,7 +2325,7 @@ end
 local function matcher (crit)
   if type (crit) == 'number' then
     return function (v)
-      return v == crit or (type (v) == 'string' and M.parse_number (v) == crit)
+      return holds_number (v, crit)
     end
   end
   if type (crit) == 'boolean' then
@@ -2291,7 +2349,7 @@ local function matcher (crit)
       end
     elseif num then
       want = function (v)
-        return v == num or (type (v) == 'string' and M.parse_number (v) == num)
+        return holds_number (v, num)
       end
     elseif up == 'TRUE' or up == 'FALSE' then
       local flag = up == 'TRUE'
@@ -2342,6 +2400,11 @@ local function equals (want, wild)
     end
     return function (v)
       return type (v) == 'string' and lower (v) == low
+    end
+  end
+  if type (want) == 'number' then
+    return function (v)
+      return type (v) == 'number' and same_number (v, want)
     end
   end
   return function (v)
@@ -3538,13 +3601,15 @@ local MODE = {
     local list = numbers (args, ctx)
     local counts = {} ---@type table<number, integer>
     local best, most = nil, 1 ---@type number?, integer
+    -- Values that agree to 15 digits count as one, so 0.1+0.2 and 0.3 are the same value.
     for _, x in ipairs (list) do
-      counts[x] = (counts[x] or 0) + 1
+      local key = clean (x)
+      counts[key] = (counts[key] or 0) + 1
     end
     -- The first value in the data wins a tie, as in spreadsheets.
     for _, x in ipairs (list) do
-      if counts[x] > most then
-        best, most = x, counts[x]
+      if counts[clean (x)] > most then
+        best, most = x, counts[clean (x)]
       end
     end
     if not best then
@@ -3822,9 +3887,10 @@ local function ranking (average)
       local ascending = given (args[3]) and number_of (args[3], ctx) ~= 0
       local before, same = 0, 0
       for _, y in ipairs (list) do
-        if y == x then
+        local c = num_compare (y, x)
+        if c == 0 then
           same = same + 1
-        elseif (ascending and y < x) or (not ascending and y > x) then
+        elseif (ascending and c < 0) or (not ascending and c > 0) then
           before = before + 1
         end
       end

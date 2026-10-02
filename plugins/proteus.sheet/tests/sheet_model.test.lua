@@ -816,6 +816,10 @@ test ('matches tests values the way filters and rules do', function ()
   ok (not mt (nil, '', '>', '0'))
   ok (mt (nil, '', '<>', '0'))
   ok (mt (f.error ('#N/A'), '#N/A', 'error'))
+  -- Numbers compare at 15 significant digits, as formulas do.
+  ok (mt (0.1 + 0.2, '0.3', '=', '0.3'))
+  ok (not mt (0.1 + 0.2, '0.3', '>', '0.3'))
+  ok (mt (0.1 + 0.2, '0.3', 'between', '0.3', '1'))
 end)
 
 ---------------------------------------------------------------------------------------------

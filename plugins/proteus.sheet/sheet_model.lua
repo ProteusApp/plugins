@@ -2914,10 +2914,7 @@ end
 local function compare (a, b)
   local ta, tb = type (a), type (b)
   if ta == 'number' and tb == 'number' then
-    local x, y =
-      a, --[[@as number]]
-      b --[[@as number]]
-    return x < y and -1 or (x > y and 1 or 0)
+    return formula.compare_numbers (a --[[@as number]], b --[[@as number]])
   end
   if ta == 'string' and tb == 'string' then
     local x, y = lower (a --[[@as string]]), lower (b --[[@as string]])
