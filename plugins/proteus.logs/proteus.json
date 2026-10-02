@@ -48,6 +48,7 @@
     "log_text.lua",
     "log_time.lua",
     "logs_css.lua",
+    "logs_detail.lua",
     "logs_list.lua",
     "tests/ansi.test.lua",
     "tests/css.test.lua",

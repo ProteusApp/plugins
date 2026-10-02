@@ -11,9 +11,11 @@
 -- every source in one list, in order of time.
 --
 -- This file puts the screen together and wires its events. The rest lives in modules that
--- share one context, Logs.Ctx: logs_list draws the list of lines.
+-- share one context, Logs.Ctx: logs_list draws the list of lines, and logs_detail shows the
+-- line picked in it.
 
 local CSS = require ('logs_css') --[[@as string]]
+local detail_m = require ('logs_detail') --[[@as Logs.DetailModule]]
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
 local list_m = require ('logs_list') --[[@as Logs.ListModule]]
 
@@ -98,12 +100,19 @@ local KIND_ICONS = {
 ---@field earlier_text Proteus.El
 ---@field later_bar Proteus.El
 ---@field later_text Proteus.El
+---@field detail Proteus.El
+---@field detail_title Proteus.El
+---@field detail_text Proteus.El
+---@field json_box Proteus.El
+---@field selection_css Proteus.El The rule that marks the picked row.
+---@field level_names table<string, string> Each level's name, such as Warn.
 ---@field render_toggles fun()
 ---@field scroll_bottom fun()
 ---@field render_chip_counts fun()
 ---@field render_empty fun()
 ---@field update_status fun()
 ---@field update_counts fun()
+---@field set_follow fun(on: boolean)
 ---@field redraw_list fun() From logs_list.
 ---@field show_window fun(from: integer)
 ---@field page fun(step: integer)
@@ -114,6 +123,10 @@ local KIND_ICONS = {
 ---@field tag_of fun(line: Logs.Line): { name: string, n: integer }?
 ---@field forget_line fun(line: Logs.Line)
 ---@field schedule fun()
+---@field close_detail fun() From logs_detail.
+---@field open_detail fun(line: Logs.Line)
+---@field select_line fun(id: integer)
+---@field move_selection fun(step: integer)
 
 ---@type Proteus.Plugin
 return {
@@ -332,7 +345,6 @@ return {
     local detail_title = ui.span ({ class = 'logs-detail-title' })
     local detail_text = ui.pre ({ class = 'logs-detail-text' })
     local json_box = ui.div ({ class = 'logs-json' })
-    local json_view = nil ---@type Proteus.El?
     local copy_btn = ui.button ({
       variant = 'ghost',
       title = 'Copy the line',
@@ -634,116 +646,19 @@ return {
     ctx.update_status, ctx.update_counts = update_status, update_counts
     list_m.attach (ctx)
     redraw_list = ctx.redraw_list
-    local show_window, page, reveal, locate =
-      ctx.show_window, ctx.page, ctx.reveal, ctx.locate
-    local view_sources, id_of, tag_of = ctx.view_sources, ctx.id_of, ctx.tag_of
+    local show_window, page, reveal = ctx.show_window, ctx.page, ctx.reveal
+    local view_sources, id_of = ctx.view_sources, ctx.id_of
     local forget_line, schedule = ctx.forget_line, ctx.schedule
 
     -- The detail panel ------------------------------------------------------------------------
 
-    local function close_detail ()
-      ctx.selected = nil
-      selection_css:set ('')
-      detail:show (false)
-    end
-
-    ---@param line Logs.Line
-    local function open_detail (line)
-      ctx.selected = line
-      selection_css:set (
-        '.logs-list .logs-row[data-item="'
-          .. id_of (line)
-          .. '"] { background: var(--selection); }'
-      )
-      local from = nil ---@type string?
-      if ctx.merged then
-        local tag = tag_of (line)
-        from = tag and tag.name or nil
-      end
-      detail_title:text (
-        (from and (from .. '  ·  ') or '')
-          .. 'Line '
-          .. line.n
-          .. '  ·  '
-          .. LEVEL_NAMES[line.level]
-          .. (line.err and '  ·  stderr' or '')
-          .. (
-            line.time
-              and ('  ·  ' .. os.date (
-                '!%Y-%m-%d %H:%M:%S',
-                math.floor (line.time / 1000)
-              ) .. (line.stamped and '' or ' (from the line above)'))
-            or ''
-          )
-      )
-      detail_text:text (line.plain)
-      local pretty = nil ---@type string?
-      local json = lf.find_json (line.plain)
-      if json then
-        pretty = lf.pretty_json (json)
-      end
-      detail:class ('logs-has-json', pretty ~= nil)
-      json_box:show (pretty ~= nil)
-      detail:show (true)
-      -- The editor measures itself when it is made, so it is made once the panel shows.
-      if pretty then
-        if json_view then
-          json_view:widget ('set_text', pretty)
-        else
-          json_view = ui.widget ('code', {
-            text = pretty,
-            language = 'json',
-            readonly = true,
-            wrap = true,
-          })
-          json_box:append (json_view)
-        end
-      end
-    end
-
-    ---@param id integer
-    local function select_line (id)
-      local line = ctx.by_id[id]
-      if not line then
-        return
-      end
-      if ctx.follow then
-        set_follow (false)
-      end
-      open_detail (line)
-      reveal (id)
-    end
-
-    ---@param step integer 1 moves down and -1 moves up.
-    local function move_selection (step)
-      if #ctx.chunks == 0 then
-        return
-      end
-      local target = nil ---@type integer?
-      local ci, ri = nil, nil ---@type integer?, integer?
-      if ctx.selected then
-        ci, ri = locate (id_of (ctx.selected))
-      end
-      if ci and ri then
-        local ns = ctx.chunks[ci].ns
-        local next_chunk, prev_chunk = ctx.chunks[ci + 1], ctx.chunks[ci - 1]
-        if ns[ri + step] then
-          target = ns[ri + step]
-        elseif step > 0 and next_chunk then
-          target = next_chunk.ns[1]
-        elseif step < 0 and prev_chunk then
-          target = prev_chunk.ns[#prev_chunk.ns]
-        end
-      elseif step > 0 then
-        target = ctx.chunks[1].ns[1]
-      else
-        local last = ctx.chunks[#ctx.chunks].ns
-        target = last[#last]
-      end
-      if target then
-        select_line (target)
-      end
-    end
+    ctx.detail, ctx.detail_title = detail, detail_title
+    ctx.detail_text, ctx.json_box = detail_text, json_box
+    ctx.selection_css, ctx.level_names = selection_css, LEVEL_NAMES
+    ctx.set_follow = set_follow
+    detail_m.attach (ctx)
+    local close_detail, select_line = ctx.close_detail, ctx.select_line
+    local move_selection = ctx.move_selection
 
     -- Sources ---------------------------------------------------------------------------------
 
