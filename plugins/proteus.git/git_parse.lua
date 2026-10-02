@@ -41,6 +41,7 @@
 ---@field author string
 ---@field date string Relative, such as `'3 days ago'`.
 ---@field refs Git.Ref[]
+---@field parents string[] Full hashes. Empty for the first commit.
 ---@field subject string
 
 ---@class Git.Branch
@@ -118,6 +119,7 @@
 
 ---@class Git.LogOptions
 ---@field more? boolean Ends the list in a Load More row.
+---@field graph? string[] SVG to draw at the start of each row, as `git_graph.rows_svg` gives.
 ---@field empty? string What to say when there is no commit.
 
 ---@class Git.ListOptions
@@ -141,7 +143,7 @@ local US = '\31'
 local RS = '\30'
 local NO_NEWLINE = 'No newline at end of file'
 
-M.LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ar%x1f%D%x1f%s%x1e'
+M.LOG_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ar%x1f%D%x1f%P%x1f%s%x1e'
 M.SHOW_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%P%x1f%B%x1e'
 M.BRANCH_FORMAT = '--format=%(HEAD)%09%(refname)%09%(upstream:short)'
 
@@ -662,7 +664,8 @@ local function read_refs (text)
   return refs
 end
 
----Reads `git log` output in `LOG_FORMAT`.
+---Reads `git log` output in `LOG_FORMAT`. Output without the parents field, as before 1.2.0,
+---reads too, with no parents.
 ---@param text string
 ---@return Git.Commit[]
 function M.parse_log (text)
@@ -671,13 +674,22 @@ function M.parse_log (text)
     local rec = chunk:gsub ('^%s+', '')
     local f = split (rec, US)
     if #f >= 6 then
+      local parents = {} ---@type string[]
+      local first = 6
+      if #f >= 7 then
+        for p in f[6]:gmatch ('%x+') do
+          parents[#parents + 1] = p
+        end
+        first = 7
+      end
       out[#out + 1] = {
         hash = f[1],
         short = f[2],
         author = f[3],
         date = f[4],
         refs = read_refs (f[5]),
-        subject = table.concat (f, US, 6),
+        parents = parents,
+        subject = table.concat (f, US, first),
       }
     end
   end
@@ -880,13 +892,21 @@ function M.search_args (text)
   return { '--regexp-ignore-case', '--fixed-strings', '--grep=' .. query }
 end
 
----`n` commits for the History view. A file's history follows it across renames.
+---`n` commits for the History view. They come newest first, but never before a commit that
+---came after them, so the graph can draw them. A file's history follows it across renames.
 ---@param n integer
 ---@param query? Git.LogQuery
 ---@return string[]
 function M.log_args (n, query)
   local q = query or {}
-  local args = { 'log', '-n', tostring (n), '--decorate=full', M.LOG_FORMAT }
+  local args = {
+    'log',
+    '-n',
+    tostring (n),
+    '--date-order',
+    '--decorate=full',
+    M.LOG_FORMAT,
+  }
   if q.skip and q.skip > 0 then
     args[#args + 1] = '--skip=' .. q.skip
   end
@@ -1866,7 +1886,11 @@ function M.log_html (commits, selected, opts)
       .. '</div>'
   end
   local out = {} ---@type string[]
-  for _, c in ipairs (commits) do
+  local graph = o.graph
+  if graph then
+    out[1] = '<div class="git-graph-list">'
+  end
+  for i, c in ipairs (commits) do
     local refs = {} ---@type string[]
     for _, r in ipairs (c.refs) do
       refs[#refs + 1] = '<span class="git-ref git-ref-'
@@ -1880,7 +1904,9 @@ function M.log_html (commits, selected, opts)
       .. (c.hash == selected and ' active' or '')
       .. '" data-item="'
       .. esc (c.hash)
-      .. '"><div class="git-commit-subject">'
+      .. '">'
+      .. (graph and graph[i] or '')
+      .. '<div class="git-commit-text"><div class="git-commit-subject">'
       .. table.concat (refs)
       .. '<span class="git-subject-text">'
       .. esc (c.subject)
@@ -1890,7 +1916,10 @@ function M.log_html (commits, selected, opts)
       .. esc (c.author)
       .. '</span><span>'
       .. esc (c.date)
-      .. '</span></div></div>'
+      .. '</span></div></div></div>'
+  end
+  if graph then
+    out[#out + 1] = '</div>'
   end
   if o.more then
     out[#out + 1] =

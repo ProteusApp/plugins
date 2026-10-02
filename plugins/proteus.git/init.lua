@@ -10,6 +10,7 @@
 -- git_parse holds the parsing, the command lines and the HTML, so its tests reach them. This
 -- file holds the screen, the commands and the calls to git.
 
+local graph = require ('git_graph') --[[@as Git.GraphModule]]
 local m = require ('git_parse') --[[@as Git.ParseModule]]
 
 local MAX_RECENT = 10
@@ -64,7 +65,22 @@ local CSS = [[
 .git-search { width: 100%; }
 .git-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-muted); min-width: 0; }
 .git-filter-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.git-commit { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
+.git-commit { display: flex; align-items: center; gap: 4px; padding: 6px 10px; cursor: pointer;
+  border-bottom: 1px solid var(--border); }
+.git-commit-text { flex: 1; min-width: 0; }
+.git-graph-list .git-commit { height: 46px; padding: 0 10px 0 2px; border-bottom: none; }
+.git-graph { flex: none; overflow: hidden; }
+.git-graph path { fill: none; stroke-width: 2; }
+.git-graph .git-dot { stroke-width: 2; }
+.git-graph .git-dot-merge { fill: var(--bg) !important; }
+.git-lane-0 { stroke: var(--accent); fill: var(--accent); }
+.git-lane-1 { stroke: var(--success); fill: var(--success); }
+.git-lane-2 { stroke: var(--warning); fill: var(--warning); }
+.git-lane-3 { stroke: var(--danger); fill: var(--danger); }
+.git-lane-4 { stroke: #a371f7; fill: #a371f7; }
+.git-lane-5 { stroke: #39c5cf; fill: #39c5cf; }
+.git-lane-6 { stroke: #f778ba; fill: #f778ba; }
+.git-lane-7 { stroke: #8b949e; fill: #8b949e; }
 .git-commit:hover { background: var(--bg-hover); }
 .git-commit.active { background: var(--bg-active); }
 .git-commit-subject { display: flex; align-items: center; gap: 4px; min-width: 0; }
@@ -192,6 +208,9 @@ return {
     -- The search box's text, and the file whose history the History view lists.
     local log_search = ''
     local log_path = nil ---@type string?
+    -- The graph beside the history, drawn again when the commits change.
+    local graph_rows = {} ---@type string[]
+    local graph_for = nil ---@type Git.Commit[]?
     local selection = nil ---@type Git.Selection?
     -- What the main area draws now. The hunk buttons point into `shown_files`.
     local shown_files = {} ---@type Git.FileDiff[]
@@ -567,10 +586,15 @@ return {
       end
       local sel = selection
       local hash = sel and sel.kind == 'commit' and sel.hash or nil
+      -- A search or one file's history leaves commits out, so it has no graph to draw.
       local filtered = log_path ~= nil or not blank (log_search)
+      if not filtered and graph_for ~= commits then
+        graph_rows, graph_for = graph.rows_svg (commits), commits
+      end
       history_list:html (m.log_html (commits, hash, {
         more = log_more,
         empty = filtered and 'No commits match' or nil,
+        graph = not filtered and graph_rows or nil,
       }))
     end
 

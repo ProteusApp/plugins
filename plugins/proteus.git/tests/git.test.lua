@@ -500,6 +500,7 @@ test ('parse_log reads commits and full ref names', function ()
     author = 'Ada',
     date = '4 weeks ago',
     refs = { { name = 'main', kind = 'branch', current = true } },
+    parents = {},
     subject = 'Second commit',
   })
   eq (log[2].refs, {
@@ -826,7 +827,10 @@ test ('command lines', function ()
     '--branch',
     '--untracked-files=all',
   })
-  eq (m.log_args (200), { 'log', '-n', '200', '--decorate=full', m.LOG_FORMAT })
+  eq (
+    m.log_args (200),
+    { 'log', '-n', '200', '--date-order', '--decorate=full', m.LOG_FORMAT }
+  )
   eq (m.branch_args (), { 'branch', '-a', m.BRANCH_FORMAT })
   local renamed = entry ('new name.txt', 'R ', 'renamed', true, 'old.txt')
   eq (m.diff_args (renamed), {
@@ -1176,13 +1180,17 @@ end)
 ---------------------------------------------------------------------------------------------
 
 test ('log_args pages, searches and follows one file', function ()
-  eq (m.log_args (200), { 'log', '-n', '200', '--decorate=full', m.LOG_FORMAT })
+  eq (
+    m.log_args (200),
+    { 'log', '-n', '200', '--date-order', '--decorate=full', m.LOG_FORMAT }
+  )
   eq (
     m.log_args (200, { skip = 400, search = '  fix bug ', path = 'src/a b.txt' }),
     {
       'log',
       '-n',
       '200',
+      '--date-order',
       '--decorate=full',
       m.LOG_FORMAT,
       '--skip=400',
@@ -1199,7 +1207,7 @@ test ('log_args pages, searches and follows one file', function ()
     { '--regexp-ignore-case', '--fixed-strings', '--author=Ada' }
   )
   eq (m.search_args ('   '), {})
-  eq (#m.log_args (5, { skip = 0, search = '' }), 5)
+  eq (#m.log_args (5, { skip = 0, search = '' }), 6)
 end)
 
 test ('append_commits adds a page without repeats', function ()
@@ -1229,4 +1237,84 @@ test ('relative reads a full path from the repository root', function ()
   eq (m.relative ('/home/r', '/home/r'), nil)
   eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'windows'), 'A.txt')
   eq (m.relative ('C:/Work/Repo', 'c:/work/repo/A.txt', 'linux'), nil)
+end)
+
+---------------------------------------------------------------------------------------------
+-- The history graph
+---------------------------------------------------------------------------------------------
+
+local graph = require ('git_graph') --[[@as Git.GraphModule]]
+
+---Each row as its lane and its lines, such as `'1: 0,0-0,2 1,1-1,2'`.
+---@param rows Git.GraphRow[]
+---@return string[]
+local function graph_text (rows)
+  local out = {} ---@type string[]
+  for i, r in ipairs (rows) do
+    local parts = { tostring (r.col) .. (r.merge and 'm' or '') .. ':' }
+    for _, l in ipairs (r.lines) do
+      parts[#parts + 1] = l.x1 .. ',' .. l.y1 .. '-' .. l.x2 .. ',' .. l.y2
+    end
+    out[i] = table.concat (parts, ' ')
+  end
+  return out
+end
+
+-- `git log --date-order` output with parents, built by hand: a topic branch
+-- forks from the first commit and is merged back.
+local LOG_GRAPH = table.concat ({
+  'aaaa\031aaaa\031Ada\0311 day ago\031HEAD -> refs/heads/main\031bbbb dddd\031Merge topic\030\n',
+  'dddd\031dddd\031Ada\0312 days ago\031refs/heads/topic\031eeee\031Topic work\030\n',
+  'bbbb\031bbbb\031Ada\0313 days ago\031\031cccc\031Main work\030\n',
+  'eeee\031eeee\031Ada\0314 days ago\031\031cccc\031Topic start\030\n',
+  'cccc\031cccc\031Ada\0315 days ago\031\031\031First\030\n',
+})
+
+test ('parse_log reads the parents', function ()
+  local log = m.parse_log (LOG_GRAPH)
+  eq (#log, 5)
+  eq (log[1].parents, { 'bbbb', 'dddd' })
+  eq (log[1].subject, 'Merge topic')
+  eq (log[5].parents, {})
+  -- Output from before the parents field reads with none.
+  eq (m.parse_log (LOG_FULL)[1].parents, {})
+end)
+
+test ('graph layout puts a merged branch in its own lane', function ()
+  local rows = graph.layout (m.parse_log (LOG_GRAPH))
+  eq (graph_text (rows), {
+    '0m: 0,1-0,2 0,1-1,2',
+    '1: 0,0-0,2 1,0-1,1 1,1-1,2',
+    '0: 0,0-0,1 1,0-1,2 0,1-0,2',
+    '1: 0,0-0,2 1,0-1,1 1,1-1,2',
+    '0: 0,0-0,1 1,0-0,1',
+  })
+  eq (rows[1].width, 2)
+  eq (rows[5].width, 2)
+end)
+
+test ('graph layout gives a second branch tip its own lane', function ()
+  local rows = graph.layout ({
+    { hash = 'a', parents = { 'c' } },
+    { hash = 'b', parents = { 'c' } },
+    { hash = 'c', parents = {} },
+  })
+  eq (graph_text (rows), {
+    '0: 0,1-0,2',
+    '1: 0,0-0,2 1,1-1,2',
+    '0: 0,0-0,1 1,0-0,1',
+  })
+end)
+
+test ('graph svg draws lines, curves and a dot', function ()
+  local rows = graph.rows_svg (m.parse_log (LOG_GRAPH))
+  eq (#rows, 5)
+  has (rows[1], '<svg class="git-graph" width="24" height="46"')
+  has (rows[1], '<path class="git-lane-1" d="M6 23C6 34.5 18 34.5 18 46"/>')
+  has (rows[1], 'class="git-dot git-lane-0 git-dot-merge" cx="6" cy="23"')
+  has (rows[2], '<path class="git-lane-0" d="M6 0L6 46"/>')
+  lacks (rows[2], 'git-dot-merge')
+  local html = m.log_html (m.parse_log (LOG_GRAPH), nil, { graph = rows })
+  has (html, '<div class="git-graph-list">')
+  has (html, 'data-item="aaaa"><svg class="git-graph"')
 end)
