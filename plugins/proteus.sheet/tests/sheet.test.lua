@@ -1076,11 +1076,12 @@ test ('cut and paste moves cells without moving their references', function ()
   eq (shown (s, 'C3'), '10')
   s:undo ()
   eq ({ text (s, 'B1'), text (s, 'C3') }, { '=A1*2', '' })
-  -- A cut pasted over its own cells keeps what lands there.
+  -- A cut pasted over its own cells keeps what lands there, and a reference into the moved
+  -- block follows it.
   local again = s:copy (r ('A1:B1'))
   again.cut = true
   s:paste (1, 2, again)
-  eq ({ text (s, 'A1'), text (s, 'B1'), text (s, 'C1') }, { '', '5', '=A1*2' })
+  eq ({ text (s, 'A1'), text (s, 'B1'), text (s, 'C1') }, { '', '5', '=B1*2' })
 end)
 
 test ('pasting text from outside', function ()

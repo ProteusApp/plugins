@@ -2723,6 +2723,158 @@ function Sheet:copy (rect)
   }
 end
 
+---A block moved by a number of rows and columns.
+---@param rect Sheet.Rect
+---@param drow integer
+---@param dcol integer
+---@return Sheet.Rect
+local function shifted (rect, drow, dcol)
+  return {
+    r1 = rect.r1 + drow,
+    c1 = rect.c1 + dcol,
+    r2 = rect.r2 + drow,
+    c2 = rect.c2 + dcol,
+  }
+end
+
+---A copy of a rule, a validation or a chart with some fields changed.
+---@param item table
+---@param fields table<string, any>
+---@return table
+local function with_fields (item, fields)
+  local copy = {} ---@type table<string, any>
+  for k, v in
+    pairs (item --[[@as table<string, any>]])
+  do
+    copy[k] = v
+  end
+  for k, v in pairs (fields) do
+    copy[k] = v
+  end
+  return copy
+end
+
+---Follows a block of cells that a cut and paste or a drag moved from `source` to `target` on
+---this sheet, as part of the open step. Every formula in the book that points into the block
+---points where it went, and a reference to the cells it landed on turns into #REF!. The rules,
+---validation, charts and filter that lie wholly inside the block move with it. A chart stays
+---when the block moves to another sheet, since its range names no sheet. The cells in
+---`target` are left alone: the paste wrote them already.
+---@param source Sheet.Sheet
+---@param src Sheet.Rect
+---@param target Sheet.Rect
+function Sheet:follow_move (source, src, target)
+  local drow, dcol = target.r1 - src.r1, target.c1 - src.c1
+  local from, to = source.name, self.name
+  ---@param text string
+  ---@param own string
+  ---@param lands? string
+  ---@return string
+  local function move (text, own, lands)
+    return formula.move (
+      text,
+      src,
+      drow,
+      dcol,
+      { from = from, to = to, own = own, lands = lands }
+    )
+  end
+  for _, sheet in ipairs (self.book.sheets) do
+    local list = {} ---@type Sheet.Cell[]
+    for _, cell in pairs (sheet.cells) do
+      if
+        cell.formula
+        and not (
+          sheet == self
+          and M.contains (
+            target,
+            { r1 = cell.row, c1 = cell.col, r2 = cell.row, c2 = cell.col }
+          )
+        )
+      then
+        list[#list + 1] = cell
+      end
+    end
+    for _, cell in ipairs (list) do
+      local text = move (cell.text, sheet.name)
+      if text ~= cell.text then
+        sheet:record (cell.row, cell.col, { text = text, style = cell.style })
+      end
+    end
+  end
+
+  -- Rules and validation that lie inside the block go with it, to another sheet too.
+  local arrived = { rules = {}, validation = {} } ---@type table<string, table[]>
+  for _, sheet in ipairs (self.book.sheets) do
+    for _, field in ipairs ({ 'rules', 'validation', 'charts' }) do
+      local items = (sheet --[[@as table<string, table[]>]])[field]
+      local out = {} ---@type table[]
+      local changed = false
+      for _, item in ipairs (items) do
+        local rect = sheet == source and M.parse_range (item.range)
+        local goes = rect and M.contains (src, rect)
+        if goes and field == 'charts' and source ~= self then
+          goes = false
+        end
+        local fields = {} ---@type table<string, any>
+        if type (item.formula) == 'string' then
+          local text = move (item.formula, sheet.name, goes and to or nil)
+          if text ~= item.formula then
+            fields.formula = text
+          end
+        end
+        if goes then
+          fields.range =
+            M.range_name (shifted (rect --[[@as Sheet.Rect]], drow, dcol))
+        end
+        local next_item = next (fields) and with_fields (item, fields) or item
+        if goes and source ~= self then
+          local list = arrived[field]
+          list[#list + 1] = next_item
+          changed = true
+        else
+          out[#out + 1] = next_item
+          changed = changed or next_item ~= item
+        end
+      end
+      if changed then
+        sheet:set_prop (field, nil, out)
+      end
+    end
+  end
+  for field, list in pairs (arrived) do
+    if #list > 0 then
+      local out = {} ---@type table[]
+      for _, item in
+        ipairs ((self --[[@as table<string, table[]>]])[field])
+      do
+        out[#out + 1] = item
+      end
+      for _, item in ipairs (list) do
+        out[#out + 1] = item
+      end
+      self:set_prop (field, nil, out)
+    end
+  end
+
+  -- The filter goes with the block when the block holds it all, and the rows it hides follow.
+  local f = source.filter
+  if f and M.contains (src, f.rect) and (source == self or not self.filter) then
+    local columns = {} ---@type table<integer, Sheet.FilterColumn>
+    for col, test in pairs (f.columns) do
+      columns[col + dcol] = test
+    end
+    ---@type Sheet.LiveFilter
+    local moved =
+      { rect = shifted (f.rect, drow, dcol), columns = columns, hidden = {} }
+    moved.hidden = self:hidden_by (moved)
+    if source ~= self then
+      source:set_prop ('filter', nil, nil)
+    end
+    self:set_prop ('filter', nil, moved)
+  end
+end
+
 ---Pastes a clip with its top left cell at `row` and `col`, as one undo step, and returns the
 ---block that changed. Formulas from a copy move their relative references by the distance
 ---moved. A cut moves the cells as they are and empties where they came from. When `fill` is a
@@ -2767,8 +2919,9 @@ function Sheet:paste (row, col, clip, fill, opts)
   -- A cut moves cells within one book. From another book it pastes as a copy.
   local cut = clip.cut == true and source.book == self.book
   self:begin ({ select = target, label = 'Paste' })
+  local src = nil ---@type Sheet.Rect?
   if cut and from_row and from_col and only == nil then
-    local src = {
+    src = {
       r1 = from_row,
       c1 = from_col,
       r2 = from_row + h - 1,
@@ -2812,6 +2965,15 @@ function Sheet:paste (row, col, clip, fill, opts)
         elseif from_row and from_col and not cut then
           text =
             formula.shift (text, r - (from_row + i - 1), c - (from_col + j - 1))
+        elseif src and not turn then
+          -- A moved formula keeps pointing where it did, unless it points into the block.
+          text =
+            formula.move (text, src, target.r1 - src.r1, target.c1 - src.c1, {
+              from = source.name,
+              to = self.name,
+              own = source.name,
+              lands = self.name,
+            })
         end
         if clip.typed and only == nil then
           state = self:typed (r, c, text)
@@ -2864,6 +3026,9 @@ function Sheet:paste (row, col, clip, fill, opts)
       end
       self:set_prop ('notes', (target.r1 + oi) * KEY + (target.c1 + oj), text)
     end
+  end
+  if src and not turn then
+    self:follow_move (source, src, target)
   end
   self:finish ()
   return target

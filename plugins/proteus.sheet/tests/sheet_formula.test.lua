@@ -223,6 +223,22 @@ test ('shift moves references to other sheets too', function ()
   eq (f.shift ('=Data!A1', -1, 0), '=#REF!')
 end)
 
+test ('move follows a block of cells that moved', function ()
+  local block = { r1 = 1, c1 = 1, r2 = 2, c2 = 2 } ---@type Sheet.Rect
+  local here = { from = 'Sheet1', to = 'Sheet1', own = 'Sheet1' }
+  eq (
+    f.move ('=A1+$B$2+SUM(A1:B2)+SUM(A1:C3)+A:A', block, 2, 3, here),
+    '=D3+$E$4+SUM(D3:E4)+SUM(A1:C3)+A:A'
+  )
+  -- A reference to a cell the block lands on and did not hold is gone.
+  eq (f.move ('=C3+B2', block, 1, 1, here), '=#REF!+C3')
+  local away = { from = 'Sheet1', to = 'Q1 sales', own = 'Sheet1' }
+  eq (f.move ('=A1+C1', block, 0, 0, away), "='Q1 sales'!A1+C1")
+  -- A formula that moves with the block names the sheet it came from when it reads it.
+  away.lands = 'Q1 sales'
+  eq (f.move ('=A1+C1', block, 0, 0, away), '=A1+Sheet1!C1')
+end)
+
 test ('adjust with no options changes only references with no sheet', function ()
   eq (f.adjust ('=A5+Data!A5', 'row', 3, 1), '=A6+Data!A5')
   eq (f.adjust ('=A3+Data!A3', 'row', 3, -1), '=#REF!+Data!A3')

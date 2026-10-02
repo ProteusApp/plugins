@@ -751,6 +751,144 @@ end)
 -- Excel and CSV
 ---------------------------------------------------------------------------------------------
 
+---------------------------------------------------------------------------------------------
+-- Moving cells
+---------------------------------------------------------------------------------------------
+
+---Cuts a block and pastes it with its top left cell at `to`.
+---@param from_sheet Sheet.Sheet
+---@param block string
+---@param to_sheet Sheet.Sheet
+---@param to string
+local function move (from_sheet, block, to_sheet, to)
+  local clip = from_sheet:copy (r (block))
+  clip.cut = true
+  local row, col = at (to)
+  to_sheet:paste (row, col, clip)
+end
+
+test ('a cut and paste points other formulas where the cells went', function ()
+  local s = sheet_of ({
+    A1 = '5',
+    A2 = '7',
+    B1 = '=A1*2',
+    B2 = '=SUM(A1:A2)',
+    B3 = '=SUM(A1:A3)',
+    B4 = '=$A$1+1',
+    B5 = '=E1',
+    B6 = '=A1:A2',
+  })
+  move (s, 'A1:A2', s, 'E1')
+  -- A reference inside the block moves, $ or not. A range that sticks out stays.
+  eq (text (s, 'B1'), '=E1*2')
+  eq (text (s, 'B2'), '=SUM(E1:E2)')
+  eq (text (s, 'B3'), '=SUM(A1:A3)')
+  eq (text (s, 'B4'), '=$E$1+1')
+  -- A reference to a cell the block lands on is gone.
+  eq (text (s, 'B5'), '=#REF!')
+  eq (shown (s, 'B1'), '10')
+  eq (shown (s, 'B2'), '12')
+  -- The whole move is one undo step.
+  s:undo ()
+  eq (
+    { text (s, 'A1'), text (s, 'E1'), text (s, 'B1'), text (s, 'B5') },
+    { '5', '', '=A1*2', '=E1' }
+  )
+end)
+
+test (
+  'a drag that moves cells inside their own block keeps references right',
+  function ()
+    local s = sheet_of ({ A1 = '1', A2 = '=A1+1', A3 = '=A2+1', C1 = '=A3' })
+    move (s, 'A1:A3', s, 'A2')
+    eq ({ text (s, 'A1'), text (s, 'A2'), text (s, 'A3'), text (s, 'A4') }, {
+      '',
+      '1',
+      '=A2+1',
+      '=A3+1',
+    })
+    eq (text (s, 'C1'), '=A4')
+    eq (shown (s, 'C1'), '3')
+  end
+)
+
+test ('a cut to another sheet follows the cells across the book', function ()
+  local book = B.new ({ clock = clock, name = 'Data' })
+  local data = book.sheets[1]
+  local other = assert (book:add_sheet ('Q1 sales'))
+  data:put (1, 1, { text = '4' })
+  data:put (1, 2, { text = '=A1+C1' })
+  data:put (1, 3, { text = '10' })
+  other:put (1, 1, { text = '=Data!A1*3' })
+  other:put (2, 1, { text = '=C5' })
+  move (data, 'A1:B1', other, 'B5')
+  eq (data:text (1, 1), '')
+  -- A reference on another sheet to the moved cell now names where it went.
+  eq (other:text (1, 1), '=B5*3')
+  eq (other:text (2, 1), '=#REF!')
+  -- The moved formula reads A1 where it went, and C1 on the sheet it came from.
+  eq (other:text (5, 3), '=B5+Data!C1')
+  eq (other:value (5, 3), 14)
+  data:put (2, 1, { text = "='Q1 sales'!B5" })
+  move (other, 'B5', data, 'D4')
+  eq (data:text (2, 1), '=D4')
+  eq (other:text (1, 1), '=Data!D4*3')
+end)
+
+test (
+  'rules, validation, charts and the filter inside a moved block go with it',
+  function ()
+    local s = sheet_of ({
+      A1 = 'Item',
+      B1 = 'Cost',
+      A2 = 'Rent',
+      B2 = '1200',
+      A3 = 'Food',
+      B3 = '450',
+    })
+    s:set_field ('rules', {
+      {
+        range = 'B2:B3',
+        type = 'formula',
+        formula = '=B2>500',
+        style = { bold = true },
+      },
+      { range = 'B2:D3', type = 'compare', op = '>', value = '0' },
+    })
+    s:set_field (
+      'validation',
+      { { range = 'B2:B3', type = 'number', op = '>', value = '0' } }
+    )
+    s:set_field ('charts', { { id = 'c1', type = 'bar', range = 'A1:B3' } })
+    ops.set_filter (s, r ('A1:B3'))
+    ops.filter_column (s, 2, { op = '>', value = '500' })
+    eq (s.filter and s.filter.hidden, { [3] = true })
+    move (s, 'A1:B3', s, 'D11')
+    eq (s.rules[1].range, 'E12:E13')
+    eq (s.rules[1].formula, '=E12>500')
+    -- A rule that only partly lies in the block stays.
+    eq (s.rules[2].range, 'B2:D3')
+    eq (s.validation[1].range, 'E12:E13')
+    eq (s.charts[1].range, 'D11:E13')
+    local filter = assert (s.filter, 'a filter')
+    eq (filter.rect, r ('D11:E13'))
+    eq (filter.columns[5], { op = '>', value = '500' })
+    eq (filter.hidden, { [13] = true })
+    eq (ops.rule_look (s, 12, 5), { style = { bold = true } })
+    s:undo ()
+    eq ({ s.rules[1].range, s.charts[1].range }, { 'B2:B3', 'A1:B3' })
+    eq ((assert (s.filter, 'a filter')).rect, r ('A1:B3'))
+    -- Moved to another sheet, the rules and the validation go along, and the chart stays.
+    local other = assert (s.book:add_sheet ('Other'))
+    move (s, 'A1:B3', other, 'A1')
+    eq ({ #s.rules, #s.validation, #s.charts }, { 1, 0, 1 })
+    eq (other.rules[1].range, 'B2:B3')
+    eq (other.validation[1].range, 'B2:B3')
+    eq (s.filter, nil)
+    eq ((assert (other.filter, 'a filter')).rect, r ('A1:B3'))
+  end
+)
+
 test ('an Excel file round trip keeps cells, formats and values', function ()
   local book = B.example ({ clock = clock })
   local files, warnings = ops.write_xlsx (book)

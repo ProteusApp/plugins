@@ -135,6 +135,12 @@ local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 ---@field to integer
 ---@field area Sheet.Area
 
+---@class Sheet.MoveOptions
+---@field from string The sheet the block moves from.
+---@field to string The sheet the block moves to.
+---@field own string The sheet the formula lives on.
+---@field lands? string The sheet the formula lives on after the move, when it moves too.
+
 ---@class Sheet.AdjustOptions
 ---@field sheet? string The sheet where the rows or columns changed.
 ---@field own? string The sheet the formula lives on.
@@ -6862,6 +6868,91 @@ local function affected (sheet, opts)
     return true
   end
   return mine ~= nil and where ~= nil and sheet_key (mine) == sheet_key (where)
+end
+
+---True when a reference names one cell, or both ends of a range, inside a block.
+---@param t Sheet.Token
+---@param rect Sheet.Rect
+---@return boolean all
+---@return boolean some True when at least one cell of the reference is in the block.
+local function inside (t, rect)
+  local a = t.a --[[@as Sheet.Ref]]
+  local b = t.kind == 'range' and t.b or a --[[@as Sheet.Ref]]
+  local r1 = math.min (a.row or 1, b.row or 1)
+  local r2 = math.max (a.row or math.huge, b.row or math.huge)
+  local c1 = math.min (a.col or 1, b.col or 1)
+  local c2 = math.max (a.col or math.huge, b.col or math.huge)
+  local all = r1 >= rect.r1
+    and r2 <= rect.r2
+    and c1 >= rect.c1
+    and c2 <= rect.c2
+  local some = r1 <= rect.r2
+    and r2 >= rect.r1
+    and c1 <= rect.c2
+    and c2 >= rect.c1
+  return all, some
+end
+
+---Fixes the references in a formula after a block of cells moves, as a cut and paste or a
+---drag does. A reference that lies wholly inside the block moves with it, `$` or not, and
+---follows it to another sheet. A reference to cells the block lands on, and that the block
+---did not hold, turns into #REF!, since the cells it named are gone. Every other reference
+---stays where it points.
+---
+---`opts.from` and `opts.to` name the sheets the block moves from and to, `opts.own` the sheet
+---the formula lives on, and `opts.lands` the sheet it lives on after the move, when the
+---formula moves with the block. A reference gets a sheet name when it needs one to keep
+---pointing at the same sheet.
+---@param text string
+---@param src Sheet.Rect The block before the move.
+---@param drow integer
+---@param dcol integer
+---@param opts Sheet.MoveOptions
+---@return string
+function M.move (text, src, drow, dcol, opts)
+  local from, to = sheet_key (opts.from), sheet_key (opts.to)
+  local lands = opts.lands or opts.own
+  local dst = {
+    r1 = src.r1 + drow,
+    c1 = src.c1 + dcol,
+    r2 = src.r2 + drow,
+    c2 = src.c2 + dcol,
+  }
+  return rewrite (text, function (t)
+    local named = t.sheet or opts.own
+    local key = sheet_key (named)
+    local a, b =
+      t.a, --[[@as Sheet.Ref]]
+      t.b
+    local where = named
+    if key == from and inside (t, src) then
+      a = copy_ref (a)
+      a.row, a.col = (a.row or 0) + drow, (a.col or 0) + dcol
+      if b then
+        b = copy_ref (b)
+        b.row, b.col = (b.row or 0) + drow, (b.col or 0) + dcol
+      end
+      where = opts.to
+    elseif key == to and inside (t, dst) then
+      local _, held = inside (t, src)
+      if key ~= from or not held then
+        return '#REF!'
+      end
+    end
+    local head ---@type string
+    if t.sheet and sheet_key (t.sheet) == sheet_key (where) then
+      head = t.sheet_text or ''
+    elseif sheet_key (where) == sheet_key (lands) then
+      head = ''
+    else
+      head = M.quote_sheet (where) .. '!'
+    end
+    local out = head .. ref_text (a)
+    if t.kind == 'range' and b then
+      out = out .. ':' .. ref_text (b)
+    end
+    return out
+  end)
 end
 
 ---Fixes the references in a formula after rows or columns change. `count` rows or columns
