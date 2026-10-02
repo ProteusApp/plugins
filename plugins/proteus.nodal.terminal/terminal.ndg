@@ -26,7 +26,7 @@
         "y": 78
       },
       "config": {
-        "items": "powershell\ncmd\nbash"
+        "items": "Default shell\nbash\nzsh\nfish\npwsh\npowershell\ncmd"
       },
       "literals": {}
     },
@@ -42,7 +42,7 @@
         "label": "Shell"
       },
       "literals": {
-        "to": "powershell"
+        "to": "Default shell"
       }
     },
     {
@@ -87,49 +87,95 @@
         "font_size": 13
       },
       "literals": {}
+    },
+    {
+      "id": "n7",
+      "block": "logic.compare",
+      "name": "Is the default",
+      "position": {
+        "x": 330,
+        "y": 300
+      },
+      "config": {
+        "operator": "==="
+      },
+      "literals": {
+        "b": "Default shell"
+      }
+    },
+    {
+      "id": "n8",
+      "block": "logic.if",
+      "name": "Program",
+      "position": {
+        "x": 660,
+        "y": 300
+      },
+      "config": {},
+      "literals": {
+        "then": ""
+      }
     }
   ],
   "edges": [
     {
-      "id": "e7",
+      "id": "e9",
       "from": "n1",
       "to": "n3",
       "input": "set"
     },
     {
-      "id": "e8",
+      "id": "e10",
       "from": "n2",
       "to": "n3",
       "input": "options"
     },
     {
-      "id": "e9",
+      "id": "e11",
       "from": "n3",
+      "to": "n7",
+      "input": "a"
+    },
+    {
+      "id": "e12",
+      "from": "n7",
+      "to": "n8",
+      "input": "when"
+    },
+    {
+      "id": "e13",
+      "from": "n3",
+      "to": "n8",
+      "input": "otherwise"
+    },
+    {
+      "id": "e14",
+      "from": "n8",
       "to": "n6",
       "input": "program"
     },
     {
-      "id": "e10",
+      "id": "e15",
       "from": "n4",
       "to": "n5",
       "input": "a"
     },
     {
-      "id": "e11",
+      "id": "e16",
       "from": "n3",
       "output": "changed",
       "to": "n5",
       "input": "b"
     },
     {
-      "id": "e12",
+      "id": "e17",
       "from": "n5",
       "output": "then",
       "to": "n6",
       "input": "restart"
     }
   ],
-  "next_id": 13,
+  "next_id": 18,
   "layout": {
     "id": "root",
     "kind": "column",
