@@ -5,7 +5,7 @@
       "id": "proteus.api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -28,7 +28,7 @@
       ],
       "folders": [],
       "requires": {
-        "proteus": ">=0.3.0",
+        "proteus": ">=0.3.1",
         "features": [
           "permissions"
         ]
@@ -37,8 +37,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "525ab1da877f78ae0b42f8976d9c079eb3fa25f4",
-      "updated": "2026-10-02T05:27:10Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "view.aseprite",
@@ -427,7 +427,7 @@
       "id": "proteus.git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.3.2",
+      "version": "1.3.3",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -472,8 +472,8 @@
         "tests/git_paths.test.lua",
         "tests/git_text.test.lua"
       ],
-      "commit": "2df28fe8a817069a6aa7e58582c6d75b283d0725",
-      "updated": "2026-10-02T16:49:20Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "lang.gitfiles",
@@ -820,7 +820,7 @@
       "id": "proteus.logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -855,8 +855,8 @@
         "log_filter.lua",
         "tests/logs.test.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "81a87889eff2618ef4fdaf075e60c201328cd5cd",
+      "updated": "2026-10-02T05:09:05Z"
     },
     {
       "id": "lang.luau-lsp",
@@ -1164,7 +1164,7 @@
       "id": "proteus.code.project",
       "name": "Project",
       "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.core.commands",
@@ -1191,14 +1191,14 @@
         "handbook/project.md",
         "init.lua"
       ],
-      "commit": "005a1dd00f59e6dc20f72e2e7cbb82a177f1a257",
-      "updated": "2026-10-02T16:29:38Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -1231,8 +1231,8 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "141fc070f421f4510fc2eff97ae2c1df35c865b0",
-      "updated": "2026-10-02T16:42:16Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "proteus.code.plugins",
@@ -2036,7 +2036,7 @@
       "id": "proteus.terminal",
       "name": "Terminal",
       "description": "Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -2068,13 +2068,15 @@
         "README.md",
         "handbook/terminal.md",
         "init.lua",
+        "shell_words.lua",
         "terminal_groups.lua",
         "terminal_profiles.lua",
         "tests/groups.test.lua",
-        "tests/profiles.test.lua"
+        "tests/profiles.test.lua",
+        "tests/shell_words.test.lua"
       ],
-      "commit": "8c32afafc73f0f37b7d52fbf31b0ff0b8a9d43fb",
-      "updated": "2026-10-02T16:37:52Z"
+      "commit": "83044179c83ee3b5277914e0a65baf3688fa2eab",
+      "updated": "2026-10-02T16:56:50Z"
     },
     {
       "id": "proteus.todo",
