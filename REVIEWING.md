@@ -4,7 +4,7 @@
 
 Each submission becomes a pull request labeled `[AUTOMATED] Plugin Request`, with a checklist. Read every file before merging. A merge is what makes the plugin or profile installable.
 
-A profile is one `profile.lua` that lists plugins and settings. Check that every plugin it names ships with Proteus or is listed here, and that its settings hold nothing personal.
+A profile is one `profile.lua` that lists plugins and settings. Check that every plugin it names ships with Proteus or is listed here, and that its settings hold nothing personal. Its settings must not name a program to run, a path to one, or a place code comes from, such as `terminal.shell`, `luals.path` or `marketplace.repository`. Proteus leaves out a profile's value for a setting defined with `sensitive = true`, but a plugin may not mark one that should be, so read each key.
 
 The check workflow runs on each version: the rules, the plugin's tests, StyLua and selene, a comparison of what `init.lua` declares with `proteus.json`, and each vendored file against its published package. GitHub starts no workflow for a pull request the submission workflow opens, so the submission workflow starts the check on the branch itself. It shows on the pull request's commit. The pull request lists the plugin's permissions. Proteus enforces them, so a plugin without any cannot reach the network, run programs or touch files outside the workspace folders it claims.
 
@@ -17,6 +17,8 @@ Check that:
 - a web view page loads nothing from elsewhere. Proteus blocks it anyway, but code that tries is a warning sign
 - it holds no secrets, tokens or personal data
 - it does not load code from elsewhere at run time, such as a script fetched from a URL
+- a setting that names a program to run, a path to one, or a place code comes from is defined with `sensitive = true`, so a profile or a folder's `.proteus/settings.json` cannot choose it
+- it runs nothing from the open folder, such as its build scripts, its Git hooks or a program in `node_modules`, until the user trusts the folder (`app.kernel.project ().trusted`)
 
 Approve a submission by commenting `/approve <commit>` on its issue, with the first seven or more characters of the commit you read. The bot's comment on the issue names the current one, such as `/approve 1a2b3c4`. Text after the commit on the same line is fine, such as `/approve 1a2b3c4 thanks!`. The workflow checks four things first:
 

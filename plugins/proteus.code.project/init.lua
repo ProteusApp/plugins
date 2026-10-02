@@ -41,7 +41,7 @@ local EXCLUDE = {
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.0.1',
+  version = '1.1.0',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
@@ -322,6 +322,28 @@ return {
       end
     end
 
+    ---Asks the user to trust the open folder, for a plugin that waits on it. `reason` says
+    ---what is waiting, such as 'Git'. Trusting reloads the window.
+    ---@param reason? string
+    local function ask_trust (reason)
+      if not root or layer.trusted then
+        return
+      end
+      local text = 'Trust the folder '
+        .. (name or root)
+        .. '? '
+        .. (reason and (tostring (reason) .. ' waits for it. ') or '')
+        .. 'Its .proteus files, its Git settings and its build scripts can run programs, so trust only a folder from someone you trust.'
+      if picker then
+        picker.confirm ({ message = text, yes = 'Trust Folder', on_yes = trust })
+      elseif notify then
+        notify.warn (
+          text,
+          { timeout = 0, action = { label = 'Trust Folder', run = trust } }
+        )
+      end
+    end
+
     local offered = false
     ---Offers to use the folder's `.proteus` files, which are there but not in use.
     local function offer ()
@@ -526,7 +548,7 @@ return {
     commands.register ({
       id = 'project.trust',
       category = 'File',
-      title = "Trust This Folder's .proteus Files",
+      title = 'Trust This Folder',
       icon = 'shield-check',
       when = function ()
         return root ~= nil and not layer.trusted
@@ -536,7 +558,7 @@ return {
     commands.register ({
       id = 'project.untrust',
       category = 'File',
-      title = "Stop Using This Folder's .proteus Files",
+      title = 'Stop Trusting This Folder',
       icon = 'shield-off',
       when = function ()
         return root ~= nil and layer.trusted
@@ -590,6 +612,10 @@ return {
         return disk.join (root or '', rel)
       end,
       excluded = excluded,
+      trusted = function ()
+        return root ~= nil and layer.trusted
+      end,
+      ask_trust = ask_trust,
     }
     app.provide ('project', service, { needs = 'files' })
   end,
