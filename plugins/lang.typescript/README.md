@@ -7,7 +7,7 @@ TypeScript support for the Proteus code editor, built on [typescript-language-se
 - **Completion, hover help and go to definition.** The server answers while code is typed. F12 or Ctrl+click jumps to where a name is defined, in the project or in a package's types.
 - **Problems.** Type errors show as underlines and in the Problems panel (Ctrl+Shift+M).
 - **Organize Imports.** **TypeScript: Organize Imports** (Shift+Alt+O) sorts the file's imports, merges them and drops the unused ones.
-- **The project's TypeScript.** When the open folder has TypeScript in `node_modules`, the server checks the code with that version, so it matches the project's own build.
+- **The project's TypeScript.** When the open folder has TypeScript in `node_modules`, the server checks the code with that version, so it matches the project's own build. In the Code Editor this waits until you trust the folder (**File: Trust This Folder**), since the folder's `node_modules` holds programs that would run. Until then the TypeScript beside the server checks the code.
 - **`tsconfig.json`.** `tsconfig.json` and files such as `tsconfig.app.json` get their JSON schema as a file association. A JSON language plugin then gives them completion and checks.
 
 Formatting comes from Prettier, which ships with Proteus, so this plugin adds no formatter.
@@ -37,7 +37,7 @@ Node.js on the PATH. When the server is nowhere else, the first TypeScript or Ja
 npm install --global typescript-language-server typescript@6
 ```
 
-A project that has `typescript-language-server` in its own `node_modules` uses that copy. TypeScript 7 is a native program without `tsserver`, so the server cannot run it. A project on TypeScript 7 is checked by the TypeScript 6 installed beside the server.
+A project that has `typescript-language-server` in its own `node_modules` uses that copy, once you trust the folder. TypeScript 7 is a native program without `tsserver`, so the server cannot run it. A project on TypeScript 7 is checked by the TypeScript 6 installed beside the server.
 
 The **Tools** panel shows the server's state, version and log, with buttons to start, stop and look again.
 

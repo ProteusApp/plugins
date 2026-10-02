@@ -2,7 +2,7 @@
   "id": "lang.rust",
   "name": "Rust",
   "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
-  "version": "1.0.5",
+  "version": "1.1.1",
   "depends": [
     "core.settings",
     "core.commands",
@@ -24,7 +24,7 @@
   ],
   "folders": [],
   "requires": {
-    "proteus": ">=0.2.0",
+    "proteus": ">=0.3.1",
     "features": [
       "permissions",
       "tool-command"

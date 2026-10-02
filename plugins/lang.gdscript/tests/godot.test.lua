@@ -57,3 +57,24 @@ test (
     })
   end
 )
+
+test (
+  'may_start needs a trusted folder that holds the project, in the Code Editor',
+  function ()
+    eq (godot.may_start ('/home/me/game', nil, false), true, 'no folder open')
+    eq (godot.may_start ('/home/me/game', '/home/me/game', false), false)
+    eq (godot.may_start ('/home/me/game', '/home/me/game', true), true)
+    eq (godot.may_start ('/home/me/game/sub', '/home/me/game/', true), true)
+    eq (
+      godot.may_start ('/home/me/other', '/home/me/game', true),
+      false,
+      'a project outside the folder'
+    )
+    eq (godot.may_start ('/home/me/gamex', '/home/me/game', true), false)
+    eq (
+      godot.may_start ([[C:\Code\Game]], 'c:/code/game', true, 'windows'),
+      true
+    )
+    eq (godot.may_start ('/Home/me/game', '/home/me/game', true, 'linux'), false)
+  end
+)

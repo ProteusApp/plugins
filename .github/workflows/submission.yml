@@ -1,5 +1,6 @@
 # Turns a plugin or profile submission from the Proteus app into a pull request, and merges it
-# when a maintainer comments /approve on the issue.
+# when a maintainer comments /approve on the issue. An author who closes a submission withdraws
+# it, and an author's removal request becomes a pull request that deletes what they published.
 #
 # The app opens an issue holding the plugin's files as code blocks. The submit job runs when
 # that issue opens or changes, or its author comments with more of the files. The scripts
@@ -8,7 +9,7 @@ name: Plugin submission
 
 on:
   issues:
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, closed]
   issue_comment:
     types: [created, edited]
 
@@ -17,24 +18,44 @@ permissions:
   issues: write
   pull-requests: write
 
-# One run at a time per issue, so parts that arrive together make one pull request, and an
-# approval never overlaps a new version of the files.
-concurrency:
-  group: submission-${{ github.event.issue.number }}
-  cancel-in-progress: false
-
 jobs:
   submit:
     if: >-
       ${{ !github.event.issue.pull_request && github.event.issue.state == 'open' &&
       !(github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/')) }}
     runs-on: ubuntu-latest
+    # One submit at a time per issue, so parts that arrive together make one pull request.
+    # Only this job waits its turn: GitHub keeps one pending run per group and cancels the
+    # others, so a flood of edits must never drop a queued /approve.
+    concurrency:
+      group: submission-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      # Starts the check workflow on the branch, since a push made with this token starts none.
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: node scripts/submit.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The author closed a submission, or asks to take down what they published.
+  withdraw:
+    if: >-
+      ${{ github.event_name == 'issues' && !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/withdraw.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -50,6 +71,8 @@ jobs:
       pull-requests: write
       # Starts the index workflow, since a merge made with this token starts none.
       actions: write
+      # Reads whether the check passed on the commit the approval names.
+      checks: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

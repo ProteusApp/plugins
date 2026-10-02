@@ -1,20 +1,26 @@
-// Merges a submission's pull request when a maintainer comments /approve on its issue. The
-// submission workflow runs it for that comment, and for no other.
+// Merges a submission's pull request when a maintainer comments /approve <commit> on its
+// issue. The submission workflow runs it for that comment, and for no other.
 //
-// Before it merges, it checks three things: the person who commented can write to this
-// repository, the pull request is the one the workflow opened for this issue, and the pull
-// request has not changed since the comment was written. After the merge, it starts the
-// index workflow, because a merge made with the workflow's own token starts no other
-// workflow. Then it closes the issue.
+// Before it merges, it checks four things: the person who commented can write to this
+// repository, the pull request is the one the workflow opened for this issue, its head is
+// the commit the comment names, so a maintainer approves exactly what they read, and the
+// check workflow passed on that commit. The merge names the same commit, so GitHub refuses
+// it if the branch moved in between. After the merge, it starts the index workflow, because
+// a merge made with the workflow's own token starts no other workflow. Then it closes the
+// issue.
 
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { allComments, client, say } from './github.mjs';
-import { branchFor, canApprove, commandOf, isSubmission } from './registry.mjs';
+import { approvedCommit, branchFor, canApprove, commandOf, isSubmission, removalOf } from './registry.mjs';
+
+/** The job in check.yml whose run must pass before a merge. */
+export const CHECK = 'check';
 
 /**
  * Runs one /approve comment. `api` calls the GitHub API of `repo`. Returns what happened, as
- * a short word the tests check: ignored, refused, waiting, changed, failed or merged.
+ * a short word the tests check: ignored, refused, waiting, unnamed, changed, unchecked,
+ * failing, failed or merged.
  */
 export async function approve({ api, event, repo }) {
   const issue = event.issue;
@@ -44,19 +50,41 @@ export async function approve({ api, event, repo }) {
     return 'waiting';
   }
 
-  // A resubmission could replace the files while the approval was being written. Approving
-  // only what was there before the comment means a maintainer approves what they read.
-  const head = await api('GET', `/commits/${pr.head.sha}`);
-  const changed = new Date(head.commit.committer.date) > new Date(comment.created_at);
-  if (changed) {
+  // A resubmission could replace the files while the approval was being written. The
+  // comment names the commit the maintainer read, and only that commit merges.
+  const sha = pr.head.sha;
+  const named = approvedCommit(comment.body);
+  if (!named) {
     await react('confused');
-    await reply(`@${login}, ${pr.html_url} changed after this approval. Review it again, then comment /approve again.`);
+    await reply(`@${login}, name the commit you reviewed, so a later version is not approved by mistake: \`/approve ${sha.slice(0, 7)}\` for the head of ${pr.html_url} now.`);
+    return 'unnamed';
+  }
+  if (!sha.toLowerCase().startsWith(named)) {
+    await react('confused');
+    await reply(`@${login}, ${pr.html_url} is at ${sha.slice(0, 7)} now, not ${named}. Review what changed, then comment \`/approve ${sha.slice(0, 7)}\`.`);
     return 'changed';
+  }
+
+  // The check workflow compares what init.lua declares with proteus.json, runs the plugin's
+  // tests, StyLua and selene, and fetches each vendored file's source. It must have passed
+  // on this very commit.
+  const runs = (await api('GET', `/commits/${sha}/check-runs?check_name=${CHECK}&filter=latest&per_page=100`))?.check_runs ?? [];
+  const ours = runs.filter((r) => r.name === CHECK && r.app?.slug === 'github-actions');
+  if (ours.length === 0 || ours.some((r) => r.status !== 'completed')) {
+    await react('confused');
+    await reply(`@${login}, the check has not finished on ${sha.slice(0, 7)} yet. Comment \`/approve ${sha.slice(0, 7)}\` again once it passes.`);
+    return 'unchecked';
+  }
+  if (ours.some((r) => r.conclusion !== 'success')) {
+    await react('confused');
+    const failed = ours.find((r) => r.conclusion !== 'success');
+    await reply(`@${login}, the check did not pass on ${sha.slice(0, 7)}: ${failed.html_url ?? failed.conclusion}. It cannot be approved until it does.`);
+    return 'failing';
   }
 
   // Rebasing keeps the submitter as the author of the commit. A repository that turns
   // rebasing off gets a merge commit instead.
-  const merge = (method) => api('PUT', `/pulls/${pr.number}/merge`, { merge_method: method, sha: pr.head.sha });
+  const merge = (method) => api('PUT', `/pulls/${pr.number}/merge`, { merge_method: method, sha });
   try {
     try {
       await merge('rebase');
@@ -76,7 +104,9 @@ export async function approve({ api, event, repo }) {
   await say(api, issue.number, comments, [
     `Approved by @${login} and merged in ${pr.html_url}.`,
     '',
-    'The Proteus marketplace lists it once the index workflow finishes, in a minute or two.',
+    removalOf(issue)
+      ? 'The Proteus marketplace stops offering it once the index workflow finishes, in a minute or two.'
+      : 'The Proteus marketplace lists it once the index workflow finishes, in a minute or two.',
   ]);
   await api('PATCH', `/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
   return 'merged';
