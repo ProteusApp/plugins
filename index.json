@@ -2283,32 +2283,24 @@
       "id": "api",
       "name": "API Client",
       "description": "Send HTTP requests, save them, and read the answers.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.api",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "blank",
@@ -2333,27 +2325,18 @@
       "id": "code",
       "name": "Code Editor",
       "description": "Open a project folder: edit, search, run a terminal, and commit to Git.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.midnight",
-        "proteus.theme.daylight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.menubar",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
         "proteus.ui.tabs",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.ui.settings",
-        "proteus.core.profiles",
         "proteus.marketplace",
         "proteus.core.files",
         "proteus.code.project",
@@ -2371,127 +2354,94 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "git",
       "name": "Git",
       "description": "Stage, commit, branch and browse the history of a Git repository.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.git",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "kanban",
       "name": "Kanban",
       "description": "Cards in columns. Drag them along as work moves.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.kanban",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "logs",
       "name": "Logs",
       "description": "Follow a log file or a program, filter the lines, and spot errors.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.logs",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "nodal",
       "name": "Nodal",
       "description": "Wire blocks together to build an app, then get TypeScript, Lua or a plugin.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.ui.tabs",
         "proteus.ui.menubar",
-        "proteus.ui.settings",
         "proteus.editor.core",
         "proteus.tools.registry",
         "proteus.tools.diagnostics",
@@ -2511,39 +2461,31 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "notes",
       "name": "Notes",
       "description": "Markdown notes, saved as files in data/notes.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.toolbar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.notes",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "cdf383ba00030cf23221ffd203b94bd50e6d6027",
-      "updated": "2026-10-01T15:10:14-06:00"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "shader",
@@ -2586,32 +2528,24 @@
       "id": "sheet",
       "name": "Sheet",
       "description": "A spreadsheet with formulas, charts and Excel files.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "ProteusApp",
       "requires": {
-        "proteus": ">=0.3.0",
-        "features": []
+        "proteus": ">=0.3.1",
+        "features": [
+          "profile-extends"
+        ]
       },
       "plugins": [
-        "proteus.theme.daylight",
-        "proteus.theme.midnight",
-        "proteus.theme.retro",
-        "proteus.core.keys",
-        "proteus.ui.menus",
         "proteus.ui.menubar",
-        "proteus.ui.statusbar",
-        "proteus.ui.views",
-        "proteus.ui.palette",
-        "proteus.ui.notify",
-        "proteus.core.profiles",
         "proteus.sheet",
         "proteus.discord.rpc"
       ],
       "files": [
         "profile.lua"
       ],
-      "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
-      "updated": "2026-10-01T18:37:03Z"
+      "commit": "baa06c94fe76c37c3fb122bc0c1f5102336d2a45",
+      "updated": "2026-10-02T16:31:26Z"
     },
     {
       "id": "todo",
