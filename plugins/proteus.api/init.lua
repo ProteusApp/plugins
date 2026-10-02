@@ -12,6 +12,7 @@
 
 local CSS = require ('api_css') --[[@as string]]
 local core = require ('api_core') --[[@as ApiApp.Core]]
+local envs_m = require ('api_envs') --[[@as ApiApp.EnvsModule]]
 
 local DIR = 'data/proteus.api'
 local ENV_PATH = DIR .. '/environments.json'
@@ -78,6 +79,30 @@ local FOLDER_AUTH_OPTIONS = {
 ---@class ApiApp.FileInfo
 ---@field method string
 ---@field url string
+
+---What the API client's modules share. init.lua fills in the state and its own helpers, and
+---each module adds the functions it offers the others.
+---@class ApiApp.Ctx
+---@field app Proteus.App
+---@field ui Proteus.UI
+---@field http Proteus.Http
+---@field views Proteus.Views
+---@field status? Proteus.Status
+---@field picker? Proteus.Picker
+---@field toolbar? Proteus.Toolbar
+---@field DIR string The folder the requests live in.
+---@field ENV_PATH string The file the environments live in.
+---@field envs Http.Envs
+---@field env_problem? string What is wrong with the environments file, if anything.
+---@field env_code? Proteus.El The editor of the environments file, once it is made.
+---@field env_timer? fun() Cancels the check of the environments text that is waiting.
+---@field say fun(text: string)
+---@field complain fun(text: string)
+---@field change_files fun(what: string, fn: fun()): boolean
+---@field load_envs fun()
+---@field render_env fun() From api_envs.
+---@field edit_envs fun()
+---@field choose_env fun()
 
 ---@type Proteus.Plugin
 return {
@@ -160,8 +185,6 @@ return {
     local res_view = app.store.get ('res_view', 'body') ---@type string
     local raw = app.store.get ('raw', false) == true
     local top_px = app.store.get ('split', nil) ---@type number?
-    local envs = assert (http.parse_envs (nil))
-    local env_problem = nil ---@type string?
     local history = {} ---@type Http.HistoryEntry[]
     local file_cache = {} ---@type table<string, ApiApp.FileInfo>
     local list_timer = nil ---@type fun()?
@@ -175,6 +198,23 @@ return {
     local render_env ---@type fun()
     local fill_editor ---@type fun()
     local show ---@type fun(doc: ApiApp.Doc?)
+
+    -- What the modules share. Each adds its own functions to it.
+    local shared = {
+      app = app,
+      ui = ui,
+      http = http,
+      views = views,
+      status = status,
+      picker = picker,
+      toolbar = toolbar,
+      DIR = DIR,
+      ENV_PATH = ENV_PATH,
+      say = say,
+      complain = complain,
+      envs = assert (http.parse_envs (nil)),
+    }
+    local ctx = shared --[[@as ApiApp.Ctx]]
 
     -- Files -------------------------------------------------------------------------------
 
@@ -228,14 +268,15 @@ return {
     local function load_envs ()
       local parsed, err = http.parse_envs (app.fs.read (ENV_PATH))
       if parsed then
-        envs = parsed
-        env_problem = nil
+        ctx.envs = parsed
+        ctx.env_problem = nil
       else
-        envs = assert (http.parse_envs (nil))
-        env_problem = err
+        ctx.envs = assert (http.parse_envs (nil))
+        ctx.env_problem = err
       end
       render_env ()
     end
+    ctx.change_files, ctx.load_envs = change_files, load_envs
 
     -- Open requests -----------------------------------------------------------------------
 
@@ -1173,7 +1214,7 @@ return {
     ---@param auth Http.Auth
     ---@return string
     local function token_key (auth)
-      return http.oauth_key (auth, http.env_vars (envs))
+      return http.oauth_key (auth, http.env_vars (ctx.envs))
     end
 
     local function render_token ()
@@ -1734,7 +1775,7 @@ return {
     ---@param done fun(token: string?, err: string?)
     ---@return Proteus.HttpCall?
     local function get_token (auth, done)
-      local request, err = http.oauth_request (auth, http.env_vars (envs))
+      local request, err = http.oauth_request (auth, http.env_vars (ctx.envs))
       if not request then
         done (nil, err)
         return nil
@@ -1780,15 +1821,15 @@ return {
         render_status ()
         return
       end
-      local env = http.env_vars (envs)
+      local env = http.env_vars (ctx.envs)
       local auth = effective_auth (doc)
       ---@type Http.BuildContext
-      local ctx = { auth = auth }
+      local build_ctx = { auth = auth }
       local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
       if kept and core.token_fresh (kept, app.util.now ()) then
-        ctx.token = kept.token
+        build_ctx.token = kept.token
       end
-      local built = http.build (doc.req, env, ctx)
+      local built = http.build (doc.req, env, build_ctx)
       if built.url == '' then
         doc.result = core.empty_result ({ note = 'Type an address first.' })
         render_response ()
@@ -1805,7 +1846,7 @@ return {
       send_count = send_count + 1
       local number = send_count
       local started = app.util.now ()
-      local warning = http.missing_text (built.missing, envs.active)
+      local warning = http.missing_text (built.missing, ctx.envs.active)
       local snapshot = http.copy (doc.req)
       doc.pending = number
       doc.warning = warning
@@ -1894,7 +1935,7 @@ return {
         doc.call = call --[[@as Proteus.HttpCall]]
       end
 
-      if auth.mode == 'oauth2' and not ctx.token then
+      if auth.mode == 'oauth2' and not build_ctx.token then
         doc.call = get_token (auth, function (token, err)
           if doc.pending ~= number then
             return
@@ -2123,7 +2164,7 @@ return {
       local auth = effective_auth (doc)
       local kept = auth.mode == 'oauth2' and tokens[token_key (auth)] or nil
       app.system.clipboard (
-        http.to_curl (http.build (doc.req, http.env_vars (envs), {
+        http.to_curl (http.build (doc.req, http.env_vars (ctx.envs), {
           auth = auth,
           token = kept and kept.token or nil,
         }))
@@ -2841,223 +2882,9 @@ return {
 
     -- Environments ------------------------------------------------------------------------
 
-    local env_label = ui.span ({ class = 'toolbar-text' })
-    local env_btn = ui.h ('button', {
-      class = 'toolbar-button api-env',
-      title = 'Choose an environment',
-      ui.icon ('variable', 16),
-      env_label,
-    })
-    local st_env = nil ---@type Proteus.StatusItem?
-    if toolbar then
-      toolbar.add (env_btn, { order = 10 })
-    elseif status then
-      st_env = status.add ({
-        id = 'api.env',
-        text = '',
-        icon = 'variable',
-        align = 'left',
-        order = 20,
-        command = 'api.environment',
-      })
-    end
-
-    render_env = function ()
-      local label = envs.active ~= '' and envs.active or 'No environment'
-      env_label:text (label)
-      env_btn:class ('on', envs.active ~= '')
-      env_btn:set (
-        'title',
-        env_problem and ('The environments file has a problem. ' .. env_problem)
-          or 'Choose an environment'
-      )
-      if st_env then
-        st_env.set (label)
-      end
-    end
-
-    local env_code = nil ---@type Proteus.El?
-    local env_view = nil ---@type Proteus.View?
-    local env_timer = nil ---@type fun()?
-    local env_msg = ui.div ({ class = 'api-env-msg' })
-    local env_host = ui.div ({ class = 'api-code' })
-
-    ---Saves the environments text when it is valid, and shows the problem when it is not.
-    ---@return boolean saved
-    local function check_env_text ()
-      env_timer = nil
-      local code = env_code
-      if not code then
-        return true
-      end
-      local text = code:widget ('get_text')
-      local parsed, err = http.parse_envs (text)
-      if not parsed then
-        env_msg:text (err or 'This is not valid.')
-        env_msg:class ('bad', true)
-        return false
-      end
-      env_msg:class ('bad', false)
-      if text ~= (app.fs.read (ENV_PATH) or '') then
-        if
-          not change_files ('Could not save the environments', function ()
-            app.fs.write (ENV_PATH, text)
-          end)
-        then
-          return false
-        end
-      end
-      env_msg:text ('Saved. Write a name as {{name}} anywhere in a request.')
-      envs = parsed
-      env_problem = nil
-      render_env ()
-      return true
-    end
-
-    local function close_envs ()
-      if env_timer then
-        env_timer ()
-      end
-      if not check_env_text () then
-        complain (
-          'The environments are not saved. Fix the problem under the text first.'
-        )
-        return
-      end
-      if env_view then
-        env_view.remove ()
-        env_view = nil
-      end
-      views.show ('api.requests')
-    end
-
-    local env_side = ui.div ({
-      class = 'api-side api-envs',
-      ui.div ({
-        class = 'api-side-bar',
-        ui.span ({ class = 'api-side-title', DIR .. '/environments.json' }),
-        ui.span ({ class = 'api-grow' }),
-        ui.button ({
-          'Done',
-          icon = 'check',
-          variant = 'ghost',
-          class = 'api-small',
-          onclick = function ()
-            close_envs ()
-            return nil
-          end,
-        }),
-      }),
-      env_host,
-      env_msg,
-    })
-
-    local function edit_envs ()
-      local text = app.fs.read (ENV_PATH) or http.ENV_TEMPLATE
-      if not env_code then
-        env_code = ui.widget ('code', {
-          language = 'json',
-          text = text,
-          on_change = function ()
-            if env_timer then
-              env_timer ()
-            end
-            env_timer = app.timer.after (400, check_env_text)
-          end,
-        })
-        env_host:append (env_code)
-      elseif not env_view then
-        -- The view was closed, so the text starts again from the file.
-        env_code:widget ('set_text', text)
-      end
-      if not env_view then
-        env_msg:class ('bad', env_problem ~= nil)
-        env_msg:text (env_problem or 'Changes save once the text is valid.')
-        env_view = views.add ('left', {
-          id = 'api.envs',
-          title = 'Environments',
-          icon = 'variable',
-          order = 3,
-          content = env_side,
-        })
-      end
-      views.show ('api.envs')
-    end
-
-    ---@param name string
-    local function set_env (name)
-      if name == envs.active then
-        return
-      end
-      local text = app.fs.read (ENV_PATH)
-      if not text or http.trim (text) == '' then
-        return
-      end
-      local next_text, err = http.set_active (text, name)
-      if not next_text then
-        complain ('The environments file has a problem. ' .. tostring (err))
-        edit_envs ()
-        return
-      end
-      if
-        change_files ('Could not save the environments', function ()
-          app.fs.write (ENV_PATH, next_text)
-        end)
-      then
-        load_envs ()
-        if env_code and not env_timer then
-          env_code:widget ('set_text', next_text)
-        end
-        say (
-          name == '' and 'No environment is active.'
-            or ('The "' .. name .. '" environment is active.')
-        )
-      end
-    end
-
-    local function choose_env ()
-      if not picker then
-        return
-      end
-      local items = {} ---@type Proteus.PickItem[]
-      for _, name in ipairs (envs.names) do
-        local count = 0
-        for _ in pairs (envs.environments[name]) do
-          count = count + 1
-        end
-        items[#items + 1] = {
-          label = name,
-          detail = count == 1 and '1 variable' or (count .. ' variables'),
-          icon = name == envs.active and 'check' or 'variable',
-          value = name,
-        }
-      end
-      items[#items + 1] = {
-        label = 'No environment',
-        icon = envs.active == '' and 'check' or 'circle-slash',
-        value = '',
-      }
-      items[#items + 1] =
-        { label = 'Edit environments…', icon = 'pencil', value = false }
-      picker.pick ({
-        placeholder = env_problem
-            and 'The environments file has a problem. Pick Edit to fix it.'
-          or 'Choose an environment',
-        items = items,
-        on_pick = function (item)
-          if item.value == false then
-            edit_envs ()
-          else
-            set_env (tostring (item.value))
-          end
-        end,
-      })
-    end
-
-    env_btn:on ('click', function ()
-      choose_env ()
-      return nil
-    end)
+    envs_m.attach (ctx)
+    render_env = ctx.render_env
+    local edit_envs, choose_env = ctx.edit_envs, ctx.choose_env
 
     -- Files changed elsewhere, such as in the editor profile ------------------------------
 
@@ -3098,11 +2925,11 @@ return {
         load_envs ()
         local text = app.fs.read (ENV_PATH) or http.ENV_TEMPLATE
         if
-          env_code
-          and not env_timer
-          and env_code:widget ('get_text') ~= text
+          ctx.env_code
+          and not ctx.env_timer
+          and ctx.env_code:widget ('get_text') ~= text
         then
-          env_code:widget ('set_text', text)
+          ctx.env_code:widget ('set_text', text)
         end
         return
       end

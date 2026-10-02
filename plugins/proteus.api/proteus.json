@@ -41,6 +41,7 @@
     "README.md",
     "api_core.lua",
     "api_css.lua",
+    "api_envs.lua",
     "init.lua",
     "tests/api_core.test.lua",
     "tests/client.test.lua",
