@@ -574,6 +574,7 @@ local STYLE_FIELDS = {
   'border_bottom',
   'border_left',
   'border_color',
+  'unlocked',
 }
 
 ---@param style table
@@ -637,6 +638,10 @@ local function raw_style (xf, lists, theme)
     if align.attrs.wrapText and flag (align.attrs.wrapText) then
       out.wrap = true
     end
+  end
+  local protection = child (xf, 'protection')
+  if protection and protection.attrs.locked and not flag (protection.attrs.locked) then
+    out.unlocked = true
   end
   local id = int (xf.attrs.numFmtId) or 0
   local code = lists.formats[id] or BUILTIN_FORMATS[id]
