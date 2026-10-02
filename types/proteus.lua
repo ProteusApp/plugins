@@ -57,6 +57,7 @@
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
 ---| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
 ---| 'grants-read' # `app.grants.read`, the text of a file the user picked.
+---| 'perf' # `app.kernel.perf`: how long each plugin's callbacks take, and the page's frames and size.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
@@ -978,6 +979,7 @@ function System.create_launcher (name, profile, cb) end
 
 ---@class Proteus.Kernel
 ---@field launch Proteus.LaunchInfo
+---@field perf Proteus.Perf How long each plugin's code takes. A restricted plugin needs `kernel`.
 local Kernel = {}
 
 ---Every plugin found, running or not.
@@ -1120,6 +1122,117 @@ function Kernel.satisfies (version, spec) end
 
 ---@return Proteus.ServiceInfo[]
 function Kernel.services () end
+
+---------------------------------------------------------------------------------------------
+-- Profiling
+---------------------------------------------------------------------------------------------
+
+---The numbers kept for one kind of callback, such as `'timer'`, `'click handler'`,
+---`"handler for 'fs:changed'"` or `"command 'file.save'"`. `'load'` is reading the plugin's
+---file and running its top level, and `'start'` is its `activate`. Times are in milliseconds.
+---@class Proteus.PerfKind
+---@field calls integer
+---@field self number Time in the plugin's own code: the whole time, less the callbacks of any plugin that ran inside it, such as handlers for an event it sent.
+---@field total number The whole time, nested callbacks included.
+---@field max number The longest self time of one call.
+
+---What one plugin's callbacks took since counting started.
+---@class Proteus.PerfPlugin: Proteus.PerfKind
+---@field errors integer Callbacks that raised an error.
+---@field load? number How long its code took to load the last time.
+---@field start? number How long its `activate` took the last time it started.
+---@field kinds table<string, Proteus.PerfKind> The same numbers for each kind of callback.
+
+---@class Proteus.PerfEvent
+---@field sent integer How many times it was sent.
+---@field ms number How long its listeners took, all together.
+
+---@class Proteus.PerfStats
+---@field since number When counting started, in milliseconds since 1970: the app's start, or the last `reset`.
+---@field now number
+---@field busy number Milliseconds the window spent running plugin code.
+---@field plugins table<string, Proteus.PerfPlugin> By plugin id. `'kernel'` holds what the kernel runs for itself.
+---@field events table<string, Proteus.PerfEvent> By event name.
+---@field lua_kb number Memory the Lua code holds, in kilobytes.
+---@field js_kb? number Memory the page's JavaScript holds, in kilobytes, where the browser tells.
+
+---One plugin's share of a task.
+---@class Proteus.PerfPart
+---@field owner string
+---@field what string The kind of callback.
+---@field ms number Its self time inside the task.
+
+---A task: a callback the browser started, such as a click or a timer, with everything that ran
+---inside it. Only tasks of 4 ms or more are kept, the last 500.
+---@class Proteus.PerfTask
+---@field seq integer Goes up by one for each task kept.
+---@field at number When it ended, in milliseconds since 1970.
+---@field ms number
+---@field owner string The plugin whose callback started it.
+---@field what string
+---@field parts Proteus.PerfPart[] Each plugin's self time in it, longest first.
+
+---A stretch of time, numbered so a reader can ask for what came after the last one it saw.
+---@class Proteus.PerfMoment
+---@field seq integer
+---@field at number When it started, in milliseconds since 1970.
+---@field ms number
+
+---@class Proteus.PerfSecond
+---@field at number The start of the second, in milliseconds since 1970.
+---@field frames integer Frames drawn in it.
+---@field worst number The longest time between two frames in it.
+
+---@class Proteus.PerfFrames
+---@field seconds Proteus.PerfSecond[] The last minute, oldest first.
+---@field gaps Proteus.PerfMoment[] Times the page went 50 ms or more without drawing.
+---@field long_tasks Proteus.PerfMoment[] Tasks of 50 ms or more, as the browser reports them.
+---@field long_task_support boolean False where the browser reports no long tasks, such as on macOS.
+
+---@class Proteus.PerfDom
+---@field total integer Elements on the page.
+---@field unowned? integer Elements the app's own page holds, outside every plugin.
+---@field plugins table<string, { nodes: integer, widgets: integer }> Elements and widgets by plugin id.
+
+---How long each plugin's code takes, kept by the kernel from the moment the app starts. Every
+---plugin callback counts: event handlers, timers, clicks, replies and commands. The browser's
+---own work, such as laying out the page, shows only in the frames.
+---@class Proteus.Perf
+local Perf = {}
+
+---A copy of everything counted since the app started or the last `reset`.
+---@return Proteus.PerfStats
+function Perf.stats () end
+
+---The slow tasks kept after the one numbered `after`, oldest first.
+---@param after? integer
+---@return Proteus.PerfTask[]
+function Perf.tasks (after) end
+
+---Starts counting again. How long each plugin took to load and start stays.
+function Perf.reset () end
+
+---How often the page drew in the last minute, and its stalls after the one numbered `after`.
+---A call starts watching the frames, which stops a few seconds after the last call. Watching
+---keeps the page drawing every frame, so pass false for `watch` to read what is kept without
+---it. The browser's long tasks are kept either way.
+---@param after? integer
+---@param watch? boolean True when nil.
+---@return Proteus.PerfFrames
+function Perf.frames (after, watch) end
+
+---How many elements and widgets each plugin has on the page now.
+---@return Proteus.PerfDom
+function Perf.dom () end
+
+---Runs `fn` and counts its time to `owner`, as if a callback of `owner` ran it. A service calls
+---it for a function another plugin gave it, such as a command's `run`. Errors pass through.
+---@param owner string
+---@param what string
+---@param fn function
+---@param ... any
+---@return any ...
+function Perf.charge (owner, what, fn, ...) end
 
 ---The project folder this window works on, and whether its `.proteus` files are in use.
 ---@return Proteus.ProjectLayer
