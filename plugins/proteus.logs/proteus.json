@@ -38,10 +38,12 @@
   "files": [
     "README.md",
     "init.lua",
+    "log_ansi.lua",
     "log_filter.lua",
     "log_regex.lua",
     "log_text.lua",
     "log_time.lua",
+    "tests/ansi.test.lua",
     "tests/logs.test.lua",
     "tests/query.test.lua",
     "tests/regex.test.lua",
