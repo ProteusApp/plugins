@@ -39,6 +39,7 @@
     "README.md",
     "init.lua",
     "sheet_book.lua",
+    "sheet_calendar.lua",
     "sheet_chart.lua",
     "sheet_ctl.lua",
     "sheet_format.lua",

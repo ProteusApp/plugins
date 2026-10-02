@@ -6,6 +6,7 @@
 -- sheet that is renamed or deleted. The helpers at the end serve the formula bar while a
 -- formula is typed: completion, the argument being typed, reference colours and F4.
 
+local calendar = require ('sheet_calendar') --[[@as Sheet.CalendarModule]]
 local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
 
 ---A spreadsheet error, such as `#DIV/0!`. Each code has one shared table, so two errors with
@@ -509,7 +510,7 @@ function M.format_value (v, digits)
 end
 
 ---A date and time as a serial number of days, the way spreadsheets store dates. The calendar
----is sheet_format's, so every part of the app counts days the same way.
+---is sheet_calendar's, so every part of the app counts days the same way.
 ---@param y integer
 ---@param m integer
 ---@param d integer
@@ -518,7 +519,7 @@ end
 ---@param s? integer
 ---@return number
 function M.serial (y, m, d, h, mi, s)
-  return format.serial (y, m, d, h, mi, s)
+  return calendar.serial (y, m, d, h, mi, s)
 end
 
 ---The parts of a serial date: year, month, day, hour, minute and second.
@@ -530,7 +531,7 @@ end
 ---@return integer mi
 ---@return integer s
 function M.date_parts (serial)
-  local y, m, d, h, mi, s = format.date_parts (serial)
+  local y, m, d, h, mi, s = calendar.date_parts (serial)
   return y, m, d, h, mi, s
 end
 
@@ -540,28 +541,12 @@ end
 ---@return integer m
 ---@return integer d
 local function ymd (serial)
-  local y, m, d = format.date_parts (math.floor (serial))
+  local y, m, d = calendar.date_parts (math.floor (serial))
   return y, m, d
 end
 
----@param y integer
----@return boolean
-local function is_leap (y)
-  return y % 4 == 0 and (y % 100 ~= 0 or y % 400 == 0)
-end
-
----@param y integer
----@param m integer
----@return integer
-local function days_in_month (y, m)
-  if m == 2 then
-    return is_leap (y) and 29 or 28
-  end
-  if m == 4 or m == 6 or m == 9 or m == 11 then
-    return 30
-  end
-  return 31
-end
+local is_leap = calendar.is_leap
+local days_in_month = calendar.days_in_month
 
 ---A serial date from a year, month and day that may run over, as DATE works: month 13 is
 ---January of the next year, and day 0 is the last day of the month before.
@@ -570,7 +555,7 @@ end
 ---@param d integer
 ---@return integer
 local function make_date (y, m, d)
-  return math.floor (format.serial (y, m, d))
+  return math.floor (calendar.serial (y, m, d))
 end
 
 ---The day of the week of a serial date, 0 for Sunday to 6 for Saturday.
@@ -600,157 +585,13 @@ function M.format_date (serial, with_time)
   return text
 end
 
-local MONTH_OF = {} ---@type table<string, integer>
-for i, name in ipairs ({
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-}) do
-  MONTH_OF[name] = i
-  MONTH_OF[string.sub (name, 1, 3)] = i
-end
-MONTH_OF.sept = 9
-
----Reads a time of day such as `14:30`, `2:30:15 pm` or `9 am`, as a fraction of a day.
----@param s string Lower case, with no spaces around it.
----@return number?
-local function parse_time (s)
-  local body, half = string.match (s, '^(.-)%s*([ap])%.?m?%.?$')
-  if not body or not string.match (body, '%d$') then
-    body, half = s, nil
-  end
-  local h, rest = string.match (body, '^(%d+)(.*)$')
-  if not h then
-    return nil
-  end
-  local mi, sec = 0, 0
-  if rest ~= '' then
-    local m2, r2 = string.match (rest, '^:(%d%d?)(.*)$')
-    if not m2 then
-      return nil
-    end
-    mi = tonumber (m2) or 0
-    if r2 ~= '' then
-      local s2 = string.match (r2, '^:(%d%d?%.?%d*)$')
-      if not s2 then
-        return nil
-      end
-      sec = tonumber (s2) or 0
-    end
-  elseif not half then
-    return nil
-  end
-  local hours = tonumber (h) or 0
-  if half then
-    if hours < 1 or hours > 12 then
-      return nil
-    end
-    hours = hours % 12 + (half == 'p' and 12 or 0)
-  end
-  if mi >= 60 or sec >= 60 then
-    return nil
-  end
-  return (hours * 3600 + mi * 60 + sec) / 86400
-end
-
----Reads a date such as `2026-09-29`, `9/29/2026`, `29 Sep 2026` or `Sep 29, 2026`, month before
----day as in the US. A date with no year takes `this_year`, and is refused when that is nil.
----@param s string Lower case, with no spaces around it.
----@param this_year? integer
----@return integer?
-local function parse_date (s, this_year)
-  local y, m, d ---@type string|integer|nil, string|integer|nil, string|integer|nil
-  local a, b, c = string.match (s, '^(%d%d%d%d)[-/%.](%d%d?)[-/%.](%d%d?)$')
-  if a then
-    y, m, d = a, b, c
-  else
-    a, b, c = string.match (s, '^(%d%d?)[-/](%d%d?)[-/](%d+)$')
-    if a then
-      m, d, y = a, b, c
-    else
-      a, b = string.match (s, '^(%d%d?)[-/](%d%d?)$')
-      if a then
-        m, d, y = a, b, ''
-      else
-        local dd, mon, yy =
-          string.match (s, '^(%d%d?)[-%s]+(%a+)%.?[-%s,]*(%d*)$')
-        if dd then
-          d, m, y = dd, MONTH_OF[mon], yy
-        else
-          mon, dd, yy = string.match (s, '^(%a+)%.?[-%s]+(%d%d?)[,%s]*(%d*)$')
-          if not mon then
-            return nil
-          end
-          m, d, y = MONTH_OF[mon], dd, yy
-        end
-      end
-    end
-  end
-  local month, day = tonumber (m), tonumber (d)
-  if not month or not day then
-    return nil
-  end
-  local year ---@type integer?
-  if y == '' then
-    year = this_year
-  else
-    local text = tostring (y)
-    year = math.tointeger (tonumber (text))
-    -- Two-digit years below 30 are in this century, as spreadsheets read them.
-    if year and #text <= 2 then
-      year = year + (year < 30 and 2000 or 1900)
-    end
-  end
-  if not year or month < 1 or month > 12 then
-    return nil
-  end
-  local mm = math.floor (month)
-  if day < 1 or day > days_in_month (year, mm) then
-    return nil
-  end
-  return make_date (year, mm, math.floor (day))
-end
-
----Reads a date, a time, or a date and a time from text, as a serial number.
+---Reads a date, a time, or a date and a time from text, as a serial number. Typing into a cell
+---reads text the same way.
 ---@param text string
----@param this_year? integer The year for a date typed with none.
+---@param clock? fun(): number Gives the year of a date written without one.
 ---@return number?
-local function parse_datetime (text, this_year)
-  local s = lower (string.match (text, '^%s*(.-)%s*$'))
-  if s == '' then
-    return nil
-  end
-  local day = parse_date (s, this_year)
-  if day then
-    return day
-  end
-  local time = parse_time (s)
-  if time then
-    return time
-  end
-  local head, tail = string.match (s, '^(%d+%-%d+%-%d+)t(%d.*)$')
-  if not head then
-    head, tail = string.match (s, '^(.-),?%s+(%d+:[%d:%.]*%s*[apm%.]*)$')
-  end
-  if not head then
-    head, tail = string.match (s, '^(.-),?%s+(%d+%s*[ap]%.?m%.?)$')
-  end
-  if head then
-    local d2, t2 = parse_date (head, this_year), parse_time (tail)
-    if d2 and t2 then
-      return d2 + t2
-    end
-  end
-  return nil
+local function parse_datetime (text, clock)
+  return (calendar.read (text, clock))
 end
 
 ---Rounds a number to `digits` decimals. `mode` is 'near' (half away from zero), 'up' (away
@@ -2532,6 +2373,15 @@ local function opt_bool (v, n, i, d)
   return to_bool (v[i])
 end
 
+---A clock for reading dates written without a year, from the workbook's clock.
+---@param ctx Sheet.Context
+---@return fun(): number
+local function today_clock (ctx)
+  return function ()
+    return now (ctx)
+  end
+end
+
 ---A date argument as a serial number. Text such as `2026-09-29` counts, and a date before
 ---1899-12-30 is #NUM!.
 ---@param v Sheet.Value
@@ -2540,7 +2390,8 @@ end
 local function date_arg (v, ctx)
   local n ---@type number?
   if type (v) == 'string' then
-    n = M.parse_number (v) or parse_datetime (v, ctx and ymd (now (ctx)) or nil)
+    n = M.parse_number (v)
+      or parse_datetime (v, ctx and today_clock (ctx) or nil)
     if not n then
       return raise ('#VALUE!')
     end
@@ -6081,7 +5932,7 @@ define (
       if type (s) ~= 'string' then
         return raise ('#VALUE!')
       end
-      local n = parse_datetime (s, (ymd (now (ctx))))
+      local n = parse_datetime (s, today_clock (ctx))
       if not n or n < 1 then
         return raise ('#VALUE!')
       end
@@ -6103,7 +5954,7 @@ define (
       if type (s) ~= 'string' then
         return raise ('#VALUE!')
       end
-      local n = parse_datetime (s, (ymd (now (ctx))))
+      local n = parse_datetime (s, today_clock (ctx))
       if not n then
         return raise ('#VALUE!')
       end
