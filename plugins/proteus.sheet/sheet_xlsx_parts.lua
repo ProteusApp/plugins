@@ -683,7 +683,7 @@ end
 
 ---The colours of a colour scale's points, lower case.
 ---@param kit Sheet.XlsxKit
----@param node Sheet.XmlNode
+---@param node Sheet.XmlNode?
 ---@param theme string[]
 ---@return string[]
 local function scale_colors (kit, node, theme)
@@ -2219,15 +2219,15 @@ local function read_charts (kit, ctx, rels)
         elseif how == 'oneCellAnchor' then
           x, y = corner (kit.child (anchor, 'from'))
           local ext = kit.child (anchor, 'ext')
-          w = (tonumber (ext and ext.attrs.cx) or 480 * EMU) / EMU
-          h = (tonumber (ext and ext.attrs.cy) or 300 * EMU) / EMU
+          w = (tonumber (ext and ext.attrs.cx) or (480 * EMU)) / EMU
+          h = (tonumber (ext and ext.attrs.cy) or (300 * EMU)) / EMU
         elseif how == 'absoluteAnchor' then
           local pos = kit.child (anchor, 'pos')
           local ext = kit.child (anchor, 'ext')
           x = (tonumber (pos and pos.attrs.x) or 0) / EMU
           y = (tonumber (pos and pos.attrs.y) or 0) / EMU
-          w = (tonumber (ext and ext.attrs.cx) or 480 * EMU) / EMU
-          h = (tonumber (ext and ext.attrs.cy) or 300 * EMU) / EMU
+          w = (tonumber (ext and ext.attrs.cx) or (480 * EMU)) / EMU
+          h = (tonumber (ext and ext.attrs.cy) or (300 * EMU)) / EMU
         end
         spec.id = 'c' .. (#charts + 1)
         spec.x = math.floor (x + 0.5)

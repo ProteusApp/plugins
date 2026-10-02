@@ -126,7 +126,9 @@ local REST_OF_SHEET = 1000
 -- Excel counts dates in a 1904 workbook from 1904-01-01, 1462 days after this app's day 0.
 local DAYS_1904 = 1462
 -- The helpers sheet_xlsx_parts uses, filled in at the end of the file.
-local KIT = {} ---@type Sheet.XlsxKit
+---@type Sheet.XlsxKit
+---@diagnostic disable-next-line: missing-fields
+local KIT = {}
 
 local NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 local NS_REL =

@@ -1,5 +1,6 @@
 -- proteus.sheet: a spreadsheet with formulas, formats, charts and several sheets per workbook.
 -- Each workbook is a file in data/proteus.sheet/, listed in the Workbooks view of the left dock.
+-- An Excel or CSV file on disk opens in place too, and Save writes it back in its own format.
 --
 -- This file puts the window together, keeps the open workbook and its file, and registers the
 -- grid's commands. The grid itself lives in sheet_grid.lua and the modules it loads. The
@@ -39,6 +40,19 @@ local CSS = [[
 .sheet-item.active { background: var(--bg-active); }
 ]]
 
+---A workbook open from an Excel or CSV file on disk, which Save writes back in its format.
+---@class Sheet.DiskFile
+---@field path string The file's full path.
+---@field kind 'xlsx'|'csv'
+---@field sep string The separator of a CSV file.
+---@field name string The file's name, for the tab.
+---@field lossless boolean True when the file opened with nothing left out, so changes save by themselves as in a workbook. Otherwise Save writes them.
+---@field warned? string The warnings the last save gave, so saving by itself repeats none.
+
+-- The kinds of files that open in place, by extension.
+---@type table<string, 'xlsx'|'csv'>
+local DISK_KINDS = { xlsx = 'xlsx', csv = 'csv', tsv = 'csv' }
+
 ---@param text string
 ---@return string
 local function trim (text)
@@ -56,10 +70,11 @@ end
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
-  -- Import and Export read and write CSV and Excel files anywhere on disk, and Paste reads the
-  -- clipboard.
+  -- Import, Export and opening a file in place read and write CSV and Excel files anywhere on
+  -- disk, and Paste reads the clipboard. The Excel reader runs here in Lua, so it needs the
+  -- file itself, which `files` gives and a file grant, made for web views, does not.
   permissions = { 'clipboard', 'files' },
   depends = {
     'proteus.lib.ui',
@@ -76,6 +91,8 @@ return {
     'proteus.ui.menus',
     'proteus.ui.menubar',
     'proteus.ui.tabs',
+    'proteus.core.files',
+    'proteus.editor.core',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -90,6 +107,7 @@ return {
 
     local book = nil ---@type Sheet.Book?
     local file = nil ---@type string?
+    local disk = nil ---@type Sheet.DiskFile?
     local pending = false
     local cancel_save = nil ---@type fun()?
     local tab = nil ---@type Proteus.Tab?
@@ -123,10 +141,21 @@ return {
       return DIR .. '/' .. n .. EXT
     end
 
+    ---@type fun(done?: fun(ok: boolean), quiet?: boolean)
+    local save_disk
+
     local function save_now ()
       if cancel_save then
         cancel_save ()
         cancel_save = nil
+      end
+      if disk then
+        -- A file that opened with something left out saves only when asked, so a slip of the
+        -- keys does not drop the rest of the file.
+        if pending and disk.lossless then
+          save_disk (nil, true)
+        end
+        return
       end
       local b, n = book, file
       if not pending or not b or not n then
@@ -145,6 +174,12 @@ return {
       pending = true
       if cancel_save then
         cancel_save ()
+      end
+      if disk and tab then
+        tab.set_dirty (true)
+      end
+      if disk and not disk.lossless then
+        return
       end
       cancel_save = app.timer.after (600, save_now)
     end
@@ -197,7 +232,7 @@ return {
         return grid.sheet ()
       end,
       file = function ()
-        return file
+        return file or (disk and disk.name)
       end,
       selection = function ()
         return grid.sel_rect (), grid.sel.r, grid.sel.c
@@ -322,10 +357,52 @@ return {
     ---@type fun()
     local render_list
 
+    ---True when the open file may be left now. A file on disk with changes that do not save
+    ---by themselves asks first, and runs `go` once they are saved or let go.
+    ---@param go fun()
+    ---@return boolean
+    local function can_leave (go)
+      local d = disk
+      if not d or not pending or d.lossless then
+        return true
+      end
+      ---@param ok boolean
+      local function after_save (ok)
+        if ok then
+          go ()
+        end
+      end
+      if not picker then
+        save_disk (after_save)
+        return false
+      end
+      picker.confirm ({
+        message = '"'
+          .. d.name
+          .. '" has changes that are not saved. Save them before going on?',
+        yes = 'Save',
+        no = 'Discard',
+        on_yes = function ()
+          save_disk (after_save)
+        end,
+        on_no = function ()
+          pending = false
+          go ()
+        end,
+      })
+      return false
+    end
+
     local function close_file ()
+      if not can_leave (close_file) then
+        return
+      end
       save_now ()
-      book, file = nil, nil
+      book, file, disk = nil, nil, nil
       pending = false
+      if tab then
+        tab.set_dirty (false)
+      end
       grid.set_book (nil)
       app.store.set ('last', nil)
       show_screen ()
@@ -342,6 +419,11 @@ return {
       if grid.edit then
         grid.finish_edit (0, 0, false)
       end
+      if not can_leave (function ()
+        open_file (n)
+      end) then
+        return false
+      end
       save_now ()
       local text = app.fs.read (path_of (n))
       if not text then
@@ -354,8 +436,11 @@ return {
         say ('error', '"' .. n .. '" could not be read. ' .. tostring (problem))
         return false
       end
-      book, file = opened, n
+      book, file, disk = opened, n, nil
       pending = false
+      if tab then
+        tab.set_dirty (false)
+      end
       app.store.set ('last', n)
       remember_recent (n)
       show_screen ()
@@ -601,6 +686,35 @@ return {
       return ','
     end
 
+    ---Asks how to read CSV text that holds numbers starting with 0, such as `00123`: as text
+    ---that keeps its zeros, or as numbers. Text without any reads as numbers without asking.
+    ---@param text string
+    ---@param sep string
+    ---@param fn fun(keep_zeros: boolean)
+    local function ask_zeros (text, sep, fn)
+      if not picker or not ops.leading_zeros (text, sep) then
+        fn (false)
+        return
+      end
+      picker.pick ({
+        placeholder = 'Some cells start with 0, such as 00123',
+        items = {
+          {
+            label = 'Keep them as text, with their zeros',
+            icon = 'type',
+            value = 'text',
+          },
+          { label = 'Read them as numbers', icon = 'hash', value = 'numbers' },
+        },
+        on_pick = function (item)
+          safely ('Reading CSV', function ()
+            fn (item.value == 'text')
+          end)
+        end,
+        on_cancel = grid.focus,
+      })
+    end
+
     ---Imports a CSV file into a new workbook, or into a new sheet of the open one.
     ---@param into_sheet boolean
     local function import_csv (into_sheet)
@@ -626,22 +740,28 @@ return {
               text = string.gsub (text, '^\239\187\191', '')
               local sep = separator (path, text)
               local base = base_of (path)
-              if into_sheet then
-                grid.change ('Import CSV', function (b)
-                  ops.import_csv (b, text, base, sep)
-                end)
-                say ('success', 'Imported ' .. base .. ' into a new sheet.')
-                return
-              end
-              -- A new book's empty first sheet goes, leaving the one the text fills. Each
-              -- cell reads as if typed, so "$1,200" becomes a number with a money format.
-              local made = book_mod.new ()
-              local filled = ops.import_csv (made, text, base, sep)
-              made:delete_sheet (1)
-              local rows = filled:used ()
-              local n = unique_name (base)
-              create (n, made)
-              say ('success', 'Imported ' .. rows .. ' rows into "' .. n .. '".')
+              ask_zeros (text, sep, function (keep)
+                local opts = { keep_zeros = keep }
+                if into_sheet then
+                  grid.change ('Import CSV', function (b)
+                    ops.import_csv (b, text, base, sep, opts)
+                  end)
+                  say ('success', 'Imported ' .. base .. ' into a new sheet.')
+                  return
+                end
+                -- A new book's empty first sheet goes, leaving the one the text fills. Each
+                -- cell reads as if typed, so "$1,200" becomes a number with a money format.
+                local made = book_mod.new ()
+                local filled = ops.import_csv (made, text, base, sep, opts)
+                made:delete_sheet (1)
+                local rows = filled:used ()
+                local n = unique_name (base)
+                create (n, made)
+                say (
+                  'success',
+                  'Imported ' .. rows .. ' rows into "' .. n .. '".'
+                )
+              end)
             end)
           end)
         end
@@ -691,7 +811,7 @@ return {
     end
 
     local function export_csv ()
-      local s, n = grid.sheet (), file
+      local s, n = grid.sheet (), file or (disk and base_of (disk.path))
       if not s or not n or desktop_only ('Export CSV') then
         return
       end
@@ -721,7 +841,7 @@ return {
     end
 
     local function export_xlsx ()
-      local b, n = book, file
+      local b, n = book, file or (disk and base_of (disk.path))
       if not b or not n or desktop_only ('Export Excel') then
         return
       end
@@ -753,6 +873,223 @@ return {
           end)
         end)
       end)
+    end
+
+    -- Files on disk, opened in place ------------------------------------------------------------
+
+    ---Writes the open file on disk back in its own format. `done` hears whether it worked.
+    ---`quiet` leaves out the message when all went well, as autosaving does.
+    save_disk = function (done, quiet)
+      local d, b = disk, book
+      if not d or not b then
+        if done then
+          done (false)
+        end
+        return
+      end
+      local at = b.edits
+      ---@param err? string
+      ---@param warnings string[]
+      local function finished (err, warnings)
+        if err then
+          say ('error', 'Could not save ' .. d.path .. ': ' .. tostring (err))
+          if done then
+            done (false)
+          end
+          return
+        end
+        if disk == d and book == b and b.edits == at then
+          pending = false
+          if tab then
+            tab.set_dirty (false)
+          end
+        end
+        local warned = table.concat (warnings, ' ')
+        if #warnings > 0 and not (quiet and warned == d.warned) then
+          say ('warn', 'Saved ' .. d.name .. '. ' .. warned)
+        elseif #warnings == 0 and not quiet then
+          say ('success', 'Saved ' .. d.name .. '.')
+        end
+        d.warned = warned
+        if done then
+          done (true)
+        end
+      end
+      if d.kind == 'xlsx' then
+        local ok, files, warnings = pcall (ops.write_xlsx, b)
+        if not ok then
+          finished (tostring (files), {})
+          return
+        end
+        app.fs.write_zip (d.path, files, function (_, err)
+          finished (err, warnings)
+        end)
+        return
+      end
+      local warnings = {} ---@type string[]
+      if #b.sheets > 1 then
+        warnings[1] = 'A CSV file holds one sheet, so it keeps only "'
+          .. b.sheets[1].name
+          .. '".'
+      end
+      local text = ops.export_csv (b.sheets[1], nil, d.sep)
+      app.fs.write_file (d.path, text, function (_, err)
+        finished (err, warnings)
+      end)
+    end
+
+    ---True for a full path on disk, rather than a path in the workspace.
+    ---@param path string
+    ---@return boolean
+    local function on_disk (path)
+      return string.match (path, '^/') ~= nil
+        or string.match (path, '^%a:[/\\]') ~= nil
+        or string.match (path, '^\\\\') ~= nil
+    end
+
+    ---The kind of a file that opens in place, from its extension, or nil.
+    ---@param path string
+    ---@return ('xlsx'|'csv')?
+    local function disk_kind (path)
+      local ext = string.lower (string.match (path, '%.([^%.\\/]+)$') or '')
+      return DISK_KINDS[ext]
+    end
+
+    ---Opens an Excel or CSV file on disk in place, in the window, without making a workbook of
+    ---it. Save writes it back in its own format.
+    ---@param path string
+    local function open_disk (path)
+      local kind = disk_kind (path)
+      if not kind then
+        say ('warn', 'Only Excel (.xlsx) and CSV files open in place.')
+        return
+      end
+      if desktop_only ('Opening a file on disk') then
+        return
+      end
+      if grid.edit then
+        grid.finish_edit (0, 0, false)
+      end
+      if not can_leave (function ()
+        open_disk (path)
+      end) then
+        return
+      end
+      save_now ()
+      local name = string.match (path, '([^/\\]+)$') or path
+      ---@param made Sheet.Book
+      ---@param lossless boolean
+      ---@param sep string
+      local function show (made, lossless, sep)
+        -- Reading the file made undo steps, which are no edit of the user's.
+        made.done, made.undone = {}, {}
+        book, file, pending = made, nil, false
+        disk = {
+          path = path,
+          kind = kind,
+          sep = sep,
+          name = name,
+          lossless = lossless,
+        }
+        app.store.set ('last', nil)
+        show_screen ()
+        grid.set_book (made)
+        render_list ()
+        if tab then
+          tab.set_dirty (false)
+          tab.set_title (name)
+          tab.focus ()
+        end
+        emit ('book')
+        grid.focus ()
+      end
+      if kind == 'xlsx' then
+        app.fs.read_zip (path, function (files, err)
+          safely ('Opening ' .. name, function ()
+            if not files then
+              say ('error', 'Could not read ' .. path .. ': ' .. tostring (err))
+              return
+            end
+            local made, warnings = ops.read_xlsx (files)
+            if not made then
+              say ('error', tostring (warnings))
+              return
+            end
+            local list = type (warnings) == 'table' and warnings or {}
+            show (made, #list == 0, ',')
+            if #list > 0 then
+              say (
+                'warn',
+                'Opened "'
+                  .. name
+                  .. '". Some parts were left out, so changes save only when you choose Save: '
+                  .. table.concat (list, ' ')
+              )
+            end
+          end)
+        end)
+        return
+      end
+      app.fs.read_file (path, function (text, err)
+        safely ('Opening ' .. name, function ()
+          if not text then
+            say ('error', 'Could not read ' .. path .. ': ' .. tostring (err))
+            return
+          end
+          text = string.gsub (text, '^\239\187\191', '')
+          local sep = separator (path, text)
+          ask_zeros (text, sep, function (keep)
+            local made = book_mod.new ()
+            ops.import_csv (
+              made,
+              text,
+              base_of (path),
+              sep,
+              { keep_zeros = keep }
+            )
+            made:delete_sheet (1)
+            show (made, true, sep)
+          end)
+        end)
+      end)
+    end
+
+    local function pick_disk ()
+      if desktop_only ('Opening a file on disk') then
+        return
+      end
+      pick_file ('Open', {
+        {
+          name = 'Excel and CSV files',
+          extensions = { 'xlsx', 'csv', 'tsv' },
+        },
+      }, open_disk)
+    end
+
+    -- The Code Editor's explorer and other plugins open Excel and CSV files here.
+    local editor = app.try_use ('editor')
+    if editor then
+      editor.add_opener (function (path)
+        if
+          type (path) ~= 'string'
+          or not on_disk (path)
+          or not disk_kind (path)
+        then
+          return false
+        end
+        open_disk (path)
+        return true
+      end)
+    end
+    local file_kinds = app.try_use ('files')
+    if file_kinds then
+      for ext in pairs (DISK_KINDS) do
+        file_kinds.associate ({
+          kind = 'icon',
+          pattern = '*.' .. ext,
+          value = { icon = 'sheet', color = 'var(--syn-string)' },
+        })
+      end
     end
 
     -- The Workbooks view -----------------------------------------------------------------------
@@ -874,6 +1211,38 @@ return {
       order = 11,
       when = keys_free,
       run = open_picker,
+    })
+    command ({
+      id = 'sheet.open_disk',
+      title = 'Open Excel or CSV file…',
+      icon = 'folder-open',
+      menu = 'File',
+      group = 'a',
+      order = 13,
+      when = keys_free,
+      run = pick_disk,
+    })
+    command ({
+      id = 'sheet.save',
+      title = 'Save',
+      key = 'ctrl+s',
+      icon = 'save',
+      menu = 'File',
+      group = 'a',
+      order = 14,
+      when = function ()
+        return active () and keys_free ()
+      end,
+      run = function ()
+        if grid.edit then
+          grid.finish_edit (0, 0, false)
+        end
+        if disk then
+          save_disk ()
+        else
+          save_now ()
+        end
+      end,
     })
     command ({
       id = 'sheet.open_recent',

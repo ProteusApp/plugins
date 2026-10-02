@@ -1085,6 +1085,22 @@ test (
   end
 )
 
+test ('CSV can keep numbers that start with 0 as text', function ()
+  local csv = 'zip,count\n00123,007\n0.5,10\n'
+  ok (ops.leading_zeros (csv))
+  ok (not ops.leading_zeros ('a,b\n0.5,10\n0,1\n'))
+  local book = B.new ({ clock = clock })
+  local numbers = ops.import_csv (book, csv, 'n')
+  eq (numbers:value (2, 1), 123)
+  local kept = ops.import_csv (book, csv, 't', nil, { keep_zeros = true })
+  eq (kept:value (2, 1), '00123')
+  eq (kept:value (2, 2), '007')
+  eq (kept:value (3, 1), 0.5)
+  eq (kept:value (3, 2), 10)
+  -- Saving the sheet as CSV again writes the zeros back.
+  eq (ops.export_csv (kept), 'zip,count\r\n00123,007\r\n0.5,10\r\n')
+end)
+
 ---------------------------------------------------------------------------------------------
 -- Auto-fit and drawing
 ---------------------------------------------------------------------------------------------

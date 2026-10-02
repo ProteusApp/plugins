@@ -1906,14 +1906,36 @@ function M.write_xlsx (book)
   end)
 end
 
+---How CSV text comes in.
+---@class Sheet.CsvOptions
+---@field keep_zeros? boolean Keep numbers that start with 0, such as `00123`, as text with their zeros.
+
+---True when CSV text holds a number that starts with 0, such as `00123`, which reading as a
+---number would cut short.
+---@param text string
+---@param sep? string
+---@return boolean
+function M.leading_zeros (text, sep)
+  for _, line in ipairs (model.parse_csv (text, sep)) do
+    for _, cell in ipairs (line) do
+      if string.match (cell, '^0%d+$') then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 ---Adds a sheet holding CSV text, each cell read as if typed, and shows it. The name is `name`
 ---when free, or a free one made from it. One undo step. Returns the sheet.
 ---@param book Sheet.Book
 ---@param text string
 ---@param name? string
 ---@param sep? string A comma when nil, or a tab.
+---@param opts? Sheet.CsvOptions
 ---@return Sheet.Sheet
-function M.import_csv (book, text, name, sep)
+function M.import_csv (book, text, name, sep, opts)
+  local keep_zeros = opts and opts.keep_zeros
   local free = book:free_name ('Sheet')
   if name then
     local base = string.gsub (name, "[%[%]:%*%?/\\']", '')
@@ -1928,7 +1950,9 @@ function M.import_csv (book, text, name, sep)
   local rows = model.parse_csv (text, sep)
   for r, line in ipairs (rows) do
     for c, cell in ipairs (line) do
-      if cell ~= '' then
+      if keep_zeros and string.match (cell, '^0%d+$') then
+        sheet:record (r, c, { text = "'" .. cell })
+      elseif cell ~= '' then
         sheet:record (r, c, sheet:typed (r, c, cell))
       end
     end
