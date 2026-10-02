@@ -7,6 +7,8 @@
 -- so a box being typed in keeps its focus.
 
 local chart = require ('sheet_chart') --[[@as Sheet.ChartModule]]
+local format = require ('sheet_format') --[[@as Sheet.FormatModule]]
+local formula = require ('sheet_formula') --[[@as Sheet.FormulaModule]]
 local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 local ops = require ('sheet_ops') --[[@as Sheet.OpsModule]]
 local pop = require ('sheet_panel_pop') --[[@as Sheet.PanelPopModule]]
@@ -37,8 +39,9 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@class Sheet.ValidationDraft
 ---@field index? integer
 ---@field range string
----@field type 'list'|'number'
----@field items string
+---@field type 'list'|'number'|'date'|'length'|'formula'
+---@field items string The items one per line, or a reference to cells such as `=$A$1:$A$9`.
+---@field formula string The formula of a formula rule.
 ---@field op string
 ---@field a string
 ---@field b string
@@ -1461,11 +1464,16 @@ function M.install (env)
   ---@return Sheet.ValidationDraft
   local function new_check_draft (v, index)
     if v then
+      local items = table.concat (v.values or {}, '\n')
+      if v.type == 'list' and type (v.formula) == 'string' then
+        items = v.formula
+      end
       return {
         index = index,
         range = v.range,
-        type = v.type == 'number' and 'number' or 'list',
-        items = table.concat (v.values or {}, '\n'),
+        type = v.type or 'list',
+        items = items,
+        formula = v.type == 'formula' and v.formula or '',
         op = v.op or 'between',
         a = v.value or '',
         b = v.value2 or '',
@@ -1478,6 +1486,7 @@ function M.install (env)
       range = selection_text (),
       type = 'list',
       items = '',
+      formula = '',
       op = 'between',
       a = '',
       b = '',
@@ -1512,7 +1521,14 @@ function M.install (env)
         local card = ui.div ({
           class = 'sheet-panel-card',
           title = 'Edit this rule',
-          ui.icon (v.type == 'list' and 'list' or 'hash', 16),
+          ui.icon (
+            v.type == 'list' and 'list'
+              or v.type == 'date' and 'calendar'
+              or v.type == 'length' and 'type'
+              or v.type == 'formula' and 'sigma'
+              or 'hash',
+            16
+          ),
           ui.div ({
             class = 'sheet-panel-card-main',
             ui.span ({
@@ -1594,7 +1610,7 @@ function M.install (env)
       items,
       ui.div ({
         class = 'sheet-panel-hint',
-        'One item per line, or split by commas on one line. The cell gets a dropdown of them.',
+        'One item per line, or split by commas on one line, or cells such as =$A$1:$A$9. The cell gets a dropdown of them.',
       })
     )
     local a_box = input (draft.a, function (value)
@@ -1603,6 +1619,17 @@ function M.install (env)
     local b_box = input (draft.b, function (value)
       draft.b = value
     end, { placeholder = 'Number' })
+    local formula_box = input (draft.formula, function (value)
+      draft.formula = value
+    end, { placeholder = '=AND(A1>0, A1<=$B$1)', mono = true })
+    local formula_part = field (
+      'Formula',
+      formula_box,
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'Write the formula for the top left cell of the range. A value goes in when it gives TRUE.',
+      })
+    )
     local and_word = ui.span ({ class = 'sheet-panel-hint', 'and' })
     local function show_op ()
       local two = draft.op == 'between' or draft.op == 'not_between'
@@ -1618,17 +1645,26 @@ function M.install (env)
       show_op ()
     end)
     show_op ()
+    local whole = check ('Whole numbers only', draft.integer, function (on)
+      draft.integer = on
+    end)
     local number_part = field (
-      'Number',
+      'Value',
       op,
       ui.div ({ class = 'sheet-panel-row', a_box, and_word, b_box }),
-      check ('Whole numbers only', draft.integer, function (on)
-        draft.integer = on
-      end)
+      whole
     )
     local function show_type ()
-      list_part:show (draft.type == 'list')
-      number_part:show (draft.type == 'number')
+      local kind = draft.type
+      list_part:show (kind == 'list')
+      number_part:show (kind == 'number' or kind == 'date' or kind == 'length')
+      formula_part:show (kind == 'formula')
+      whole:show (kind == 'number')
+      local hint = kind == 'date' and '1/1/2026'
+        or kind == 'length' and 'Characters'
+        or 'Number'
+      a_box:set ('placeholder', hint)
+      b_box:set ('placeholder', hint)
     end
     show_type ()
     local message = input (draft.message, function (value)
@@ -1645,15 +1681,33 @@ function M.install (env)
       draft.items = items:value ()
       draft.a = a_box:value ()
       draft.b = b_box:value ()
+      draft.formula = formula_box:value ()
       draft.message = message:value ()
       if draft.type == 'list' then
+        local source = string.match (draft.items, '^%s*(=.-)%s*$')
         local good = #text.list_values (draft.items) > 0
+        if source then
+          good = formula.parse (source) ~= nil
+        end
         items:class ('sheet-panel-bad', not good)
         return good
+      elseif draft.type == 'formula' then
+        local good = formula.is_formula (draft.formula)
+          and formula.parse (draft.formula) ~= nil
+        formula_box:class ('sheet-panel-bad', not good)
+        return good
+      end
+      ---@param s string
+      ---@return boolean
+      local function readable (s)
+        if draft.type == 'date' then
+          return type (format.parse_input (s)) == 'number'
+        end
+        return tonumber (s) ~= nil
       end
       local two = draft.op == 'between' or draft.op == 'not_between'
-      local good_a = tonumber (draft.a) ~= nil
-      local good_b = not two or tonumber (draft.b) ~= nil
+      local good_a = readable (draft.a)
+      local good_b = not two or readable (draft.b)
       a_box:class ('sheet-panel-bad', not good_a)
       b_box:class ('sheet-panel-bad', not good_b)
       return good_a and good_b
@@ -1662,15 +1716,20 @@ function M.install (env)
     ---@return Sheet.Validation
     local function rule_of_draft ()
       local rule = { range = draft.range, type = draft.type } ---@type Sheet.Validation
-      if draft.type == 'list' then
+      local source = string.match (draft.items, '^%s*(=.-)%s*$')
+      if draft.type == 'list' and source then
+        rule.formula = formula.normalize (source)
+      elseif draft.type == 'list' then
         rule.values = text.list_values (draft.items)
+      elseif draft.type == 'formula' then
+        rule.formula = formula.normalize (draft.formula)
       else
         rule.op = draft.op
         rule.value = draft.a
         if draft.op == 'between' or draft.op == 'not_between' then
           rule.value2 = draft.b
         end
-        rule.integer = draft.integer or nil
+        rule.integer = draft.type == 'number' and draft.integer or nil
       end
       if draft.message ~= '' then
         rule.message = draft.message
@@ -1685,20 +1744,33 @@ function M.install (env)
       field ('Apply to range', range),
       field (
         'Criteria',
-        segmented (
+        select (
           {
             { value = 'list', label = 'List of items' },
             { value = 'number', label = 'Number' },
+            { value = 'date', label = 'Date' },
+            { value = 'length', label = 'Text length' },
+            { value = 'formula', label = 'Formula' },
           },
           draft.type,
           function (value)
-            draft.type = value == 'number' and 'number' or 'list'
+            if
+              value == 'number'
+              or value == 'date'
+              or value == 'length'
+              or value == 'formula'
+            then
+              draft.type = value
+            else
+              draft.type = 'list'
+            end
             show_type ()
           end
         )
       ),
       list_part,
       number_part,
+      formula_part,
       field ('Message for data that breaks the rule', message),
       field (
         'When data breaks the rule',

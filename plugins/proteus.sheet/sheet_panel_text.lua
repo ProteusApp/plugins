@@ -445,9 +445,19 @@ M.VALIDATION_OPS = {
 ---@return string
 function M.describe_validation (v)
   if v.type == 'list' then
+    if type (v.formula) == 'string' then
+      return 'List from ' .. (string.gsub (v.formula, '^=', ''))
+    end
     return 'List: ' .. table.concat (v.values or {}, ', ')
+  elseif v.type == 'formula' then
+    return 'Formula ' .. (v.formula or '')
   end
   local what = v.integer and 'Whole number' or 'Number'
+  if v.type == 'date' then
+    what = 'Date'
+  elseif v.type == 'length' then
+    what = 'Text length'
+  end
   local op = v.op and VALIDATION_OPS[v.op]
   if not op then
     return 'Any ' .. string.lower (what)

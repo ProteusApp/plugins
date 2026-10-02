@@ -164,6 +164,36 @@ test ('validation rules read as one short line', function ()
     'Whole number greater than 0'
   )
   eq (t.describe_validation ({ range = 'A1', type = 'number' }), 'Any number')
+  eq (
+    t.describe_validation ({
+      range = 'A1',
+      type = 'list',
+      formula = '=$C$1:$C$9',
+    }),
+    'List from $C$1:$C$9'
+  )
+  eq (
+    t.describe_validation ({
+      range = 'A1',
+      type = 'date',
+      op = '>=',
+      value = '1/1/2026',
+    }),
+    'Date at least 1/1/2026'
+  )
+  eq (
+    t.describe_validation ({
+      range = 'A1',
+      type = 'length',
+      op = '<=',
+      value = '5',
+    }),
+    'Text length at most 5'
+  )
+  eq (
+    t.describe_validation ({ range = 'A1', type = 'formula', formula = '=A1>0' }),
+    'Formula =A1>0'
+  )
 end)
 
 test ('a list box splits by lines, or by commas on one line', function ()

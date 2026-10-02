@@ -2154,6 +2154,38 @@ local function spilled (g, ctx)
   return new_array (h, w, out)
 end
 
+---Works out a formula and gives every value it makes, row by row, with an empty cell as nil,
+---and how many there are. A list of items read from cells uses it. An error comes back as
+---the one value.
+---@param ast Sheet.Node
+---@param ctx Sheet.Context
+---@return Sheet.Values
+---@return integer count
+function M.values (ast, ctx)
+  local ok, result = pcall (eval, ast, ctx)
+  if not ok then
+    return { is_error (result) and result or ERRORS['#VALUE!'] }, 1
+  end
+  if not is_grid (result) then
+    return {
+      result --[[@as Sheet.Value]],
+    }, 1
+  end
+  local h, w = dims (result)
+  local out = {} ---@type Sheet.Values
+  local done, problem = pcall (function ()
+    for i = 1, h do
+      for j = 1, w do
+        out[(i - 1) * w + j] = grid_at (result --[[@as Sheet.Grid]], i, j, ctx)
+      end
+    end
+  end)
+  if not done then
+    return { is_error (problem) and problem or ERRORS['#VALUE!'] }, 1
+  end
+  return out, h * w
+end
+
 ---Works out the value of a parsed formula. An empty result shows as 0, as in spreadsheets. A
 ---result that is a block of cells gives its top left value. With `spill`, a block of more than
 ---one cell comes back too, as an array, for the cells around the formula to show.

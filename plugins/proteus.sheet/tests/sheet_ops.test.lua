@@ -731,6 +731,86 @@ test ('validation checks text before it goes in', function ()
   eq (ops.dropdown (s, 2, 1), { 'OK', 'Over' })
 end)
 
+test (
+  'validation takes a list from cells, dates, text lengths and formulas',
+  function ()
+    local book = B.new ({ clock = clock })
+    local s = book.sheets[1]
+    local lists = assert (book:add_sheet ('Lists'))
+    for i, item in ipairs ({ 'Red', 'Green', '', 'Red', 'Blue' }) do
+      lists:put (i, 1, { text = item })
+    end
+    s:put (1, 5, { text = '10' })
+    ops.add_validation (
+      s,
+      { range = 'A1:A9', type = 'list', formula = '=Lists!$A$1:$A$5' }
+    )
+    ops.add_validation (s, {
+      range = 'B1:B9',
+      type = 'date',
+      op = 'between',
+      value = '1/1/2026',
+      value2 = '12/31/2026',
+    })
+    ops.add_validation (
+      s,
+      { range = 'C1:C9', type = 'length', op = '<=', value = '5' }
+    )
+    -- The formula is written for C... D1, and each cell reads its own row.
+    ops.add_validation (s, {
+      range = 'D1:D9',
+      type = 'formula',
+      formula = '=AND(ISNUMBER(D1), D1<=$E$1)',
+    })
+    eq (ops.dropdown (s, 1, 1), { 'Red', 'Green', 'Blue' })
+    eq ({ ops.check_input (s, 3, 1, 'green') }, { true })
+    eq ({ ops.check_input (s, 3, 1, 'Pink') }, {
+      false,
+      'Pick one of: Red, Green, Blue.',
+      true,
+    })
+    -- The list follows its cells.
+    lists:set (3, 1, 'Pink')
+    eq ({ ops.check_input (s, 3, 1, 'Pink') }, { true })
+    eq ({ ops.check_input (s, 1, 2, '3/15/2026') }, { true })
+    eq ({ ops.check_input (s, 1, 2, '3/15/2027') }, {
+      false,
+      'Enter a date from 1/1/2026 to 12/31/2026.',
+      true,
+    })
+    eq ({ ops.check_input (s, 1, 2, 'soon') }, {
+      false,
+      'Enter a date from 1/1/2026 to 12/31/2026.',
+      true,
+    })
+    eq ({ ops.check_input (s, 1, 3, 'short') }, { true })
+    eq ({ ops.check_input (s, 1, 3, 'é1234') }, { true })
+    eq ({ ops.check_input (s, 1, 3, 'longer') }, {
+      false,
+      'Enter text with a length at most 5.',
+      true,
+    })
+    eq ({ ops.check_input (s, 4, 4, '7') }, { true })
+    eq ({ ops.check_input (s, 4, 4, '12') }, {
+      false,
+      'The value breaks the rule =AND(ISNUMBER(D1), D1<=$E$1).',
+      true,
+    })
+    eq ({ ops.check_input (s, 4, 4, 'x') }, {
+      false,
+      'The value breaks the rule =AND(ISNUMBER(D1), D1<=$E$1).',
+      true,
+    })
+    -- Renaming the sheet of a list keeps the list.
+    ok (book:rename_sheet (2, 'Colours'))
+    eq (s.validation[1].formula, '=Colours!$A$1:$A$5')
+    eq (ops.dropdown (s, 1, 1), { 'Red', 'Green', 'Pink', 'Blue' })
+    -- Inserting a row above the list's cells moves its reference.
+    lists:insert_rows (1, 1)
+    eq (s.validation[1].formula, '=Colours!$A$2:$A$6')
+  end
+)
+
 ---------------------------------------------------------------------------------------------
 -- Charts
 ---------------------------------------------------------------------------------------------

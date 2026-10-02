@@ -52,11 +52,13 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field color? string The colour of a data bar.
 ---@field stop? boolean Stop if true: where the rule holds, the rules below it do not apply.
 
----A validation rule: a list of allowed text, or a test on numbers.
+---A validation rule: a list of allowed text, a test on numbers, dates or the length of text,
+---or a formula that must hold.
 ---@class Sheet.Validation
 ---@field range string
----@field type 'list'|'number'
+---@field type 'list'|'number'|'date'|'length'|'formula'
 ---@field values? string[]
+---@field formula? string For a list, a reference to the cells that hold the items, such as `=$A$1:$A$9`. For a formula rule, the formula, written for the top left cell of the range, that must give TRUE.
 ---@field op? string
 ---@field value? string
 ---@field value2? string
@@ -526,9 +528,20 @@ function Book:rewrite_sheet (sheet, fn)
       sheet:record (cell.row, cell.col, { text = text, style = cell.style })
     end
   end
-  local rules = {} ---@type Sheet.Rule[]
+  for _, field in ipairs ({ 'rules', 'validation' }) do
+    self:rewrite_items (sheet, field, fn)
+  end
+end
+
+---Rewrites the formulas of a sheet's rules or validation, as `rewrite_formulas` does.
+---@param sheet Sheet.Sheet
+---@param field string `rules` or `validation`.
+---@param fn fun(text: string, own: Sheet.Sheet): string
+function Book:rewrite_items (sheet, field, fn)
+  local items = (sheet --[[@as table<string, table[]>]])[field]
+  local rules = {} ---@type table[]
   local changed = false
-  for i, rule in ipairs (sheet.rules) do
+  for i, rule in ipairs (items) do
     rules[i] = rule
     if type (rule.formula) == 'string' then
       local text = fn (rule.formula, sheet)
@@ -540,13 +553,13 @@ function Book:rewrite_sheet (sheet, fn)
           copy[k] = v
         end
         copy.formula = text
-        rules[i] = copy --[[@as Sheet.Rule]]
+        rules[i] = copy
         changed = true
       end
     end
   end
   if changed then
-    sheet:set_field ('rules', rules)
+    sheet:set_field (field, rules)
   end
 end
 
@@ -1770,6 +1783,7 @@ local VALIDATION_KEYS = {
   'integer',
   'message',
   'strict',
+  'formula',
 }
 local CHART_KEYS = {
   'id',

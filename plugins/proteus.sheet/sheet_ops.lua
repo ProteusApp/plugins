@@ -1453,12 +1453,20 @@ local OP_WORDS = {
 
 ---The message a refused entry shows when the rule has none.
 ---@param v Sheet.Validation
+---@param items string[] The items of a list.
 ---@return string
-local function default_message (v)
+local function default_message (v, items)
   if v.type == 'list' then
-    return 'Pick one of: ' .. table.concat (v.values or {}, ', ') .. '.'
+    return 'Pick one of: ' .. table.concat (items, ', ') .. '.'
+  elseif v.type == 'formula' then
+    return 'The value breaks the rule ' .. (v.formula or '') .. '.'
   end
   local what = v.integer and 'a whole number' or 'a number'
+  if v.type == 'date' then
+    what = 'a date'
+  elseif v.type == 'length' then
+    what = 'text with a length'
+  end
   if v.op == 'between' then
     return 'Enter '
       .. what
@@ -1487,6 +1495,68 @@ local function default_message (v)
   return 'Enter ' .. what .. '.'
 end
 
+---The values a formula gives at a cell, when the formula is written for the top left cell of
+---a range and moves for the others as a paste would, and how many. With `candidate`, the cell
+---itself reads as that value, so a validation formula can test what is being typed.
+---@param sheet Sheet.Sheet
+---@param text string
+---@param rect Sheet.Rect
+---@param row integer
+---@param col integer
+---@param candidate? Sheet.Value
+---@return Sheet.Values values
+---@return integer count
+local function values_at (sheet, text, rect, row, col, candidate)
+  local ast = rule_ast (formula.shift (text, row - rect.r1, col - rect.c1))
+  if not ast then
+    return { formula.error ('#ERROR!') }, 1
+  end
+  local base = sheet.book:context (sheet)
+  local ctx = setmetatable ({
+    row = row,
+    col = col,
+    rows = sheet.rows,
+    cols = sheet.cols,
+    value = function (r, c, name)
+      if candidate ~= nil and name == nil and r == row and c == col then
+        return candidate
+      end
+      return base.value (r, c, name)
+    end,
+  }, { __index = base }) --[[@as Sheet.Context]]
+  return formula.values (ast, ctx)
+end
+
+---The items of a validation list: the ones it holds, or the shown text of the cells its
+---formula names, without blanks or repeats.
+---@param sheet Sheet.Sheet
+---@param v Sheet.Validation
+---@param row integer
+---@param col integer
+---@return string[]
+function M.list_items (sheet, v, row, col)
+  if type (v.formula) ~= 'string' then
+    return v.values or {}
+  end
+  local rect = rect_of (v.range)
+  if not rect then
+    return {}
+  end
+  local values, count = values_at (sheet, v.formula, rect, row, col)
+  local out, seen = {}, {} ---@type string[], table<string, boolean>
+  for k = 1, count do
+    local x = values[k]
+    if x ~= nil and not formula.is_error (x) then
+      local shown = formula.format_value (x)
+      if shown ~= '' and not seen[shown] then
+        seen[shown] = true
+        out[#out + 1] = shown
+      end
+    end
+  end
+  return out
+end
+
 ---Whether a text may go into a cell. Returns true when it may. Otherwise returns false, the
 ---message to show, and whether the rule refuses the text (strict) or only warns. An empty
 ---text and a formula always pass.
@@ -1503,29 +1573,41 @@ function M.check_input (sheet, row, col, text)
     return true, nil, nil
   end
   local good = false
+  local items = {} ---@type string[]
+  local value = format.parse_input (text, sheet.book.clock)
   if v.type == 'list' then
+    items = M.list_items (sheet, v, row, col)
     local want = string.lower (text)
-    for _, item in ipairs (v.values or {}) do
+    for _, item in ipairs (items) do
       if string.lower (item) == want then
         good = true
       end
     end
-  else
-    local value = format.parse_input (text, sheet.book.clock)
-    if type (value) == 'number' then
-      good = true
-      if v.integer and value ~= math.floor (value) then
-        good = false
-      end
-      if good and v.op then
-        good = model.matches (value, text, v.op, v.value, v.value2)
-      end
+  elseif v.type == 'length' then
+    local n = utf8.len (text) or #text
+    good = not v.op or model.matches (n, text, v.op, v.value, v.value2)
+  elseif v.type == 'formula' then
+    local rect = rect_of (v.range)
+    if rect and type (v.formula) == 'string' then
+      local values, count = values_at (sheet, v.formula, rect, row, col, value)
+      local result = values[1]
+      good = count == 1
+        and (result == true or (type (result) == 'number' and result ~= 0))
+    end
+  elseif type (value) == 'number' then
+    -- A date is a number too, typed as a date.
+    good = true
+    if v.integer and v.type ~= 'date' and value ~= math.floor (value) then
+      good = false
+    end
+    if good and v.op then
+      good = model.matches (value, text, v.op, v.value, v.value2)
     end
   end
   if good then
     return true, nil, nil
   end
-  return false, v.message or default_message (v), v.strict ~= false
+  return false, v.message or default_message (v, items), v.strict ~= false
 end
 
 ---The choices of a cell's dropdown list, or nil when the cell has none.
@@ -1536,7 +1618,7 @@ end
 function M.dropdown (sheet, row, col)
   local v = M.validation_at (sheet, row, col)
   if v and v.type == 'list' then
-    return v.values or {}
+    return M.list_items (sheet, v, row, col)
   end
   return nil
 end
