@@ -11,6 +11,7 @@ local disk = require ('disk_paths') --[[@as DiskPaths]]
 local documents_module = require ('lsp.documents') --[[@as Lsp.DocumentsModule]]
 local edits = require ('lib.edits') --[[@as LangTypescript.EditsModule]]
 local extra_module = require ('lsp.extra') --[[@as Lsp.ExtraModule]]
+local launch_module = require ('lib.launch') --[[@as LangTypescript.LaunchModule]]
 local messages_module = require ('lsp.messages') --[[@as Lsp.MessagesModule]]
 local paths_module = require ('lsp.paths') --[[@as Lsp.PathsModule]]
 local program_module = require ('lib.program') --[[@as LangTypescript.ProgramModule]]
@@ -352,21 +353,35 @@ function M.install (ctx, tool)
         return
       end
       local root = root_for (doc)
+      -- In a folder the user does not trust, the server and TypeScript come from outside it.
+      local own_root = not ctx.untrusted and root or nil
       starting = true
-      program_module.find (app, tool, root, function (found, why)
+      program_module.find (app, tool, own_root, function (found, why)
         if not found then
           starting = false
           tool.set_path (nil)
           tool.set_state ('missing', why)
           return
         end
-        local own = settings.get ('typescript.project_typescript') == true
-        program_module.libraries (app, root, found, function (libraries)
+        local wanted = settings.get ('typescript.project_typescript') == true
+        if wanted and ctx.untrusted then
+          tool.log (
+            'info',
+            "the folder's own TypeScript waits until you trust the folder (File: Trust This Folder)"
+          )
+        end
+        program_module.libraries (app, own_root, found, function (found_libs)
           starting = false
-          if not own then
-            -- The server looks in the project by itself, so naming the other TypeScript
-            -- is what keeps the project's out.
-            libraries = { path = libraries.fallback }
+          local libraries = launch_module.choose_libraries (
+            found_libs,
+            wanted and not ctx.untrusted
+          )
+          if not libraries then
+            tool.set_state (
+              'stopped',
+              "no TypeScript beside the language server, and the folder's own is not in use. Install typescript beside it."
+            )
+            return
           end
           if libraries.path then
             tool.log ('info', 'TypeScript from ' .. libraries.path)

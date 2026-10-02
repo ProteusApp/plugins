@@ -20,16 +20,51 @@ M.SHOW_FORMAT = '--format=%H%x1f%h%x1f%an%x1f%ae%x1f%ad%x1f%ar%x1f%P%x1f%B%x1e'
 M.BRANCH_FORMAT = '--format=%(HEAD)%09%(refname)%09%(upstream:short)'
 M.STASH_FORMAT = '--format=%gd%x1f%gs%x1f%cr'
 
+-- What every git command starts with. A repository's own `.git/config` can name programs for
+-- Git to run, and a folder that arrives as a zip or on a USB stick brings that file along.
+-- These settings turn off the ones that run without being asked for: `core.fsmonitor` runs
+-- on status, an embedded bare repository brings a config of its own, and the `ext`
+-- transport runs a command. `--no-optional-locks` keeps status from writing the index while
+-- the user works. Hooks, filters and diff drivers still come from the repository, so the
+-- client runs git only in a repository the user trusts.
+M.SAFE_ARGS = {
+  '--no-optional-locks',
+  '--literal-pathspecs',
+  '-c',
+  'core.quotepath=false',
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  'safe.bareRepository=explicit',
+  '-c',
+  'protocol.ext.allow=never',
+}
+
 ---------------------------------------------------------------------------------------------
 -- Command lines
 ---------------------------------------------------------------------------------------------
 
----What every git command starts with. With `--literal-pathspecs` Git reads each path as a
----file name, not a pattern, so discarding a file called `*.log` never deletes the other `.log`
----files, and staging `f[1].txt` never stages `f1.txt`.
+---What every git command starts with: SAFE_ARGS. With `--literal-pathspecs` Git reads each
+---path as a file name, not a pattern, so discarding a file called `*.log` never deletes the
+---other `.log` files, and staging `f[1].txt` never stages `f1.txt`.
 ---@return string[]
 function M.base_args ()
-  return { '--literal-pathspecs', '-c', 'core.quotepath=false' }
+  local out = {} ---@type string[]
+  for _, a in ipairs (M.SAFE_ARGS) do
+    out[#out + 1] = a
+  end
+  return out
+end
+
+---The whole command line for git: SAFE_ARGS, then `args`.
+---@param args string[]
+---@return string[]
+function M.command (args)
+  local out = M.base_args ()
+  for _, a in ipairs (args) do
+    out[#out + 1] = a
+  end
+  return out
 end
 
 ---The variables a command that reaches a remote runs with. The app has no terminal, so a

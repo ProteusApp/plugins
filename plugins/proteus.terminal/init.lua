@@ -44,11 +44,11 @@ local CSS = [[
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, which start in the folder open in the Code Editor.',
-  version = '1.0.1',
+  version = '1.0.2',
   -- `process` runs the shell in each terminal. `files` lets it start in the Code Editor's
   -- folder, which the `project` service hands out. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -74,6 +74,7 @@ return {
       type = 'string',
       default = '',
       description = 'The program each new terminal runs, such as pwsh, cmd or bash. Empty runs the system shell.',
+      sensitive = true,
     })
     settings.define ('terminal.font_size', {
       title = 'Terminal font size',

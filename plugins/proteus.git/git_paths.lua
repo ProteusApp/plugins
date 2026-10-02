@@ -102,6 +102,35 @@ function M.remember (list, path, max)
   return out
 end
 
+---The key a folder is trusted under: `/` for every slash, none at the end, and lower case on
+---Windows, which ignores case in paths.
+---@param path string
+---@param os? string
+---@return string
+function M.folder_key (path, os)
+  local key = path:gsub ('\\', '/'):gsub ('(.)/+$', '%1')
+  if os == 'windows' then
+    key = key:lower ()
+  end
+  return key
+end
+
+---True when `path` is in the list of trusted folders. A folder inside a trusted one is not
+---trusted by that, since it may be a repository of its own that arrived later.
+---@param trusted string[] Folder keys.
+---@param path string
+---@param os? string
+---@return boolean
+function M.is_trusted (trusted, path, os)
+  local key = M.folder_key (path, os)
+  for _, t in ipairs (trusted) do
+    if key == t then
+      return true
+    end
+  end
+  return false
+end
+
 ---The text to show when a git command fails: what Git printed on stderr, or on stdout when
 ---stderr is empty, or the reason it could not start. Long output keeps its first lines.
 ---@param res Proteus.RunResult?

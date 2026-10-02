@@ -114,12 +114,13 @@ function Keys.list () end
 ---@field default? any
 ---@field description? string
 ---@field options? string[]|fun(): string[] The choices for a `'select'` setting.
+---@field sensitive? boolean True for a setting that names a program to run, or where code comes from. Only the user's choice and the default count for it, never a profile's or a folder's value.
 ---@field key? string Set by the service.
 ---@field owner? string Set by the service.
 
 ---Options with defaults, saved per profile. A value comes from the open folder's
 ---`.proteus/settings.json`, then the user's choice, then the profile's `settings`, then the
----default.
+---default. A `sensitive` setting skips the folder and the profile.
 ---@class Proteus.Settings
 local Settings = {}
 
@@ -1279,6 +1280,16 @@ function Project.absolute (rel) end
 ---Folder names that search and Go to File leave out, from the `project.exclude` setting.
 ---@return string[]
 function Project.excluded () end
+
+---True when the user trusts the open folder. Opening a folder runs nothing of its own until
+---then: its `.proteus` files, its Git settings and its build scripts all wait.
+---@return boolean
+function Project.trusted () end
+
+---Asks the user to trust the open folder. Trusting reloads the window, so a plugin that
+---waits on it reads `trusted` again when it starts.
+---@param reason? string What waits for it, such as `'Git'`.
+function Project.ask_trust (reason) end
 
 ---------------------------------------------------------------------------------------------
 -- app.process (the kernel)

@@ -15,7 +15,12 @@ test ('base_args gives a new list each time', function ()
   -- The client adds each command's own arguments to the list it gets.
   local first = A.base_args ()
   first[#first + 1] = 'status'
-  eq (A.base_args (), { '--literal-pathspecs', '-c', 'core.quotepath=false' })
+  eq (A.base_args (), A.SAFE_ARGS)
+  eq (
+    A.SAFE_ARGS[#A.SAFE_ARGS],
+    'protocol.ext.allow=never',
+    'SAFE_ARGS is left alone'
+  )
 end)
 
 test ('status_args reads only the modes Git knows', function ()
