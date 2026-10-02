@@ -41,6 +41,7 @@
     "log_ansi.lua",
     "log_filter.lua",
     "log_level.lua",
+    "log_query.lua",
     "log_regex.lua",
     "log_text.lua",
     "log_time.lua",

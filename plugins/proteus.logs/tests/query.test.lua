@@ -1,4 +1,5 @@
 local lf = require ('log_filter') --[[@as Logs.FilterModule]]
+local lq = require ('log_query') --[[@as Logs.QueryModule]]
 
 ---@param text string
 ---@return Logs.Query
@@ -172,3 +173,34 @@ test (
     ok (lf.row_html (line (7, 'x'), q ('')):find ('data-item="7"', 1, true))
   end
 )
+
+-- log_query ---------------------------------------------------------------------------------
+
+test ('log_filter hands out the filter of log_query', function ()
+  ok (lf.parse_query == lq.parse_query)
+  ok (lf.is_empty == lq.is_empty)
+  ok (lf.has_time == lq.has_time)
+  ok (lf.matches == lq.matches)
+  ok (lf.matches_line == lq.matches_line)
+  ok (lf.highlight == lq.highlight)
+end)
+
+test ('a regular expression reads an escaped slash', function ()
+  local query = lq.parse_query ('/a\\/b/')
+  eq (query.problem, nil)
+  ok (lq.matches ('x a/b y', query))
+  ok (not lq.matches ('x a b y', query))
+end)
+
+test ('matches_line checks the level before the words', function ()
+  local query = lq.parse_query ('-level:debug boom')
+  ok (lq.matches_line (line (1, 'ERROR boom'), query))
+  ok (not lq.matches_line (line (2, 'DEBUG boom'), query))
+  ok (not lq.matches_line (line (3, 'ERROR bang'), query))
+end)
+
+test ('matches finds the level only when the query needs it', function ()
+  ok (lq.matches ('DEBUG boom', lq.parse_query ('boom')))
+  ok (lq.matches ('DEBUG boom', lq.parse_query ('level:error'), 'error'))
+  ok (not lq.matches ('DEBUG boom', lq.parse_query ('level:error')))
+end)
