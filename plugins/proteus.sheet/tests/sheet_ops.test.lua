@@ -559,6 +559,28 @@ test ('rules add styles to the cells they match', function ()
   eq (#s.rules, 7)
 end)
 
+test ('icon sets mark the top, middle and bottom thirds of a range', function ()
+  local s = sheet_of ({ A1 = '0', A2 = '50', A3 = '100', A4 = '70', A5 = 'x' })
+  ops.add_rule (s, { range = 'A1:A5', type = 'icons', icons = 'arrows' })
+  ---@param row integer
+  ---@return string?
+  local function icon (row)
+    local look = ops.rule_look (s, row, 1)
+    return look and look.icon
+  end
+  eq (
+    { icon (1), icon (2), icon (3), icon (4), icon (5) },
+    { '▼', '▶', '▲', '▲', nil }
+  )
+  eq (ops.look (s, 3, 1).icon_color, '#2b9348')
+  ops.set_rule (
+    s,
+    1,
+    { range = 'A1:A5', type = 'icons', icons = 'lights', reverse = true }
+  )
+  eq ({ icon (1), ops.look (s, 1, 1).icon_color }, { '●', '#2b9348' })
+end)
+
 test ('stop if true keeps the rules below from applying', function ()
   local s = sheet_of ({ A1 = '5', A2 = '-5' })
   s:set_field ('rules', {

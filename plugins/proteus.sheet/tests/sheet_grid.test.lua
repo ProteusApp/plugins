@@ -447,6 +447,32 @@ test ('the cells a formula spills into draw its values', function ()
   end
 end)
 
+test ('text does not run over the cells a formula spills into', function ()
+  local s = sheet_of ({ A2 = 'a long label that runs on', B1 = '=SEQUENCE(2)' })
+  local html = table_of (s, 1, 3)
+  eq (count (html, 'sheet%-grid%-o'), 0)
+  s:set (1, 2, '')
+  eq (count (table_of (s, 1, 3), 'sheet%-grid%-o'), 1)
+end)
+
+test ('an icon set draws its icon before the text', function ()
+  local s = sheet_of ({ A1 = '1', A2 = '9' })
+  s:set_field (
+    'rules',
+    { { range = 'A1:A2', type = 'icons', icons = 'arrows' } }
+  )
+  local html = table_of (s, 1, 2)
+  ok (
+    string.find (
+      html,
+      '<span class="sheet-grid-ic" style="color:#2b9348">▲</span>9',
+      1,
+      true
+    ),
+    html
+  )
+end)
+
 test ('hidden rows and columns draw nothing', function ()
   local s = sheet_of ({ A1 = 'a', A2 = 'b', B1 = 'c' })
   s:set_hidden ('row', 2, 2, true)

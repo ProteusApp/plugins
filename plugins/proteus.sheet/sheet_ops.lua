@@ -48,6 +48,8 @@ local xlsx = require ('sheet_xlsx') --[[@as Sheet.XlsxModule]]
 ---@field fill? string A colour scale's colour.
 ---@field bar? number A data bar's width, from 0 to 1.
 ---@field bar_color? string
+---@field icon? string An icon set's icon, a character.
+---@field icon_color? string
 
 ---What the grid needs to draw one cell.
 ---@class Sheet.Look
@@ -59,6 +61,8 @@ local xlsx = require ('sheet_xlsx') --[[@as Sheet.XlsxModule]]
 ---@field kind 'empty'|'number'|'text'|'bool'|'error'
 ---@field bar? number
 ---@field bar_color? string
+---@field icon? string
+---@field icon_color? string
 ---@field merge? Sheet.Rect Set on the top left cell of a merged block.
 ---@field covered? boolean True when a merged block covers this cell and it does not show.
 ---@field note? boolean
@@ -1163,7 +1167,7 @@ local function prepare (sheet, rule)
       end
       prep.average = sum / #list
     end
-  elseif kind == 'scale' or kind == 'bar' then
+  elseif kind == 'scale' or kind == 'bar' or kind == 'icons' then
     local list = numbers_in (sheet, rect)
     table.sort (list)
     if #list > 0 then
@@ -1256,6 +1260,17 @@ local function formula_holds (sheet, rule, prep, row, col)
   end
   return v == true
 end
+
+-- The icon sets, best first: a value in the top third of its range from the lowest to the
+-- highest gets the first icon, the middle third the second, and the bottom third the last,
+-- as Excel's three-icon sets do.
+---@type table<string, { [1]: string, [2]: string }[]>
+local ICON_SETS = {
+  arrows = { { '▲', '#2b9348' }, { '▶', '#9a7d0a' }, { '▼', '#e03e3e' } },
+  lights = { { '●', '#2b9348' }, { '●', '#d4a017' }, { '●', '#e03e3e' } },
+  flags = { { '⚑', '#2b9348' }, { '⚑', '#d4a017' }, { '⚑', '#e03e3e' } },
+}
+M.ICON_SETS = ICON_SETS
 
 ---What the sheet's conditional formatting rules add to one cell: a style, a colour scale's
 ---fill, and a data bar's width. Nil when no rule touches the cell. The rules run in order of
@@ -1352,6 +1367,21 @@ function M.rule_look (sheet, row, col)
           out.bar = hi == lo and 0
             or math.max (0, math.min (1, (v - lo) / (hi - lo)))
           out.bar_color = rule.color or '#638ec6'
+        end
+        hit = true
+      elseif kind == 'icons' and type (v) == 'number' and prep.min then
+        local lo, hi =
+          prep.min, --[[@as number]]
+          prep.max --[[@as number]]
+        local share = hi == lo and 1 or (v - lo) / (hi - lo)
+        local slot = share >= 0.67 and 1 or share >= 0.33 and 2 or 3
+        if rule.reverse then
+          slot = 4 - slot
+        end
+        local set = ICON_SETS[rule.icons or 'arrows'] or ICON_SETS.arrows
+        out = out or {}
+        if not out.icon then
+          out.icon, out.icon_color = set[slot][1], set[slot][2]
         end
         hit = true
       end
@@ -1980,6 +2010,8 @@ function M.look (sheet, row, col)
     kind = sheet:kind (row, col),
     bar = extra and extra.bar,
     bar_color = extra and extra.bar_color,
+    icon = extra and extra.icon,
+    icon_color = extra and extra.icon_color,
     note = sheet:note (row, col) ~= nil or nil,
     list = M.dropdown (sheet, row, col) ~= nil or nil,
   }

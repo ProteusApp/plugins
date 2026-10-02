@@ -33,6 +33,8 @@ local text = require ('sheet_panel_text') --[[@as Sheet.PanelTextModule]]
 ---@field mid_color? string
 ---@field max_color string
 ---@field bar_color string
+---@field icons string The icon set of an icon set rule.
+---@field reverse boolean True to give the lowest values the first icon.
 ---@field stop boolean Stop if true.
 
 ---A defined name being edited.
@@ -1021,6 +1023,8 @@ function M.install (env)
         mid_color = rule.mid_color,
         max_color = rule.max_color or text.SCALE_MAX,
         bar_color = rule.color or text.BAR_COLOR,
+        icons = rule.icons or 'arrows',
+        reverse = rule.reverse == true,
         stop = rule.stop == true,
       }
     end
@@ -1034,6 +1038,8 @@ function M.install (env)
       mid_color = text.SCALE_MID,
       max_color = text.SCALE_MAX,
       bar_color = text.BAR_COLOR,
+      icons = 'arrows',
+      reverse = false,
       stop = false,
     }
   end
@@ -1049,6 +1055,9 @@ function M.install (env)
       rule.max_color = draft.max_color
     elseif rule.type == 'bar' then
       rule.color = draft.bar_color
+    elseif rule.type == 'icons' then
+      rule.icons = draft.icons
+      rule.reverse = draft.reverse or nil
     else
       local style = {} ---@type table<string, any>
       for k, v in
@@ -1319,6 +1328,20 @@ function M.install (env)
       })
     )
 
+    local icons_part = field (
+      'Icon set',
+      select (text.ICON_SETS, draft.icons, function (value)
+        draft.icons = value
+      end),
+      check ('Lowest values get the first icon', draft.reverse, function (on)
+        draft.reverse = on
+      end),
+      ui.div ({
+        class = 'sheet-panel-hint',
+        'The top third of the range from the lowest value to the highest gets the first icon, the middle third the second, and the rest the last.',
+      })
+    )
+
     local function show_condition ()
       local c = text.condition (draft.cond) or text.CONDITIONS[1]
       local kind = c.input
@@ -1343,9 +1366,12 @@ function M.install (env)
             or 'How many values to mark.'
         )
       end
-      style_part:show (c.type ~= 'scale' and c.type ~= 'bar')
+      style_part:show (
+        c.type ~= 'scale' and c.type ~= 'bar' and c.type ~= 'icons'
+      )
       scale_part:show (c.type == 'scale')
       bar_part:show (c.type == 'bar')
+      icons_part:show (c.type == 'icons')
     end
 
     local options = {} ---@type { value: string, label: string }[]
@@ -1400,6 +1426,7 @@ function M.install (env)
       style_part,
       scale_part,
       bar_part,
+      icons_part,
       stop,
       ui.div ({
         class = 'sheet-panel-actions',

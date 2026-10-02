@@ -38,7 +38,7 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---rules below it from applying where it holds. `value` and `value2` are text as typed.
 ---@class Sheet.Rule
 ---@field range string Such as `D5:D10`.
----@field type string `compare`, `text`, `blank`, `not_blank`, `error`, `duplicate`, `unique`, `top`, `bottom`, `above_average`, `below_average`, `formula`, `scale` or `bar`.
+---@field type string `compare`, `text`, `blank`, `not_blank`, `error`, `duplicate`, `unique`, `top`, `bottom`, `above_average`, `below_average`, `formula`, `scale`, `bar` or `icons`.
 ---@field op? string
 ---@field value? string
 ---@field value2? string
@@ -51,6 +51,8 @@ local model = require ('sheet_model') --[[@as Sheet.ModelModule]]
 ---@field max_color? string
 ---@field color? string The colour of a data bar.
 ---@field stop? boolean Stop if true: where the rule holds, the rules below it do not apply.
+---@field icons? string The icon set of an `icons` rule: `arrows`, `lights` or `flags`.
+---@field reverse? boolean True to give the lowest values the first icon of the set.
 
 ---A validation rule: a list of allowed text, a test on numbers, dates or the length of text,
 ---or a formula that must hold.
@@ -1996,6 +1998,8 @@ local RULE_KEYS = {
   'max_color',
   'color',
   'stop',
+  'icons',
+  'reverse',
 }
 local NAME_KEYS = { 'name', 'formula' }
 local VALIDATION_KEYS = {

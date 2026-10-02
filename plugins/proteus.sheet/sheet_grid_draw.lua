@@ -687,7 +687,12 @@ function M.table_html (sheet, geo, opts)
               while nxt and nxt <= stop and count < SPILL do
                 local nk = r * KEY + nxt
                 local other = cells[nk]
-                if (other and other.text ~= '') or skip[nk] or pieces[nk] then
+                if
+                  (other and other.text ~= '')
+                  or spills[nk]
+                  or skip[nk]
+                  or pieces[nk]
+                then
                   break
                 end
                 room = room + (lefts[nxt + 1] - lefts[nxt])
@@ -702,8 +707,22 @@ function M.table_html (sheet, geo, opts)
               end
             end
             local body = ''
-            if text ~= '' then
-              body = '<div' .. inner .. '>' .. calc.escape (text) .. '</div>'
+            local icon = look and look.icon
+            if icon then
+              -- An icon set's icon sits at the left of the cell, before the text.
+              icon = '<span class="sheet-grid-ic" style="color:'
+                .. (look and look.icon_color or 'inherit')
+                .. '">'
+                .. calc.escape (icon)
+                .. '</span>'
+            end
+            if text ~= '' or icon then
+              body = '<div'
+                .. inner
+                .. '>'
+                .. (icon or '')
+                .. calc.escape (text)
+                .. '</div>'
             end
             html[#html + 1] = '<td class="'
               .. table.concat (classes, ' ')

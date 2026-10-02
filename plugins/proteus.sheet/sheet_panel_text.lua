@@ -302,6 +302,14 @@ M.CONDITIONS = {
   },
   { id = 'scale', label = 'Colour scale', type = 'scale', input = 'none' },
   { id = 'bar', label = 'Data bar', type = 'bar', input = 'none' },
+  { id = 'icons', label = 'Icon set', type = 'icons', input = 'none' },
+}
+
+-- The icon sets a rule can show, by id.
+M.ICON_SETS = {
+  { value = 'arrows', label = 'Arrows ▲ ▶ ▼' },
+  { value = 'lights', label = 'Traffic lights ● ● ●' },
+  { value = 'flags', label = 'Flags ⚑ ⚑ ⚑' },
 }
 
 ---@type table<string, Sheet.Condition>
