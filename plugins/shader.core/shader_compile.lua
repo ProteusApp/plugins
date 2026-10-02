@@ -9,6 +9,7 @@ local graph = require ('shader_graph') --[[@as Shader.GraphModule]]
 local helpers = require ('shader_helpers') --[[@as Shader.HelpersModule]]
 local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
 local nodes = require ('shader_nodes') --[[@as Shader.NodesModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 local types = require ('shader_types') --[[@as Shader.TypesModule]]
 
 -- The uniforms every shader gets, in their WGSL order.
@@ -20,8 +21,12 @@ local BUILTIN_FIELDS = {
   { name = 'mouse', type = 'vec4' },
 }
 
+-- Uniforms a shader gets only when a node asks for them, such as the Date node.
+---@type table<string, { glsl: string, type: Shader.UniformType }>
+local OPTIONAL_FIELDS = { date = { glsl = 'u_date', type = 'vec4' } }
+
 local BUILTIN_NAMES =
-  { resolution = true, time = true, frame = true, mouse = true }
+  { resolution = true, time = true, frame = true, mouse = true, date = true }
 
 ---What an unwired input with a `builtin` reads, and its type.
 ---@type table<Shader.Builtin, string>
@@ -152,10 +157,16 @@ end
 
 ---Why a node's settings cannot make code, or nil.
 ---@param n Shader.Node
+---@param def Shader.NodeDef
 ---@param settings table<string, any>
 ---@return string?
-local function check_settings (n, settings)
-  if n.type == 'parameter' then
+local function check_settings (n, def, settings)
+  if def.texture then
+    -- The channel's name goes into the code as it is.
+    if not passes.channel_of_name (tostring (settings.channel)) then
+      return 'Pick a channel, iChannel0 to iChannel3.'
+    end
+  elseif n.type == 'parameter' then
     return M.bad_name (settings.name)
   elseif n.type == 'swizzle' then
     local mask = tostring (settings.mask or '')
@@ -322,12 +333,15 @@ function M.compile (doc)
   local param_names = {} ---@type table<string, boolean>
   local final = { glsl = {}, wgsl = {} } ---@type table<Shader.Lang, table<string, string>>
   local node_types = {} ---@type table<string, table<string, Shader.Type>>
+  -- The channels Texture nodes read, and the uniforms nodes ask for beyond the four.
+  local reads = {} ---@type table<integer, string[]>
+  local wants = {} ---@type table<string, boolean>
 
   for _, id in ipairs (order) do
     local n = graph.node (doc, id) --[[@as Shader.Node]]
     local def = nodes.get (n.type) --[[@as Shader.NodeDef]]
     local settings = nodes.settings_of (def, n.settings)
-    local bad = check_settings (n, settings)
+    local bad = check_settings (n, def, settings)
     if n.type == 'parameter' and not bad then
       if param_names[settings.name] then
         bad = 'Another Parameter is called '
@@ -460,6 +474,14 @@ function M.compile (doc)
       for _, h in ipairs (def.helpers or {}) do
         needs[h] = true
       end
+      for _, name in ipairs (def.uniforms or {}) do
+        wants[name] = true
+      end
+      if def.texture then
+        local index = passes.channel_of_name (settings.channel) --[[@as integer]]
+        reads[index] = reads[index] or {}
+        table.insert (reads[index], id)
+      end
       if n.type == 'parameter' then
         param_names[settings.name] = true
         local kind = settings.kind
@@ -483,22 +505,62 @@ function M.compile (doc)
     end
   end
 
-  -- The WGSL struct: the builtin fields, then the parameters.
+  -- The WGSL struct: the builtin fields, the ones nodes ask for, then the parameters.
   local fields = {} ---@type { name: string, type: Shader.UniformType }[]
   for _, f in ipairs (BUILTIN_FIELDS) do
     fields[#fields + 1] = f
   end
+  local optional = {} ---@type string[]
+  for name in pairs (wants) do
+    if OPTIONAL_FIELDS[name] then
+      optional[#optional + 1] = name
+    end
+  end
+  table.sort (optional)
+  for _, name in ipairs (optional) do
+    fields[#fields + 1] = { name = name, type = OPTIONAL_FIELDS[name].type }
+  end
+  local builtin_count = #fields
   for _, p in ipairs (params) do
     fields[#fields + 1] = { name = p.key, type = p.type }
   end
   local lay = layout.layout (fields)
   for i, f in ipairs (lay.fields) do
-    if BUILTIN_NAMES[f.name] and i <= #BUILTIN_FIELDS then
+    if BUILTIN_NAMES[f.name] and i <= builtin_count then
       f.builtin = f.name
     end
   end
   for i, p in ipairs (params) do
-    p.offset = lay.fields[#BUILTIN_FIELDS + i].offset
+    p.offset = lay.fields[builtin_count + i].offset
+  end
+
+  -- The channels, with the Texture nodes that read each.
+  local channels = {} ---@type Shader.Channel[]
+  local bindings = { ---@type Shader.Binding[]
+    { group = 0, binding = 0, kind = 'uniforms', name = 'u', used = true },
+  }
+  for i = 0, passes.COUNT - 1 do
+    if reads[i] then
+      local name = 'iChannel' .. i
+      channels[#channels + 1] =
+        { index = i, names = { name }, nodes = reads[i] }
+      bindings[#bindings + 1] = {
+        group = 1,
+        binding = i * 2,
+        kind = 'texture',
+        name = name,
+        channel = i,
+        used = true,
+      }
+      bindings[#bindings + 1] = {
+        group = 1,
+        binding = i * 2 + 1,
+        kind = 'sampler',
+        name = name .. '_sampler',
+        channel = i,
+        used = true,
+      }
+    end
   end
 
   local helper_names = {} ---@type string[]
@@ -519,6 +581,17 @@ function M.compile (doc)
   g[#g + 1] = 'uniform float u_time;'
   g[#g + 1] = 'uniform float u_frame;'
   g[#g + 1] = 'uniform vec4 u_mouse;'
+  for _, name in ipairs (optional) do
+    local f = OPTIONAL_FIELDS[name]
+    g[#g + 1] = 'uniform '
+      .. types.name (f.type --[[@as Shader.Type]], 'glsl')
+      .. ' '
+      .. f.glsl
+      .. ';'
+  end
+  for _, c in ipairs (channels) do
+    g[#g + 1] = 'uniform highp sampler2D ' .. c.names[1] .. ';'
+  end
   for _, p in ipairs (params) do
     g[#g + 1] = 'uniform '
       .. types.name (p.type --[[@as Shader.Type]], 'glsl')
@@ -564,8 +637,8 @@ function M.compile (doc)
       .. ': '
       .. types.name (f.type --[[@as Shader.Type]], 'wgsl')
       .. ','
-    if i > #BUILTIN_FIELDS then
-      local p = params[i - #BUILTIN_FIELDS]
+    if i > builtin_count then
+      local p = params[i - builtin_count]
       w[#w] = w[#w] .. notes (p)
       wgsl_lines[#w] = p.node
     end
@@ -573,6 +646,19 @@ function M.compile (doc)
   w[#w + 1] = '}'
   w[#w + 1] = ''
   w[#w + 1] = '@group(0) @binding(0) var<uniform> u: Uniforms;'
+  for _, b in ipairs (bindings) do
+    if b.kind ~= 'uniforms' then
+      w[#w + 1] = '@group('
+        .. b.group
+        .. ') @binding('
+        .. b.binding
+        .. ') var '
+        .. b.name
+        .. ': '
+        .. (b.kind == 'texture' and 'texture_2d<f32>' or 'sampler')
+        .. ';'
+    end
+  end
   w[#w + 1] = ''
   for line in (WGSL_VERTEX .. '\n'):gmatch ('([^\n]*)\n') do
     w[#w + 1] = line
@@ -621,6 +707,7 @@ function M.compile (doc)
       uniforms = glsl_uniforms,
       lines = glsl_lines,
       offset = 0,
+      channels = channels,
     },
     wgsl = {
       language = 'wgsl',
@@ -631,6 +718,8 @@ function M.compile (doc)
       layout = lay,
       lines = wgsl_lines,
       offset = 0,
+      channels = channels,
+      bindings = bindings,
     },
   }
   return result

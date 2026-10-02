@@ -3,8 +3,9 @@
 -- Other plugins draw the documents: an opener for each kind makes the tab's content.
 --
 -- A graph is a *.shader.json file. A code shader is a .frag, .glsl or .wgsl file, and a .vert
--- file beside a .frag file of the same name is its vertex shader. New files go in shaders/,
--- which it claims in `folders`, and it copies the examples there.
+-- file beside a .frag file of the same name is its vertex shader. `x.buffer-a.frag` is Buffer A
+-- of the shader `x.frag`: a pass drawn before it each frame, which its channels can read. New
+-- files go in shaders/, which it claims in `folders`, and it copies the examples there.
 --
 -- Its handbook/ folder holds Learning shaders, a course in the Handbook that goes from a first
 -- shader to the weather system in examples/weather.frag.
@@ -27,7 +28,7 @@ local FIRST_EXAMPLES = {
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.2.0',
+  version = '1.3.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },
@@ -58,7 +59,10 @@ return {
     local order = {} ---@type string[]
     local active_path = nil ---@type string?
     local openers = {} ---@type table<Shader.DocKind, fun(doc: Shader.OpenDoc): Proteus.El>
-    local cache = {} ---@type table<string, { version: integer, result: Shader.CompileResult }>
+    local cache = {} ---@type table<string, { doc: Shader.OpenDoc, version: integer, result: Shader.CompileResult }>
+    -- Shaders read from their files without a tab, such as the buffers of the one in front,
+    -- kept until the file's text changes.
+    local peeked = {} ---@type table<string, { text: string, doc: Shader.OpenDoc }>
     -- Every shader in shaders/, kept until a file there changes.
     local file_list = nil ---@type string[]?
     -- The documents a question about their file is open for.
@@ -204,6 +208,7 @@ return {
         version = 1,
         selection = {},
         values = {},
+        channels = {},
       }
       if kind == 'graph' then
         local graph_doc, err = core.file.load (text)
@@ -223,6 +228,15 @@ return {
         local stored = app.store.get ('values:' .. path)
         if type (stored) == 'table' then
           doc.values = stored
+        end
+        local picked = app.store.get ('channels:' .. path)
+        if type (picked) == 'table' then
+          for i = 0, core.passes.COUNT - 1 do
+            local src = core.passes.clean_source (picked[tostring (i)])
+            if src then
+              doc.channels[tostring (i)] = src
+            end
+          end
         end
       end
       return doc
@@ -276,6 +290,9 @@ return {
         doc.version = doc.version + 1
         if doc.kind == 'code' and next (doc.values) then
           app.store.set ('values:' .. path, doc.values)
+        end
+        if doc.kind == 'code' and next (doc.channels) then
+          app.store.set ('channels:' .. path, doc.channels)
         end
       else
         local text = app.fs.read (path)
@@ -569,6 +586,172 @@ return {
       return nil
     end
 
+    ---An open shader, or one read from its file without a tab.
+    ---@param path string
+    ---@return Shader.OpenDoc?
+    local function peek (path)
+      local d = open[path]
+      if d then
+        return d
+      end
+      local text = app.fs.read (path)
+      if not text then
+        peeked[path] = nil
+        return nil
+      end
+      local hit = peeked[path]
+      if hit and hit.text == text then
+        return hit.doc
+      end
+      local made = make (path, text)
+      peeked[path] = made and { text = text, doc = made } or nil
+      return made
+    end
+
+    ---A graph compiled, kept until it changes.
+    ---@param d Shader.OpenDoc
+    ---@return Shader.CompileResult
+    local function compiled_of (d)
+      local hit = cache[d.path]
+      if hit and hit.doc == d and hit.version == d.version then
+        return hit.result
+      end
+      local result = core.compile.compile (d.history.doc)
+      cache[d.path] = { doc = d, version = d.version, result = result }
+      return result
+    end
+
+    ---What the user picked for each channel, by `'0'` to `'3'`.
+    ---@param d Shader.OpenDoc
+    ---@return table<string, Shader.ChannelSource>
+    local function picked_channels (d)
+      if d.kind == 'graph' then
+        return d.history.doc.channels or {}
+      end
+      return d.channels or {}
+    end
+
+    ---The program of a shader, and its problems, before the channels are checked.
+    ---@param d Shader.OpenDoc
+    ---@param lang? Shader.Lang
+    ---@return Shader.Program?, Shader.CompileError[]
+    local function program_of (d, lang)
+      if d.kind == 'graph' then
+        local result = compiled_of (d)
+        local which = lang or d.language
+        return which == 'wgsl' and result.wgsl or result.glsl, result.errors
+      end
+      if d.stage == 'vertex' then
+        -- A vertex shader runs with the fragment shader beside it.
+        local frag = d.path:gsub ('%.vert$', '.frag')
+        local frag_doc = open[frag]
+        local frag_text = frag_doc and frag_doc.text or app.fs.read (frag)
+        if not frag_text then
+          return nil,
+            {
+              {
+                message = 'A vertex shader runs with the fragment shader of the same name, '
+                  .. base_name (frag)
+                  .. ', which does not exist yet.',
+              },
+            }
+        end
+        return core.source.glsl_program (frag_text, d.text)
+      end
+      local program, errors =
+        core.source.program (d.language, d.text, vertex_of (d))
+      for _, u in ipairs (program.uniforms) do
+        local v = d.values[u.key]
+        if v then
+          u.value = v
+        end
+      end
+      return program, errors
+    end
+
+    ---What each channel shows: the user's pick, or what the notes give.
+    ---@param d Shader.OpenDoc
+    ---@param program Shader.Program?
+    ---@return table<integer, Shader.ChannelSource>
+    local function effective (d, program)
+      local picked = picked_channels (d)
+      local out = {} ---@type table<integer, Shader.ChannelSource>
+      for i = 0, core.passes.COUNT - 1 do
+        out[i] = picked[tostring (i)] or { kind = 'none' }
+      end
+      for _, c in ipairs (program and program.channels or {}) do
+        if not picked[tostring (c.index)] and c.source then
+          out[c.index] = c.source
+        end
+      end
+      return out
+    end
+
+    ---The shader's passes: the files of its image and of each buffer that exists.
+    ---@param path string
+    ---@return Shader.PassSet
+    local function passes_of (path)
+      local base, show = core.passes.pass_of (path)
+      ---@param pass Shader.PassId
+      ---@return string?
+      local function find (pass)
+        for _, p in ipairs (core.passes.pass_paths (base, pass)) do
+          if open[p] or app.fs.exists (p) then
+            return p
+          end
+        end
+        return nil
+      end
+      ---@type Shader.PassSet
+      local set =
+        { base = base, show = show, image = find ('image'), buffers = {} }
+      for _, b in ipairs (core.passes.BUFFERS) do
+        set.buffers[b] = find (b)
+      end
+      return set
+    end
+
+    ---Problems with what the channels a program reads show: nothing, or a buffer with no file.
+    ---@param d Shader.OpenDoc
+    ---@param program Shader.Program
+    ---@return Shader.CompileError[]
+    local function channel_problems (d, program)
+      local out = {} ---@type Shader.CompileError[]
+      if not program.channels or #program.channels == 0 then
+        return out
+      end
+      local sources = effective (d, program)
+      local set = nil ---@type Shader.PassSet?
+      for _, c in ipairs (program.channels) do
+        local src = sources[c.index]
+        local name = 'iChannel' .. c.index
+        local message ---@type string?
+        if src.kind == 'none' then
+          message = name
+            .. ' shows nothing, so it reads black. Pick what it shows under Channels in the Preview panel.'
+        elseif src.kind == 'buffer' then
+          set = set or passes_of (d.path)
+          if not set.buffers[src.buffer] then
+            message = name
+              .. ' reads '
+              .. core.passes.label (src)
+              .. ', which this shader does not have yet. Add it with File > Add a Buffer to This Shader.'
+          end
+        elseif src.kind == 'image' and not src.grant then
+          message = name .. ' has no image yet. Pick one in the Preview panel.'
+        end
+        if message then
+          out[#out + 1] = {
+            message = message,
+            line = c.line,
+            node = c.nodes and c.nodes[1] or nil,
+            severity = 'warning',
+          }
+        end
+      end
+      return out
+    end
+
     api = {
       folder = FOLDER,
       extensions = EXTENSIONS,
@@ -697,55 +880,104 @@ return {
       end,
 
       compiled = function (path)
-        local d = open[path]
+        local d = peek (path)
         if not d or d.kind ~= 'graph' then
           return nil
         end
-        local hit = cache[path]
-        if hit and hit.version == d.version then
-          return hit.result
-        end
-        local result = core.compile.compile (d.history.doc)
-        cache[path] = { version = d.version, result = result }
-        return result
+        return compiled_of (d)
       end,
 
       program = function (path, lang)
-        local d = open[path]
+        local d = peek (path)
         if not d then
           return nil, {}
         end
+        local program, errors = program_of (d, lang)
+        if not program then
+          return nil, errors
+        end
+        local extra = channel_problems (d, program)
+        if #extra == 0 then
+          return program, errors
+        end
+        -- A graph's problems are kept with its compiled code, so they are copied.
+        local all = {} ---@type Shader.CompileError[]
+        for _, e in ipairs (errors) do
+          all[#all + 1] = e
+        end
+        for _, e in ipairs (extra) do
+          all[#all + 1] = e
+        end
+        return program, all
+      end,
+
+      passes = passes_of,
+
+      channels = function (path)
+        local d = peek (path)
+        if not d then
+          local none = {} ---@type table<integer, Shader.ChannelSource>
+          for i = 0, core.passes.COUNT - 1 do
+            none[i] = { kind = 'none' }
+          end
+          return none
+        end
+        return effective (d, (program_of (d)))
+      end,
+
+      set_channel = function (path, index, src)
+        local d = open[path]
+        if not d or index < 0 or index >= core.passes.COUNT then
+          return
+        end
+        local clean = core.passes.clean_source (src)
         if d.kind == 'graph' then
-          local result = api.compiled (path) --[[@as Shader.CompileResult]]
-          local which = lang or d.language
-          return which == 'wgsl' and result.wgsl or result.glsl, result.errors
+          api.change (
+            path,
+            core.graph.set_channel (d.history.doc, index, clean),
+            'channel'
+          )
+          return
         end
-        if d.stage == 'vertex' then
-          -- A vertex shader runs with the fragment shader beside it.
-          local frag = d.path:gsub ('%.vert$', '.frag')
-          local frag_doc = open[frag]
-          local frag_text = frag_doc and frag_doc.text or app.fs.read (frag)
-          if not frag_text then
-            return nil,
-              {
-                {
-                  message = 'A vertex shader runs with the fragment shader of the same name, '
-                    .. base_name (frag)
-                    .. ', which does not exist yet.',
-                },
-              }
-          end
-          return core.source.glsl_program (frag_text, d.text)
-        end
-        local program, errors =
-          core.source.program (d.language, d.text, vertex_of (d))
-        for _, u in ipairs (program.uniforms) do
-          local v = d.values[u.key]
-          if v then
-            u.value = v
+        d.channels[tostring (index)] = clean
+        app.store.set (
+          'channels:' .. path,
+          next (d.channels) and d.channels or nil
+        )
+        -- The code is the same, but what it reads is not.
+        d.version = d.version + 1
+        app.emit ('shader:changed', path)
+      end,
+
+      new_buffer = function (path)
+        local set = passes_of (path)
+        local free = nil ---@type Shader.PassId?
+        for _, b in ipairs (core.passes.BUFFERS) do
+          if not set.buffers[b] then
+            free = b
+            break
           end
         end
-        return program, errors
+        if not free then
+          return nil, 'This shader has all four buffers.'
+        end
+        local target = core.passes.buffer_path (path, free)
+        local text ---@type string
+        if kind_of (target) == 'graph' then
+          text = core.file.save (core.examples.buffer (free))
+        else
+          local t = core.source.TEMPLATES
+          local template = core.source.kind_of (target) == 'wgsl'
+              and t.buffer_wgsl
+            or t.buffer
+          text = template:gsub ('{{BUFFER}}', 'buffer-' .. free) --[[@as string]]
+        end
+        local ok, err = pcall (app.fs.write, target, text)
+        if not ok then
+          return nil, tostring (err)
+        end
+        file_list = nil
+        return open_path (target)
       end,
 
       set_language = function (path, lang)
@@ -1006,6 +1238,37 @@ return {
               .. ' as the vertex shader.'
           )
         end
+      end,
+    })
+    commands.register ({
+      id = 'shader.new_buffer',
+      category = 'Shader',
+      title = 'Add a Buffer to This Shader',
+      menu = 'File',
+      group = '1-new',
+      order = 6,
+      icon = 'layers',
+      when = function ()
+        return api.active () ~= nil
+      end,
+      run = function ()
+        local d = api.active ()
+        if not d then
+          return
+        end
+        local made, why = api.new_buffer (d.path)
+        if not made then
+          warn ('Could not add a buffer: ' .. tostring (why))
+          return
+        end
+        local _, pass = core.passes.pass_of (made.path)
+        say (
+          'Added '
+            .. core.passes.pass_label (pass)
+            .. ', which draws before the image each frame. Set a channel of the image to '
+            .. core.passes.pass_label (pass)
+            .. ' in the Preview panel to read it.'
+        )
       end,
     })
     commands.register ({
