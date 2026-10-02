@@ -1233,6 +1233,45 @@
       "updated": "2026-09-30T20:33:10Z"
     },
     {
+      "id": "perf.profiler",
+      "name": "Profiler",
+      "description": "Shows which plugin works the hardest, and why the window lags.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.commands"
+      ],
+      "optional": [
+        "proteus.ui.tabs",
+        "proteus.ui.views",
+        "proteus.ui.statusbar",
+        "proteus.ui.notify",
+        "proteus.ui.palette",
+        "proteus.core.keys",
+        "proteus.ui.menus"
+      ],
+      "permissions": [
+        "kernel"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "perf"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "perf_model.lua",
+        "tests/model.test.lua"
+      ],
+      "commit": "27b3a5b449d136c6f616d396f8b9084ece94fcf8",
+      "updated": "2026-10-02T11:05:05-06:00"
+    },
+    {
       "id": "proteus.code.project",
       "name": "Project",
       "description": "The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.",
