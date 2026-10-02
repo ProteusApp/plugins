@@ -443,6 +443,31 @@ test ('a block as the result shows its top left value', function ()
   eq (calc ('=A6:A9', GRID), '0')
 end)
 
+test ('the intersection and union operators', function ()
+  -- A space between references gives the cells they share.
+  eq (calc ('=A1:C3 B2:D4', GRID), calc ('=B2', GRID))
+  eq (calc ('=SUM(A1:A4 A2:B3)', GRID), calc ('=A2+A3', GRID))
+  eq (calc ('=ROWS(A1:C3 B2:D4)'), '2')
+  eq (calc ('=A1:A2 C1:C2'), '#NULL!')
+  eq (calc ('=A1 A1'), '0')
+  -- A comma inside brackets joins references, for functions that read every value.
+  eq (calc ('=SUM((A1:A2,A4))', GRID), calc ('=SUM(A1:A2, A4)', GRID))
+  eq (calc ('=COUNT((A1:A4,B1:B4))', GRID), calc ('=COUNT(A1:B4)', GRID))
+  eq (calc ('=AREAS((A1:A2,C1:C3,E1))'), '3')
+  eq (calc ('=AREAS(A1:B2)'), '1')
+  eq (calc ('=AREAS(1)'), '#VALUE!')
+  eq (calc ('=(A1,B1)'), '#VALUE!')
+  eq (calc ('=(A1,B1)+1'), '#VALUE!')
+  eq (calc ('=(1,2)'), '#VALUE!')
+  -- Brackets with no comma are plain brackets still.
+  eq (calc ('=(1+2)*3'), '9')
+  -- Moving a formula moves both sides of each operator.
+  eq (
+    f.shift ('=SUM((A1:A2,C1)) + A1:B2 B1:C3', 1, 1),
+    '=SUM((B2:B3,D2)) + B2:C3 C2:D4'
+  )
+end)
+
 test ('SUMPRODUCT', function ()
   eq (calc ('=SUMPRODUCT(A1:A3, B1:B3)', GRID), '420')
   -- Text counts as 0 in SUMPRODUCT's own arguments.
@@ -2003,6 +2028,7 @@ local EVERY = {
   'AGGREGATE',
   'AND',
   'ARABIC',
+  'AREAS',
   'ASIN',
   'ASINH',
   'ATAN',

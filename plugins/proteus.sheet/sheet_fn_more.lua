@@ -1022,6 +1022,31 @@ return function (K)
   )
 
   define (
+    'AREAS',
+    'Lookup',
+    'AREAS(reference)',
+    'Counts the blocks in a reference, such as 2 for (A1:A3,C1:C3).',
+    {
+      min = 1,
+      max = 1,
+      run = function (args, ctx)
+        local v = K.eval (args[1], ctx)
+        if
+          type (v) == 'table' and (v --[[@as table]]).is_union
+        then
+          return #(v --[[@as Sheet.Union]]).areas + 0.0
+        end
+        if
+          type (v) == 'table' and (v --[[@as table]]).is_range
+        then
+          return 1
+        end
+        return raise ('#VALUE!')
+      end,
+    }
+  )
+
+  define (
     'HYPERLINK',
     'Info',
     'HYPERLINK(link_location, [friendly_name])',
