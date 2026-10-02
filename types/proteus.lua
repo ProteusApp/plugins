@@ -252,7 +252,7 @@ function App.provide_scoped (name, make, opts) end
 ---@overload fun(name: 'console'): Proteus.Console
 ---@overload fun(name: 'tools'): Proteus.Tools
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics
----@overload fun(name: 'lsp'): Proteus.Lsp
+---@overload fun(name: 'luals'): Proteus.Luals
 ---@overload fun(name: 'discord'): Proteus.Discord
 ---@overload fun(name: 'project'): Proteus.Project
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace
@@ -288,7 +288,7 @@ function App.use (name) end
 ---@overload fun(name: 'console'): Proteus.Console?
 ---@overload fun(name: 'tools'): Proteus.Tools?
 ---@overload fun(name: 'diagnostics'): Proteus.Diagnostics?
----@overload fun(name: 'lsp'): Proteus.Lsp?
+---@overload fun(name: 'luals'): Proteus.Luals?
 ---@overload fun(name: 'discord'): Proteus.Discord?
 ---@overload fun(name: 'project'): Proteus.Project?
 ---@overload fun(name: 'marketplace'): Proteus.Marketplace?
@@ -401,6 +401,13 @@ function Fs.stat (path) end
 ---Every file path in both layers, sorted.
 ---@return string[]
 function Fs.files () end
+
+---The full path on disk of a workspace path, with `/`, such as
+---`C:/Users/ana/.proteus/plugins/mine/my.clock`. `''` is the workspace folder itself. Nil in a
+---browser, where the workspace is not on disk. A restricted plugin needs `files`.
+---@param path string
+---@return string?
+function Fs.disk_path (path) end
 
 ---@param path string
 ---@return Proteus.FileSource
@@ -558,6 +565,7 @@ function Fs.watch_dir (path, fn, on_error) end
 ---@class Proteus.DirChange
 ---@field path string A full path, with `/`.
 ---@field kind 'file'|'dir'|'remove' What is at the path now.
+---@field ignored? boolean True when a `.gitignore` leaves the path out, as `walk_dir` does.
 
 ---A batch of changes in a watched folder.
 ---@class Proteus.DirEvent

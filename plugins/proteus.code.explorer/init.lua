@@ -4,7 +4,8 @@
 -- New files, new folders, renames and copies are typed into the tree itself, and a name is
 -- relative to its folder. Dragging items onto a folder moves them there. Delete moves items
 -- to the Recycle Bin. A letter after a name shows what Git sees: M changed, U new, A added,
--- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits.
+-- D deleted, R renamed, and ! a conflict. A dot marks a file with unsaved edits. Open in
+-- Terminal on a folder opens a terminal there, through proteus.terminal.
 --
 -- With the tree focused:
 --   Up, Down, Home, End   move the selection, and Shift stretches it
@@ -208,7 +209,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.0.0',
+  version = '1.1.1',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -224,6 +225,8 @@ return {
     'proteus.ui.notify',
     'proteus.ui.tabs',
     'proteus.editor.core',
+    -- Open in Terminal on a folder opens a terminal there.
+    'proteus.terminal',
   },
   conflicts = { 'proteus.ws.explorer' },
   -- `files` to read and change the folder on disk, and for the `project` and `editor` services.
@@ -937,8 +940,44 @@ return {
       return app.os == 'windows' and 'the Recycle Bin' or 'the Trash'
     end
 
+    ---A sentence naming the files with unsaved edits inside the items, or '' when none has
+    ---any.
+    ---@param list CodeExplorer.Entry[]
+    ---@return string
+    local function unsaved_note (list)
+      local files = {} ---@type string[]
+      for path, on in pairs (unsaved) do
+        for _, e in ipairs (list) do
+          if on and paths.inside (path, e.path) then
+            files[#files + 1] = path
+            break
+          end
+        end
+      end
+      if #files == 0 then
+        return ''
+      end
+      table.sort (files)
+      local names = files[1]
+      if #files > 3 then
+        names = table.concat (files, ', ', 1, 3)
+          .. ' and '
+          .. (#files - 3)
+          .. ' more'
+      elseif #files > 1 then
+        names = table.concat (files, ', ', 1, #files - 1)
+          .. ' and '
+          .. files[#files]
+      end
+      return ' '
+        .. names
+        .. (#files == 1 and ' has' or ' have')
+        .. ' unsaved changes, which are lost.'
+    end
+
     ---Moves items to the Recycle Bin, after asking. An item the bin refuses, such as one on a
-    ---network drive, can be deleted for good instead, after asking again.
+    ---network drive, can be deleted for good instead, after asking again. The question names
+    ---any file in them with unsaved edits.
     ---@param list CodeExplorer.Entry[]
     local function delete (list)
       local p = picker ()
@@ -947,7 +986,12 @@ return {
       end
       local what = #list == 1 and list[1].name or (#list .. ' items')
       p.confirm ({
-        message = 'Move ' .. what .. ' to ' .. bin_name () .. '?',
+        message = 'Move '
+          .. what
+          .. ' to '
+          .. bin_name ()
+          .. '?'
+          .. unsaved_note (list),
         yes = 'Move to ' .. (app.os == 'windows' and 'Recycle Bin' or 'Trash'),
         on_yes = function ()
           -- The selection moves to the row after the last one deleted, so Delete can be
@@ -1044,8 +1088,9 @@ return {
     end
 
     ---Copies or moves the clipboard's items into `dir`. A copy that meets a name already
-    ---there gets a free name instead. Every item is worked out first, then they all go at
-    ---once, and the tree is read again when the last one is done.
+    ---there, or one an earlier item of this paste takes, gets a free name instead. Every item
+    ---is worked out first, then they all go at once, and the tree is read again when the last
+    ---one is done.
     ---@param dir string
     local function paste (dir)
       local c = clip
@@ -1053,6 +1098,14 @@ return {
         return
       end
       local moves = {} ---@type CodeExplorer.Move[]
+      -- The paths this paste has given out, compared the way the system compares names.
+      local claimed = {} ---@type table<string, boolean>
+      ---@param path string
+      ---@return boolean
+      local function taken (path)
+        return known (path) ~= nil
+          or claimed[fold and path:lower () or path] == true
+      end
       for _, from in ipairs (c.paths) do
         local name = from:match ('[^/]+$') or from ---@type string
         local to, problem = nil, nil ---@type string?, string?
@@ -1061,11 +1114,11 @@ return {
         else
           local entry = known (from)
           to = paths.join (dir, name)
-          if known (to) then
+          if taken (to) then
             to = paths.join (
               dir,
               paths.copy_name (name, entry ~= nil and entry.dir, function (n)
-                return known (paths.join (dir, n)) ~= nil
+                return taken (paths.join (dir, n))
               end)
             )
           end
@@ -1074,6 +1127,7 @@ return {
         if problem then
           report (problem)
         elseif to then
+          claimed[fold and to:lower () or to] = true
           moves[#moves + 1] = { from = from, to = to }
         end
       end
@@ -1303,6 +1357,16 @@ return {
           icon = 'search',
           run = function ()
             app.emit ('code:search_folder', abs (dir))
+          end,
+        })
+      end
+      local terminal = app.try_use ('terminal') --[[@as Proteus.Terminal?]]
+      if terminal and (not entry or entry.dir) then
+        add ({
+          label = 'Open in Terminal',
+          icon = 'square-terminal',
+          run = function ()
+            terminal.open ({ cwd = abs (dir) })
           end,
         })
       end

@@ -114,12 +114,13 @@ function Keys.list () end
 ---@field default? any
 ---@field description? string
 ---@field options? string[]|fun(): string[] The choices for a `'select'` setting.
+---@field sensitive? boolean True for a setting that names a program to run, or where code comes from. Only the user's choice and the default count for it, never a profile's or a folder's value.
 ---@field key? string Set by the service.
 ---@field owner? string Set by the service.
 
 ---Options with defaults, saved per profile. A value comes from the open folder's
 ---`.proteus/settings.json`, then the user's choice, then the profile's `settings`, then the
----default.
+---default. A `sensitive` setting skips the folder and the profile.
 ---@class Proteus.Settings
 local Settings = {}
 
@@ -1025,30 +1026,30 @@ function Diagnostics.all () end
 function Diagnostics.counts () end
 
 ---------------------------------------------------------------------------------------------
--- lsp (proteus.lang.luals)
+-- luals (proteus.lang.luals)
 ---------------------------------------------------------------------------------------------
 
 ---The running Lua language server.
----@class Proteus.Lsp
-local Lsp = {}
+---@class Proteus.Luals
+local Luals = {}
 
 ---@return boolean
-function Lsp.running () end
+function Luals.running () end
 
 ---Sends a request and calls `cb(result, err)` with the answer.
 ---@param method string Such as `'textDocument/hover'`.
 ---@param params table
 ---@param cb fun(result: any, err: table?)
-function Lsp.request (method, params, cb) end
+function Luals.request (method, params, cb) end
 
 ---@param method string
 ---@param params table
-function Lsp.notify (method, params) end
+function Luals.notify (method, params) end
 
 ---The `file:///` address the server uses for a workspace path.
 ---@param path string
 ---@return string?
-function Lsp.uri (path) end
+function Luals.uri (path) end
 
 ---------------------------------------------------------------------------------------------
 -- discord (proteus.discord.rpc)
@@ -1262,8 +1263,9 @@ function Project.recent () end
 function Project.forget (path) end
 
 ---Every file in the folder, as paths from the root, sorted. What `.gitignore` leaves out and
----the folder names in `excluded` are skipped. The list is kept until files come or go.
----@param cb fun(files: string[]?, err: string?)
+---the folder names in `excluded` are skipped. The list is kept until files come or go. The
+---walk stops at 50,000 files, and then `truncated` is true.
+---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
 function Project.files (cb) end
 
 ---The path from the root, or nil for a path outside the folder. '' is the root itself.
@@ -1271,14 +1273,51 @@ function Project.files (cb) end
 ---@return string?
 function Project.relative (path) end
 
----The full path for a path from the root.
+---The full path for a path from the root, or nil when no folder is open.
 ---@param rel string
----@return string
+---@return string?
 function Project.absolute (rel) end
 
 ---Folder names that search and Go to File leave out, from the `project.exclude` setting.
 ---@return string[]
 function Project.excluded () end
+
+---True when the user trusts the open folder. Opening a folder runs nothing of its own until
+---then: its `.proteus` files, its Git settings and its build scripts all wait.
+---@return boolean
+function Project.trusted () end
+
+---Asks the user to trust the open folder. Trusting reloads the window, so a plugin that
+---waits on it reads `trusted` again when it starts.
+---@param reason? string What waits for it, such as `'Git'`.
+function Project.ask_trust (reason) end
+
+---------------------------------------------------------------------------------------------
+-- terminal (proteus.terminal)
+---------------------------------------------------------------------------------------------
+
+---What a new terminal runs and where.
+---@class Proteus.TerminalOpenOptions
+---@field cwd? string The folder it starts in, a full path. The profile's folder, the open folder or the workspace folder when nil.
+---@field profile? string The name of a profile in the `terminal.profiles` setting. The default profile when nil or unknown.
+---@field name? string The name on its tab. It keeps it, whatever the program calls itself.
+---@field split? boolean Opens it beside the active terminal, in the same tab.
+
+---The terminals in the bottom dock, from `proteus.terminal`. The service needs the `files`
+---permission, as it takes full paths.
+---@class Proteus.Terminal
+local Terminal = {}
+
+---Shows the Terminal panel and opens a terminal in it. Returns false where there are no
+---terminals, as in a browser.
+---@param opts? Proteus.TerminalOpenOptions
+---@return boolean
+function Terminal.open (opts) end
+
+---The names of the profiles a terminal can run: `''` for the default shell, then those of the
+---`terminal.profiles` setting.
+---@return string[]
+function Terminal.profiles () end
 
 ---------------------------------------------------------------------------------------------
 -- app.process (the kernel)
@@ -1287,6 +1326,12 @@ function Project.excluded () end
 ---@class Proteus.RunOptions
 ---@field cwd? string
 ---@field stdin? string Text written to the program before it reads.
+---@field env? table<string, string> Variables added to the app's own environment, such as `{ GIT_TERMINAL_PROMPT = '0' }`.
+---@field timeout? number Milliseconds before the program is stopped. `cb` then gets an error. None when nil.
+
+---A program `app.process.run` is running.
+---@class Proteus.RunHandle
+---@field cancel fun() Stops the program. `cb` gets an error that says it was cancelled. Does nothing once it has ended.
 
 ---@class Proteus.RunResult
 ---@field code integer The exit code. 0 means success for most programs.
@@ -1331,11 +1376,12 @@ function Net.fetch (request, cb) end
 ---@class Proteus.Process
 local Process = {}
 
----Runs a program to completion and reports its output.
+---Runs a program to completion and reports its output. The handle stops it early.
 ---@param program string
 ---@param args string[]
 ---@param opts? Proteus.RunOptions
 ---@param cb fun(result: Proteus.RunResult?, err: string?)
+---@return Proteus.RunHandle
 function Process.run (program, args, opts, cb) end
 
 ---Starts a program that keeps running. It stops when the plugin stops.

@@ -116,6 +116,23 @@ test('a plugin that belongs to someone else is refused before anything is writte
   assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /belongs to @bob/.test(c.body.body)));
 });
 
+test('a taken-down id is refused to anyone but its owner', async () => {
+  const gone = { ...checkout, removed: (id, kind) => (id === 'hello.world' && kind === 'plugin' ? { login: 'bob', id: 2 } : null) };
+  const gh = fakeGitHub(world());
+  assert.equal(await submit({ api: gh.api, event: opened(), repo: REPO, checkout: gone }), 'refused');
+  assert.equal(gh.did('POST', '/git'), false);
+  assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /taken down, and its id stays with @bob/.test(c.body.body)));
+  const mine = { ...checkout, removed: () => ({ login: 'ann', id: 1 }) };
+  assert.equal(await submit({ api: gh.api, event: opened(), repo: REPO, checkout: mine }), 'opened');
+});
+
+test('a new version starts the check on its branch and says which commit to approve', async () => {
+  const gh = fakeGitHub(world());
+  await submit({ api: gh.api, event: opened(), repo: REPO, checkout });
+  assert.deepEqual(gh.find('POST', '/actions/workflows/check.yml/dispatches')[0].body, { ref: 'submission/7' });
+  assert.ok(gh.find('POST', '/issues/7/comments').some((c) => /`\/approve new1`/.test(c.body.body)));
+});
+
 test('an issue still missing a file waits', async () => {
   const event = opened();
   event.issue.body = SAMPLE.replace(/<details><summary><code>lib\/util\.lua[\s\S]*$/, '');

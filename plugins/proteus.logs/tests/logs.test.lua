@@ -55,6 +55,16 @@ test ('parse_query keeps an unknown level as a plain word', function ()
   eq (half.terms, {})
 end)
 
+test ('parse_query reads -level: as every level but that one', function ()
+  local query = q ('-level:error -level:w boom')
+  eq (query.skip, { error = true, warn = true })
+  eq (query.level, nil)
+  eq (query.exclude, {})
+  eq (query.terms, { 'boom' })
+  ok (not lf.is_empty (q ('-level:debug')))
+  eq (q ('-level:banana').exclude, { 'level:banana' })
+end)
+
 test (
   'parse_query handles a lone dash, an open quote and an excluded phrase',
   function ()
@@ -134,6 +144,25 @@ test ('detect_level reads logfmt fields', function ()
   eq (lf.detect_level ('time=2024-01-01 level=warn msg="disk"'), 'warn')
   eq (lf.detect_level ('ts=1 lvl=ERROR msg=x'), 'error')
   eq (lf.detect_level ('sublevel=error x'), 'other')
+  eq (lf.detect_level ('msg="level=error in config" level=info'), 'info')
+  eq (lf.detect_level ('msg="say \\"level=error\\"" lvl=debug'), 'debug')
+  eq (lf.detect_level ('msg="level=error in config"'), 'other')
+  eq (lf.detect_level ("level='warning' msg=x"), 'warn')
+  eq (lf.detect_level ('severity=E msg=x'), 'error')
+end)
+
+test ('detect_level reads glog and klog lines', function ()
+  eq (
+    lf.detect_level ('E1001 12:00:00.000000 1 file.go:12] could not sync'),
+    'error'
+  )
+  eq (lf.detect_level ('W0102 03:04:05.678901   42 main.go:7] slow'), 'warn')
+  eq (
+    lf.detect_level ('I0102 03:04:05.678901 42 main.go:7] ERROR in text'),
+    'info'
+  )
+  eq (lf.detect_level ('F1231 23:59:59.000000 1 x.go:1] gone'), 'error')
+  eq (lf.detect_level ('E1001 is a model number'), 'other')
 end)
 
 test ('detect_level sees through colour codes', function ()
@@ -166,6 +195,14 @@ test ('matches keeps only the chosen level', function ()
   ok (not lf.matches ('INFO fine', q ('level:error')))
   ok (lf.matches ('whatever', q ('level:error'), 'error'))
   ok (not lf.matches ('ERROR boom', q ('level:error boom -boom')))
+end)
+
+test ('matches hides the levels -level: names', function ()
+  ok (not lf.matches ('ERROR boom', q ('-level:error')))
+  ok (lf.matches ('INFO fine', q ('-level:error')))
+  ok (lf.matches ('level error in the text', q ('-level:error')))
+  ok (not lf.matches ('whatever', q ('-level:other')))
+  ok (not lf.matches ('INFO fine', q ('-level:error -level:info')))
 end)
 
 test ('matches ignores colour codes', function ()

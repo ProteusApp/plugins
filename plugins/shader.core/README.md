@@ -10,6 +10,6 @@ Builds GLSL and WGSL shaders from a node graph or as code, with a live preview. 
 | `shader.code` | Code shaders, with GLSL and WGSL added to the code editor as data languages. | none |
 | `shader.preview` | Runs the shader live: GLSL on WebGL 2 and WGSL on WebGPU, in a sandboxed web view, `page/`. | none |
 | `shader.library` | The list of shaders and nodes. | none |
-| `shader.build` | Writes a build to `shaders/build`, and exports one to any folder on disk. | `files`, for Export to Folder |
+| `shader.build` | Writes a build to `shaders/build` in the workspace. | none, writes in `shaders/` |
 
 The types live in `shader.core/types/shader.lua`. A plugin that uses the services casts them, such as `app.use ('shader.docs') --[[@as Shader.Docs]]`.

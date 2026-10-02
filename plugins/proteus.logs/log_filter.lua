@@ -18,6 +18,7 @@
 ---@field phrases string[] Phrases in quotes that must all appear.
 ---@field exclude string[] Words or phrases that hide a line.
 ---@field level? Logs.Level Keeps only lines of this level.
+---@field skip table<Logs.Level, boolean> Levels `-level:` hides.
 
 ---One line of a source.
 ---@class Logs.Line
@@ -410,6 +411,68 @@ local function value_level (value)
   return nil
 end
 
+---Reads a quoted logfmt value. Returns the value and where the text after it starts.
+---@param text string
+---@param quote integer Where the opening quote is.
+---@return string
+---@return integer
+local function read_quoted (text, quote)
+  local out = {} ---@type string[]
+  local i = quote + 1
+  while i <= #text do
+    local c = text:sub (i, i)
+    if c == '\\' then
+      out[#out + 1] = text:sub (i + 1, i + 1)
+      i = i + 2
+    elseif c == '"' then
+      return table.concat (out), i + 1
+    else
+      out[#out + 1] = c
+      i = i + 1
+    end
+  end
+  return table.concat (out), i
+end
+
+---The level a logfmt pair names, such as `level=warn`. The line is read pair by pair, so text
+---inside a quoted value, as in `msg="level=error in config"`, is never read as a pair.
+---@param plain string
+---@return Logs.Level?
+local function logfmt_level (plain)
+  local i, n = 1, #plain
+  while i <= n do
+    local c = plain:sub (i, i)
+    if c:find ('%s') or c == '=' then
+      i = i + 1
+    elseif c == '"' then
+      local _, after = read_quoted (plain, i)
+      i = after
+    else
+      local stop = plain:find ('[%s="]', i) or n + 1
+      local key = plain:sub (i, stop - 1)
+      i = stop
+      if plain:sub (stop, stop) == '=' then
+        local value ---@type string
+        if plain:sub (stop + 1, stop + 1) == '"' then
+          value, i = read_quoted (plain, stop + 1)
+        else
+          local finish = plain:find ('%s', stop + 1) or n + 1
+          value = plain:sub (stop + 1, finish - 1)
+          i = finish
+        end
+        if LEVEL_KEYS[key:lower ()] then
+          local word = value:match ("^'?(%a+)")
+          local level = word and value_level (word)
+          if level then
+            return level
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
 ---A level field anywhere in the line, as JSON or as logfmt.
 ---@param plain string
 ---@return Logs.Level?
@@ -453,14 +516,7 @@ local function field_level (plain)
     end
   end
   if plain:find ('=', 1, true) then
-    local lower = plain:lower ()
-    for _, key in ipairs ({ 'level', 'lvl', 'severity' }) do
-      local value = lower:match ('%f[%w_]' .. key .. '=["\']?(%a+)')
-      local level = value and WORDS[value]
-      if level then
-        return level
-      end
-    end
+    return logfmt_level (plain)
   end
   return nil
 end
@@ -507,10 +563,18 @@ local function word_level (head)
   return nil, nil
 end
 
+-- glog and klog, as Kubernetes and gRPC write them, start a line with the level's letter and
+-- the date: `E1001 12:00:00.000000 1 file.go:12] message`.
+local GLOG = '^%s*([IWEF])%d%d%d%d %d%d:%d%d:%d%d'
+
 ---@param line string
 ---@return Logs.Level
 local function detect_level (line)
   local plain = strip_ansi (line)
+  local glog = plain:match (GLOG)
+  if glog then
+    return LETTERS[glog]
+  end
   local field = field_level (plain)
   if field then
     return field
@@ -545,12 +609,12 @@ local function level_named (name)
 end
 
 ---Takes a filter apart. Words must all appear, `-word` hides lines, `"two words"` is one
----phrase, and `level:error` keeps one level.
+---phrase, `level:error` keeps one level and `-level:error` hides one.
 ---@param text string
 ---@return Logs.Query
 local function parse_query (text)
   ---@type Logs.Query
-  local query = { terms = {}, phrases = {}, exclude = {} }
+  local query = { terms = {}, phrases = {}, exclude = {}, skip = {} }
   local i, len = 1, #text
   while i <= len do
     local c = text:sub (i, i)
@@ -575,17 +639,16 @@ local function parse_query (text)
         local stop = text:find ('%s', i) or len + 1
         local word = text:sub (i, stop - 1):lower ()
         i = stop
-        local name = not negate and word:match ('^level:(.*)$')
-        if name then
-          local level = name ~= '' and level_named (name) or nil
-          if level then
-            query.level = level
-          elseif name ~= '' then
-            query.terms[#query.terms + 1] = word
-          end
+        local name = word:match ('^level:(.*)$')
+        local level = name and name ~= '' and level_named (name) or nil
+        if level and negate then
+          query.skip[level] = true
+        elseif level then
+          query.level = level
         elseif negate then
           query.exclude[#query.exclude + 1] = word
-        else
+        elseif name ~= '' then
+          -- Any other word, but not a half-typed `level:`, which hides nothing yet.
           query.terms[#query.terms + 1] = word
         end
       end
@@ -603,7 +666,9 @@ end
 ---@param query Logs.Query
 ---@return boolean
 local function is_empty (query)
-  return query.level == nil and not has_words (query)
+  return query.level == nil
+    and next (query.skip) == nil
+    and not has_words (query)
 end
 
 ---True when a line passes the filter. Pass the level when it is known, to save finding it.
@@ -612,8 +677,11 @@ end
 ---@param level? Logs.Level
 ---@return boolean
 local function matches (line, query, level)
-  if query.level and (level or detect_level (line)) ~= query.level then
-    return false
+  if query.level or next (query.skip) then
+    local found = level or detect_level (line)
+    if (query.level and found ~= query.level) or query.skip[found] then
+      return false
+    end
   end
   if not has_words (query) then
     return true

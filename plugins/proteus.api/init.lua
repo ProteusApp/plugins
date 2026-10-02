@@ -18,6 +18,7 @@ local BODY_OPTIONS = {
   { 'json', 'JSON' },
   { 'text', 'Text' },
   { 'form', 'Form' },
+  { 'multipart', 'Multipart' },
 }
 local AUTH_OPTIONS =
   { { 'none', 'None' }, { 'bearer', 'Bearer token' }, { 'basic', 'Basic' } }
@@ -197,8 +198,8 @@ local CSS = [[
 return {
   name = 'API Client',
   description = 'Send HTTP requests, save them, and read the answers.',
-  version = '1.0.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.1.0',
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   -- It sends the requests the user writes, to any address.
   permissions = { 'net' },
   depends = {
@@ -860,7 +861,7 @@ return {
       local req = doc.req
       local mark = '<span class="api-mark"></span>'
       local body_extra = ''
-      if req.body_mode == 'form' then
+      if req.body_mode == 'form' or req.body_mode == 'multipart' then
         body_extra = count_html (http.count_rows (req.form))
       elseif req.body_mode ~= 'none' then
         body_extra = mark
@@ -918,7 +919,7 @@ return {
       render_modes (body_modes, BODY_OPTIONS, mode)
       format_btn:show (mode == 'json')
       body_host:show (mode == 'json' or mode == 'text')
-      form_grid.el:show (mode == 'form')
+      form_grid.el:show (mode == 'form' or mode == 'multipart')
       body_none:show (mode == 'none')
     end
 
@@ -1343,9 +1344,11 @@ return {
           }
         end
         doc.result = result
+        -- The address as typed, with {{variables}} left in, so no token from an environment
+        -- is kept in the history.
         history = http.add_history (history, {
           method = built.method,
-          url = built.url,
+          url = http.build (snapshot).url,
           status = result.status or 0,
           time = app.util.now (),
           request = snapshot,
@@ -1522,10 +1525,18 @@ return {
           return err
         end,
         on_submit = function (text)
-          local req = http.from_curl (text)
+          local req, _, notes = http.from_curl (text)
           if req then
             show (add_new (req, ''))
             say ('Opened the curl command as a new request.')
+            -- What the request leaves out, such as a file the command sends.
+            for _, note in ipairs (notes or {}) do
+              if notify then
+                notify.warn (note)
+              else
+                app.warn (note)
+              end
+            end
           end
         end,
       })
@@ -1972,16 +1983,28 @@ return {
 
     do
       local stored = app.store.get ('history', {}) ---@type table<string, any>[]
+      local scrubbed = false
       for _, e in ipairs (type (stored) == 'table' and stored or {}) do
         if type (e) == 'table' and type (e.url) == 'string' then
+          local request = http.normalize (e.request)
+          -- An older history kept the address with the environment's values filled in. The
+          -- request it came from has the {{variables}} instead.
+          local url = e.url
+          if type (e.request) == 'table' then
+            url = http.build (request).url
+            scrubbed = scrubbed or url ~= e.url
+          end
           history[#history + 1] = {
             method = http.normalize ({ method = e.method }).method,
-            url = e.url,
+            url = url,
             status = math.floor (tonumber (e.status) or 0),
             time = tonumber (e.time) or 0,
-            request = http.normalize (e.request),
+            request = request,
           }
         end
+      end
+      if scrubbed then
+        app.store.set ('history', history)
       end
     end
 

@@ -10,10 +10,10 @@
 -- A folder named when the app starts opens first, as in `proteus C:\code\app` or
 -- `proteus --folder C:\code\app`. Otherwise the folder that was open last opens again.
 --
--- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins, and a
--- copy of any file that wins over the workspace and builtin ones. The kernel mounts it before
--- any plugin loads, so this plugin tells the kernel which folder is open. A `.proteus` folder
--- can run code, so it stays off until the user trusts the folder.
+-- A folder can carry its own Proteus setup in a `.proteus` folder: settings, plugins of its
+-- own and profiles. The kernel mounts it before any plugin loads, so this plugin tells the
+-- kernel which folder is open. A `.proteus` folder can run code, so it stays off until the
+-- user trusts the folder.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
 
@@ -41,7 +41,7 @@ local EXCLUDE = {
 return {
   name = 'Project',
   description = 'The folder the Code Editor works on: Open Folder, recent folders, and changes on disk.',
-  version = '1.0.0',
+  version = '1.1.1',
   -- `files` for the folder on disk and the `project` service, which hands out its paths.
   -- `kernel` to tell the kernel which folder is open, open another and trust its .proteus files.
   permissions = { 'files', 'kernel' },
@@ -268,7 +268,9 @@ return {
 
     local files_cache = nil ---@type string[]?
     local files_known = {} ---@type table<string, boolean>
-    local waiting = nil ---@type (fun(files: string[]?, err: string?))[]?
+    -- True when the walk stopped at its limit, so the list is not every file.
+    local files_cut = false
+    local waiting = nil ---@type (fun(files: string[]?, err: string?, truncated: boolean?))[]?
     -- Goes up each time the list goes stale, so a walk that ends after a change is not kept.
     local generation = 0
 
@@ -280,14 +282,14 @@ return {
 
     settings.watch ('project.exclude', forget_files)
 
-    ---@param cb fun(files: string[]?, err: string?)
+    ---@param cb fun(files: string[]?, err: string?, truncated: boolean?)
     local function files (cb)
       if not root then
         cb (nil, 'No folder is open.')
         return
       end
       if files_cache then
-        cb (files_cache)
+        cb (files_cache, nil, files_cut)
         return
       end
       if waiting then
@@ -300,15 +302,17 @@ return {
         local list = waiting or {}
         waiting = nil
         local found = result and result.files or nil
+        local cut = result ~= nil and result.truncated == true
         if found and started_at == generation then
           files_cache = found
+          files_cut = cut
           files_known = {}
           for _, rel in ipairs (found) do
             files_known[rel] = true
           end
         end
         for _, fn in ipairs (list) do
-          app.try (fn, found, err)
+          app.try (fn, found, err, cut)
         end
       end)
     end
@@ -319,6 +323,28 @@ return {
       if root then
         app.kernel.trust_folder (root, true)
         app.kernel.reload_window ()
+      end
+    end
+
+    ---Asks the user to trust the open folder, for a plugin that waits on it. `reason` says
+    ---what is waiting, such as 'Git'. Trusting reloads the window.
+    ---@param reason? string
+    local function ask_trust (reason)
+      if not root or layer.trusted then
+        return
+      end
+      local text = 'Trust the folder '
+        .. (name or root)
+        .. '? '
+        .. (reason and (tostring (reason) .. ' waits for it. ') or '')
+        .. 'Its .proteus files, its Git settings and its build scripts can run programs, so trust only a folder from someone you trust.'
+      if picker then
+        picker.confirm ({ message = text, yes = 'Trust Folder', on_yes = trust })
+      elseif notify then
+        notify.warn (
+          text,
+          { timeout = 0, action = { label = 'Trust Folder', run = trust } }
+        )
       end
     end
 
@@ -342,7 +368,7 @@ return {
         return
       end
       notify.warn (
-        'This folder has a .proteus folder. It can change settings and run plugins, so it stays off until you trust the folder.',
+        'This folder has a .proteus folder. It can change settings and add plugins, and a plugin you then allow a permission such as process gets full access to this computer. It stays off until you trust the folder.',
         { timeout = 0, action = { label = 'Trust Folder', run = trust } }
       )
     end
@@ -354,6 +380,25 @@ return {
           offer ()
         end
       end)
+    end
+
+    ---True for a path inside a folder that `project.exclude` names, which the list of files
+    ---leaves out.
+    ---@param rel string
+    ---@param names table<string, boolean> The names in `project.exclude`.
+    ---@return boolean
+    local function in_excluded (rel, names)
+      local parts = {} ---@type string[]
+      for part in rel:gmatch ('[^/]+') do
+        parts[#parts + 1] = part
+      end
+      -- The last part is the path itself, and only folders are left out.
+      for i = 1, #parts - 1 do
+        if names[parts[i]] then
+          return true
+        end
+      end
+      return false
     end
 
     ---True for a path inside the folder's `.proteus` folder, or that folder itself.
@@ -376,14 +421,23 @@ return {
         app.store.set ('current', false)
       end)
       app.fs.watch_dir (folder, function (ev)
-        -- A file that only changed keeps the list. Anything that came, went or moved does not.
+        -- A file that only changed keeps the list. Anything that came, went or moved does not,
+        -- unless it is where the list never looks: what .gitignore leaves out, such as build
+        -- output and logs, and the folders `project.exclude` names.
         local stale = ev.overflow
+        local names = {} ---@type table<string, boolean>
+        for _, n in ipairs (excluded ()) do
+          names[n] = true
+        end
         for _, change in ipairs (ev.changes) do
           local rel = disk.relative (folder, change.path, app.os)
-          if change.kind ~= 'file' then
+          local unlisted = change.ignored == true
+            or (rel ~= nil and in_excluded (rel, names))
+          if
+            not unlisted
+            and (change.kind ~= 'file' or (rel ~= nil and not files_known[rel]))
+          then
             stale = true
-          else
-            stale = stale or (rel ~= nil and not files_known[rel])
           end
           if
             not layer.loaded
@@ -526,7 +580,7 @@ return {
     commands.register ({
       id = 'project.trust',
       category = 'File',
-      title = "Trust This Folder's .proteus Files",
+      title = 'Trust This Folder',
       icon = 'shield-check',
       when = function ()
         return root ~= nil and not layer.trusted
@@ -536,7 +590,7 @@ return {
     commands.register ({
       id = 'project.untrust',
       category = 'File',
-      title = "Stop Using This Folder's .proteus Files",
+      title = 'Stop Trusting This Folder',
       icon = 'shield-off',
       when = function ()
         return root ~= nil and layer.trusted
@@ -587,9 +641,13 @@ return {
         return root and disk.relative (root, path, app.os) or nil
       end,
       absolute = function (rel)
-        return disk.join (root or '', rel)
+        return root and disk.join (root, rel) or nil
       end,
       excluded = excluded,
+      trusted = function ()
+        return root ~= nil and layer.trusted
+      end,
+      ask_trust = ask_trust,
     }
     app.provide ('project', service, { needs = 'files' })
   end,
