@@ -47,7 +47,7 @@ return {
   -- `process` runs the shell in each terminal. `files` lets it start in the Code Editor's
   -- folder, which the `project` service hands out. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  requires = { proteus = '>=0.3.1', features = { 'permissions' } },
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',

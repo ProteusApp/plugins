@@ -39,7 +39,7 @@ return {
   description = "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
   version = '1.1.0',
   requires = {
-    proteus = '>=0.3.0',
+    proteus = '>=0.3.1',
     features = { 'permissions', 'languages', 'tcp' },
   },
   -- `net` connects to the Godot editor's language server on this computer. `files` lets it
