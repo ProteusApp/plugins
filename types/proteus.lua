@@ -29,6 +29,7 @@
 ---@field folders? string[] Workspace folders the plugin writes its files in, such as `'shaders'`. Folders the app ships, such as `plugins` and `data`, cannot be claimed.
 ---@field exports? string[] Folders right inside the plugin, such as `'wam'`, that any plugin's web view may load with `mounts`.
 ---@field requires? Proteus.Requires The Proteus version and features the plugin needs.
+---@field themes? Proteus.ThemeSpec[] Color themes, registered with `proteus.core.themes` when the plugin starts and removed when it stops. A theme plugin can be this list and nothing else.
 ---@field activate? fun(app: Proteus.App) Runs when the plugin starts.
 ---@field deactivate? fun(app: Proteus.App) Runs when the plugin stops, before its cleanup functions.
 
@@ -56,8 +57,19 @@
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 ---| 'png' # PNG pictures in a plugin's folder: `fs.read_base64`, `fs.write_base64`, and installs and publishing that keep their bytes.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
----| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
+---| 'terminal-sessions' # Terminals that survive a reload: the terminal widget's `keep` and `attach`, and `app.process.waiting_terminals`.
+---| 'terminal-lines' # The terminal widget's `on_line`, which hands over each line a program prints.
+---| 'tool-command' # `tools.command` and `tools.formatter`, which check and run command-line tools.
+---| 'code-insights' # `inlay_hints`, `semantic_tokens`, `lenses` and `workspace_symbols` in a code provider, and the editor's Outline panel.
 ---| 'grants-read' # `app.grants.read`, the text of a file the user picked.
+---| 'http-bodies' # `app.net.fetch` with bytes, files and multipart bodies, `timeout`, `redirects`, `encoding`, and a call that can be cancelled.
+---| 'file-tree' # `lib/file_tree.lua`, the file tree the Plugins panel and the Code Editor's Explorer share.
+---| 'profile-extends' # `extends` in a profile, which takes the plugins and settings of a base.
+---| 'highlight' # `app.util.highlight`, which colors code as HTML, for restricted plugins too.
+---| 'theme-data' # `themes` in a plugin's table, `extends` in a theme, and the ANSI, diff, tag, info and hint theme variables.
+---| 'file-kinds' # `kinds` in an icon pack, and `icons.add_kind`: the kinds of files every pack draws.
+---| 'key-context' # Context keys from `keys.set_context`, and `when` expressions in `keys.bind` and the `keys.bindings` setting.
+---| 'nodal-records' # Nodal records that name their fields, such as `record{name: text}`, in the ports of a graph's blocks.
 ---| 'perf' # `app.kernel.perf`: how long each plugin's callbacks take, and the page's frames and size.
 
 ---@class Proteus.Requires
@@ -72,6 +84,7 @@
 
 ---@class Proteus.ProvideOptions
 ---@field needs? Proteus.Permission|Proteus.Permission[] Permissions a restricted plugin needs to use the service. Set it when the service does something for its user that the user could not do itself.
+---@field copy_results? boolean For `app.provide_scoped`: a restricted plugin gets copies of the tables the service's functions return, and its callbacks hear copies, so it never changes the service's own tables.
 
 ---@class Proteus.EventRule
 ---@field needs Proteus.Permission|Proteus.Permission[] Permissions a restricted plugin needs to hear the event.
@@ -96,18 +109,23 @@ function PluginFiles.list (rel) end
 ---@class Proteus.ProfileSpec
 ---@field name string
 ---@field description? string
+---@field version? string Such as `'1.0.0'`. The kernel does not read it, but publishing needs it.
 ---@field plugins string[] Plugin ids to start. Their dependencies start too.
 ---@field settings? table<string, any> Setting values for this profile.
+---@field extends? string A base in `profiles/base/`, such as `'shell'`. Its plugins start before the profile's own, and the profile's settings win over the base's.
 ---@field extensible? boolean Lets a builtin profile keep plugins switched on and off from inside the app.
 
 ---A loaded profile.
 ---@class Proteus.Profile: Proteus.ProfileSpec
 ---@field id string The file name without `.lua`.
----@field settings table<string, any>
+---@field plugins string[] The plugins of its bases, then its own.
+---@field settings table<string, any> Its bases' settings, with its own on top.
+---@field bases? string[] The bases it extends, nearest first.
 ---@field builtin boolean True for a profile shipped with the app. Its file cannot change.
 ---@field fixed boolean True when its plugin list cannot change: a builtin profile that is not `extensible`.
 ---@field added string[] Plugins switched on from inside the app.
 ---@field removed string[] Plugins switched off from inside the app.
+---@field everywhere? string[] Themes and icon packs switched on for every profile, fixed ones too.
 
 ---Event names the builtin plugins send. Any other string works too.
 ---@alias Proteus.EventName
@@ -133,11 +151,15 @@ function PluginFiles.list (rel) end
 ---| 'settings:changed' # Receives the setting key and its new value.
 ---| 'settings:defined' # Receives the setting key.
 ---| 'themes:applied' # Receives the theme id.
+---| 'system:color_scheme' # The system switched between light and dark. Receives `'light'` or `'dark'`.
 ---| 'tabs:changed' # Receives the active tab id, or nil.
 ---| 'views:shown' # Receives the view id.
+---| 'windows:changed' # A floating window opened or closed. Receives its id and true while it is open.
 ---| 'shell:visibility' # Receives the dock name and whether it shows.
+---| 'shell:collapsed' # The bottom dock folded down to its tab strip or opened again. Receives the dock name and true while it is folded.
 ---| 'editor:saved' # Receives the saved file's path. A restricted plugin needs `files` to hear about a file outside the workspace.
 ---| 'diagnostics:changed' # Receives the file path whose problems changed.
+---| 'icons:changed' # The icon pack changed, or `icon` associations were added or removed. Receives the id of the pack in use.
 ---| 'tools:changed' # Receives the tool id whose status changed.
 ---| 'tools:log' # Receives the tool id and the new Proteus.ToolLogLine. A restricted plugin needs `process`, as for the `tools` service.
 ---| 'editor:opened' # Receives the Proteus.DocInfo of a newly opened document. A restricted plugin needs `files`, as for the `editor` service.
@@ -147,6 +169,9 @@ function PluginFiles.list (rel) end
 ---| 'nodal:changed' # The Nodal document changed, or the values of the app running in the Preview did. Receives the new Nodal.Snapshot.
 ---| 'nodal:selected' # The Nodal selection changed. Receives the node id, or nil.
 ---| 'nodal:debug' # The Nodal watch list or breakpoints changed.
+---| 'nodal:opened' # A graph opened in Nodal. Receives its path, or nil for a graph not saved yet.
+---| 'nodal:closed' # The open Nodal graph closed.
+---| 'nodal:inspect' # Send it with a node id to select that node and show the Block panel.
 
 ---The table each plugin receives in `activate`. Everything a plugin does goes through it.
 ---@class Proteus.App
@@ -316,7 +341,9 @@ function App.try_use (name) end
 ---| 'builtin' # Only files shipped with the app.
 ---| 'user' # Only files in the workspace folder.
 ---| 'project' # Only files in the open folder's `.proteus` folder, when one is in use.
----| 'locked' # What a locked plugin reads: the project's copy, then the builtin one.
+---| 'locked' # The project's copy, then the packed one, then the builtin one.
+---| 'workspace' # Every layer but the project's: the packed copy, then the workspace copy, then the builtin one. What a plugin that is not the project's reads its code from.
+---| 'shipped' # The packed copy, then the builtin one. What a locked plugin reads its code from.
 
 ---@class Proteus.FsEntry
 ---@field name string The last part of the path.
@@ -325,6 +352,7 @@ function App.try_use (name) end
 ---@field builtin boolean True when the builtin layer has it.
 ---@field user boolean True when the workspace folder has it.
 ---@field project boolean True when the open folder's `.proteus` folder has it.
+---@field packed? boolean True when the exported app this runs as carries it.
 
 ---@class Proteus.FsStat
 ---@field path string
@@ -332,6 +360,7 @@ function App.try_use (name) end
 ---@field builtin boolean
 ---@field user boolean
 ---@field project boolean
+---@field packed? boolean
 
 ---@alias Proteus.FileSource
 ---| 'builtin' # Shipped with the app, unchanged.
@@ -388,6 +417,21 @@ function Fs.read_base64 (path, layer, cb) end
 ---@param path string
 ---@return boolean removed
 function Fs.remove (path) end
+
+---Moves a workspace file, or a folder and everything in it, to the Recycle Bin or the
+---system's trash, where `untrash` can bring it back. A builtin file underneath shows again.
+---It refuses links, and calls back with an error when the trash cannot take it, such as in
+---the browser after a reload. Needs the feature `'workspace-trash'`.
+---@param path string
+---@param cb? fun(ok: any, err: string?)
+function Fs.trash (path, cb) end
+
+---Brings back what `trash` last moved to the trash from `path`, as an undo of the delete. It
+---fails when the workspace has something at `path` again, and on macOS, whose Trash lets
+---only the user put things back. Needs the feature `'workspace-trash'`.
+---@param path string
+---@param cb? fun(ok: any, err: string?)
+function Fs.untrash (path, cb) end
 
 ---@param path string
 function Fs.mkdir (path) end
@@ -701,8 +745,8 @@ function Secrets.delete (name, cb) end
 ---`view:widget ('allow_save', id)` lets the page write once to a file the user chose to save.
 ---
 ---A file picked to open works for the rest of the session. After a restart, the plugin's
----first `send_file` asks the user once, in the system's own dialog, about all its older
----files. Allow sends them for the session. Don't allow refuses them until the app starts
+---first `send_file` asks the user once, in a question drawn above the whole window, about
+---all its older files. Allow sends them for the session. Don't allow refuses them until the app starts
 ---again: the page gets `{ id, name, tag, bytes = nil, error }` in place of the bytes, as for
 ---a file that could not be read. A file the plugin has not used in 90 days is forgotten.
 ---The desktop app only.
@@ -829,6 +873,18 @@ function Util.now () end
 ---@return string[]
 function Util.code_languages () end
 
+---Colors code as HTML, the way the code widget colors it, for code shown outside an editor.
+---`lang` is any name `code_languages` lists, a short name such as `js` or `sh`, or a language
+---a plugin added. Each colored piece is a `<span>` with a class named after the theme color
+---it takes, such as `syn-keyword`, `syn-string`, `syn-number`, `syn-constant`, `syn-comment`,
+---`syn-function`, `syn-operator`, `syn-property` and `syn-builtin`. All the text is escaped,
+---and an unknown language comes back escaped only. Every plugin may call it, restricted ones
+---too. Needs the feature `'highlight'`.
+---@param code string
+---@param lang string
+---@return string html
+function Util.highlight (code, lang) end
+
 ---Adds a language to the code widget, described as data. It goes away when the plugin stops.
 ---Returns a function that takes it away sooner. Needs the feature `'languages'`.
 ---@param spec Proteus.LanguageSpec
@@ -900,6 +956,11 @@ function System.clipboard (text) end
 ---@param cb fun(text: string?, err: string?)
 function System.clipboard_read (cb) end
 
+---Whether the system is set to light or dark. The `system:color_scheme` event tells when it
+---changes.
+---@return 'light'|'dark'
+function System.color_scheme () end
+
 ---Pastes the clipboard into whatever has focus.
 function System.paste () end
 
@@ -926,6 +987,23 @@ function System.reveal (path, cb) end
 ---@param cb fun(path: string?, err: string?)
 function System.create_launcher (name, profile, cb) end
 
+---@class Proteus.AppExport
+---@field profile string The profile's id.
+---@field name string The app's name.
+---@field permissions string[] The permissions its plugins use. The app may call only what they allow.
+---@field files table<string, string> Every file the app carries, by its path in the app.
+---@field dest string Where the app goes, as a full path.
+
+---@class Proteus.AppExported
+---@field path string
+---@field dev boolean True when it came from a dev build, so it runs only while the dev server does.
+
+---Writes a profile as an app of its own: one program that opens straight into it. Its Lua
+---files are compiled to bytecode. Needs the desktop app, on Windows or Linux.
+---@param spec Proteus.AppExport
+---@param cb fun(result: Proteus.AppExported?, err: string?)
+function System.export_app (spec, cb) end
+
 ---------------------------------------------------------------------------------------------
 -- Kernel
 ---------------------------------------------------------------------------------------------
@@ -942,6 +1020,8 @@ function System.create_launcher (name, profile, cb) end
 ---@field arch? string Such as `'x86_64'` or `'aarch64'`.
 ---@field version? string This version of Proteus, such as `'0.2.0'`.
 ---@field cache? string A folder the app may use for generated files.
+---@field packed? { profile: string, name: string } The profile an exported app carries, which it always runs.
+---@field dev? boolean True when the page comes from the dev server.
 
 ---@alias Proteus.PluginStatus
 ---| 'active' # Running.
@@ -960,6 +1040,7 @@ function System.create_launcher (name, profile, cb) end
 ---@field status Proteus.PluginStatus
 ---@field error? string
 ---@field in_profile boolean
+---@field appearance boolean True for a theme or an icon pack: it asks for no permissions and needs nothing but the themes or icons service. Switched on in any profile, it runs in every profile.
 ---@field locked boolean True for the plugins that ship with the app outside `plugins/themes`. Their files cannot change.
 ---@field required boolean True for a locked plugin that stays on: one the running profile's own list names, or one in `plugins/core` that was not switched on in the app. Any other plugin can be switched on and off.
 ---@field group? string The group folder, such as `'themes'`.
@@ -969,6 +1050,7 @@ function System.create_launcher (name, profile, cb) end
 ---@field permissions string[] What it asks for.
 ---@field folders string[] Workspace folders it writes in.
 ---@field requires Proteus.Requires
+---@field themes? Proteus.ThemeSpec[] A copy of the themes it lists as data.
 
 ---@class Proteus.ProfileInfo
 ---@field id string
@@ -1031,8 +1113,10 @@ function Kernel.rescan () end
 
 ---Switches a plugin on or off in a profile, and keeps the choice. In the running profile it
 ---also starts or stops the plugin. Another profile keeps the choice for the next time it
----opens. Fails for a builtin profile that is not `extensible`, for a `required` plugin, and
----for a plugin that conflicts with one the profile runs.
+---opens. A theme or an icon pack (`appearance` in its info) goes on or off in every profile
+---at once, unless a profile's own list names it. Fails for a builtin profile that is not
+---`extensible`, except for a theme or an icon pack it does not list, for a `required` plugin,
+---and for a plugin that conflicts with one the profile runs.
 ---@param id string
 ---@param on boolean
 ---@param profile? string A profile's id. The running profile when nil.
@@ -1042,11 +1126,21 @@ function Kernel.set_enabled (id, on, profile) end
 
 ---Reads a plugin's init.lua again and returns the table it returns, without starting it.
 ---`plugin` gives the copy loaded when the plugin loaded, and this one shows changes saved
----since then.
+---since then. With `files`, each file's text by its path inside the plugin's folder, it reads
+---a plugin that is not installed yet, restricted.
 ---@param id string
+---@param files? table<string, string>
 ---@return Proteus.Plugin? manifest
 ---@return string? err
-function Kernel.read_manifest (id) end
+function Kernel.read_manifest (id, files) end
+
+---Sets the permissions the user allowed a plugin from the marketplace, or one in the open
+---folder's `.proteus` folder with `where = 'project'`. Such a plugin starts only while it asks
+---for no more, and the kernel asks the user about the rest.
+---@param id string
+---@param permissions string[]
+---@param where? 'workspace'|'project'
+function Kernel.allow_permissions (id, permissions, where) end
 
 ---The id of the plugin a file belongs to.
 ---@param path string
