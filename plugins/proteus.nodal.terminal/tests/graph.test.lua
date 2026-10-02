@@ -21,7 +21,7 @@ local GRAPH_FILE = 'terminal.ndg'
 return {
   name = NAME,
   description = 'A terminal in the bottom dock, built with Nodal from graphs/terminal.ndg.',
-  version = '1.2.0',
+  version = '1.2.2',
   depends = { 'proteus.lib.ui', 'proteus.ui.views', 'proteus.nodal.app' },
   permissions = { 'process' },
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
@@ -69,8 +69,8 @@ test (
 
 test ('the graph file is a Nodal graph', function ()
   ok (
-    graph:find ('^{\n  "version": 3,'),
-    GRAPH_FILE .. ' is not a version 3 graph'
+    graph:find ('^{\n  "version": 4,'),
+    GRAPH_FILE .. ' is not a version 4 graph'
   )
   ok (graph:find ('"nodes": [', 1, true), GRAPH_FILE .. ' has no nodes')
 end)

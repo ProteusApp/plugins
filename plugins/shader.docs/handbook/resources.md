@@ -1,7 +1,7 @@
 ---
 title: Further reading
 section: Learning shaders
-order: 315
+order: 316
 keywords: resources links books articles videos tutorials book of shaders inigo quilez shadertoy art of code sebastian lague freya holmer clouds horizon zero dawn frostbite scratchapixel webgl webgpu lygia gpu gems references sources
 ---
 

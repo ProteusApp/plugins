@@ -9,15 +9,31 @@
 ---@field key string
 ---@field value string
 ---@field on boolean False when the row is switched off, so it stays out of the request.
+---@field file? string In a Multipart row that sends a file, the id of the file the user picked in `app.grants.open`, or an empty string until one is picked.
+---@field file_name? string In a Multipart row that sends a file, the file's name. Only such a row has it.
 
----@alias Http.BodyMode 'none'|'json'|'text'|'form'
----@alias Http.AuthMode 'none'|'bearer'|'basic'
+---@alias Http.BodyMode 'none'|'json'|'text'|'form'|'multipart'|'graphql'|'file'
+---@alias Http.AuthMode 'none'|'inherit'|'bearer'|'basic'|'apikey'|'digest'|'oauth2'
 
+---How a request signs in. Each mode reads only its own fields.
 ---@class Http.Auth
----@field mode Http.AuthMode
+---@field mode Http.AuthMode `inherit` takes the sign-in of the nearest folder that has one.
 ---@field token string For a Bearer token.
----@field user string For Basic.
----@field password string For Basic.
+---@field user string For Basic, Digest and the OAuth 2 password grant.
+---@field password string For Basic, Digest and the OAuth 2 password grant.
+---@field key string The API key's header or query name, such as `X-Api-Key`.
+---@field value string The API key.
+---@field place 'header'|'query' Where the API key goes.
+---@field token_url string OAuth 2: the address that gives out tokens.
+---@field client_id string OAuth 2.
+---@field client_secret string OAuth 2.
+---@field scope string OAuth 2, such as `read write`.
+---@field grant 'client_credentials'|'password' OAuth 2: how to ask for a token.
+
+---A file the user picked for a request.
+---@class Http.FileRef
+---@field id string The id from `app.grants.open`, or an empty string until one is picked.
+---@field name string The file's name.
 
 ---A request as the API client edits it and saves it.
 ---@class Http.Request
@@ -27,9 +43,18 @@
 ---@field params Http.Row[]
 ---@field headers Http.Row[]
 ---@field body_mode Http.BodyMode
----@field body string The text sent in JSON and Text mode.
----@field form Http.Row[] The rows sent in Form mode.
+---@field body string The text sent in JSON and Text mode, and the query in GraphQL mode.
+---@field variables string The GraphQL variables, as JSON text.
+---@field file Http.FileRef The file sent in File mode.
+---@field form Http.Row[] The rows sent in Form and Multipart mode.
 ---@field auth Http.Auth
+---@field timeout number Seconds to wait for the answer, or 0 for the app's 30.
+---@field redirects boolean False hands back a redirect instead of following it.
+
+---What a request is built with besides its own fields.
+---@class Http.BuildContext
+---@field auth? Http.Auth The sign-in to use instead of the request's, such as one a folder hands down.
+---@field token? string An OAuth 2 token the client got already.
 
 ---A request ready for `app.net.fetch`, with every variable filled in.
 ---@class Http.Built
@@ -37,8 +62,35 @@
 ---@field url string
 ---@field headers table<string, string>
 ---@field body? string
+---@field file? string The id of the file sent as the body.
+---@field file_name? string The name of the file sent as the body.
+---@field parts? Proteus.HttpPart[] A multipart form with files, which the host writes.
+---@field timeout? number
+---@field redirects? boolean
 ---@field order string[] The header names in the order they go out.
 ---@field missing string[] The variable names that had no value.
+---@field unpicked string[] The files the request sends that are not picked yet, such as `"photo"` or `the body`.
+---@field problems string[] What keeps the request from going out, such as GraphQL variables that are not JSON.
+---@field digest? { user: string, password: string } Set for Digest, which answers the server's challenge.
+
+---One request read from another tool's file, and the folder it goes in.
+---@class Http.ImportedRequest
+---@field folder string The folder path inside the import's own folder, with `/`, or an empty string.
+---@field request Http.Request
+
+---A folder's sign-in read from another tool's file.
+---@class Http.ImportedFolder
+---@field folder string The folder path inside the import's own folder, or an empty string for the import's own folder.
+---@field auth Http.Auth
+
+---What `import` read.
+---@class Http.Import
+---@field kind 'postman'|'openapi'|'swagger'|'insomnia'|'har'
+---@field name string A name for the folder the requests go in.
+---@field requests Http.ImportedRequest[]
+---@field folders Http.ImportedFolder[]
+---@field variables table<string, string> Variables the requests use, with the values the file gave them.
+---@field notes string[] What did not come across.
 
 ---An address split at its `?`.
 ---@class Http.UrlParts
@@ -93,11 +145,42 @@
 ---Base64, as Basic auth needs it.
 ---@field base64 fun(text: string): string
 ---The request that goes out, with the environment filled in.
----@field build fun(request: Http.Request, env?: table<string, string>): Http.Built
+---@field build fun(request: Http.Request, env?: table<string, string>, ctx?: Http.BuildContext): Http.Built
+---What `app.net.fetch` takes for a built request.
+---@field fetch_request fun(built: Http.Built): Proteus.HttpRequest
+---A complete sign-in from a saved file or anything like one.
+---@field normalize_auth fun(saved: any): Http.Auth
+---The text of a folder's `.folder.json`, which holds the sign-in its requests inherit.
+---@field encode_folder fun(auth: Http.Auth): string
+---The sign-in a folder's `.folder.json` holds, or `inherit` when it holds none.
+---@field parse_folder fun(text: string?): Http.Auth
+---The sign-in a request uses: its own, or for `inherit` the nearest folder's. `folders` runs from the request's folder outward. The second value is the place in `folders` it came from.
+---@field resolve_auth fun(auth: Http.Auth, folders: Http.Auth[]): Http.Auth, integer?
+---The request that asks an OAuth 2 token address for a token, or nil and a message.
+---@field oauth_request fun(auth: Http.Auth, env?: table<string, string>): Proteus.HttpRequest?, string?
+---What tells one OAuth 2 sign-in from another, for keeping its token.
+---@field oauth_key fun(auth: Http.Auth, env?: table<string, string>): string
+---The token in a token address's answer and the seconds it lasts, or nil, nil and a message.
+---@field oauth_token fun(reply: { status: integer, body: string }): string?, number?, string?
+---The Authorization header that answers a Digest challenge for a built request, or nil and a message.
+---@field digest_header fun(built: Http.Built, www_authenticate: string, cnonce: string, nc: integer): string?, string?
+---The bytes base64 text holds.
+---@field base64_decode fun(text: string): string
+---The first `max` bytes as a hex dump.
+---@field hex_dump fun(bytes: string, max: integer): string
+---The MD5 hash of some text, in hex.
+---@field md5 fun(text: string): string
+---The SHA-256 hash of some text, in hex.
+---@field sha256 fun(text: string): string
+---The environments file with one more environment. Returns the text and the name it got, or nil and a message.
+---@field add_environment fun(text: string?, name: string, vars: table<string, string>): string?, string?
+---Reads a Postman collection, an OpenAPI 3 or Swagger 2 description in JSON or YAML, an Insomnia export or a HAR file.
+---@field import fun(text: string): Http.Import?, string?
 ---A built request as a curl command.
 ---@field to_curl fun(built: Http.Built): string
----Reads a curl command. Returns nil and a message when it cannot.
----@field from_curl fun(text: string): Http.Request?, string?
+---Reads a curl command. Returns nil and a message when it cannot. The third value lists what
+---the request leaves out or still needs, such as a file to pick.
+---@field from_curl fun(text: string): Http.Request?, string?, string[]?
 ---A complete request from a saved file or anything like one.
 ---@field normalize fun(saved: any): Http.Request
 ---A deep copy of a request.

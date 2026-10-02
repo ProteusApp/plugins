@@ -7,9 +7,12 @@
 --   uniform float u_speed; // @range 0 4 @default 1
 --   uniform vec3 u_tint;   // @color @default 1 0.6 0.2
 --   speed: f32,            // @range 0 4 @step 0.5
+--
+-- shader_passes.lua reads the notes that shape channels, such as `// @channel 0 buffer-a`.
 
 local compile = require ('shader_compile') --[[@as Shader.CompileModule]]
 local layout = require ('shader_layout') --[[@as Shader.LayoutModule]]
+local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
 
 -- Uniforms the preview sets by itself, by name, with their GLSL types.
 ---@type table<string, string>
@@ -18,11 +21,14 @@ local GLSL_BUILTINS = {
   u_time = 'float',
   u_frame = 'float',
   u_mouse = 'vec4',
+  u_date = 'vec4',
   iResolution = 'vec3',
   iTime = 'float',
   iTimeDelta = 'float',
   iFrame = 'int',
   iMouse = 'vec4',
+  iDate = 'vec4',
+  iChannelResolution = 'vec3',
 }
 -- The order they are declared in when a short shader leaves them out.
 local GLSL_BUILTIN_ORDER = {
@@ -30,12 +36,17 @@ local GLSL_BUILTIN_ORDER = {
   'u_time',
   'u_frame',
   'u_mouse',
+  'u_date',
   'iResolution',
   'iTime',
   'iTimeDelta',
   'iFrame',
   'iMouse',
+  'iDate',
+  'iChannelResolution',
 }
+-- Builtins that are arrays, with their length.
+local GLSL_ARRAYS = { iChannelResolution = passes.COUNT }
 
 ---@type table<string, Shader.UniformType>
 local GLSL_TYPES = {
@@ -61,8 +72,13 @@ local WGSL_TYPES = {
 }
 
 ---@type table<string, Shader.UniformType>
-local WGSL_BUILTINS =
-  { resolution = 'vec2', time = 'float', frame = 'float', mouse = 'vec4' }
+local WGSL_BUILTINS = {
+  resolution = 'vec2',
+  time = 'float',
+  frame = 'float',
+  mouse = 'vec4',
+  date = 'vec4',
+}
 
 local DIMS =
   { float = 1, int = 1, uint = 1, bool = 1, vec2 = 2, vec3 = 3, vec4 = 4 }
@@ -190,10 +206,20 @@ function M.glsl_uniforms (text)
     end
     local ty, names = code:match ('^%s*uniform%s+([%w_]+)%s+([%w_%s,%[%]]+);')
     if ty and names then
-      for name in tostring (names):gmatch ('[%w_]+') do
+      for name, size in tostring (names):gmatch ('([%w_]+)%s*(%[?[^,]*)') do
         declared[name] = true
         local t = GLSL_TYPES[ty]
-        if not GLSL_BUILTINS[name] and t then
+        if ty:match ('sampler') then
+          -- shader_passes.lua reads samplers: each one reads a channel.
+        elseif size:find ('[', 1, true) and not GLSL_BUILTINS[name] then
+          errors[#errors + 1] = {
+            message = 'The preview has no control for an array, so '
+              .. name
+              .. ' stays at 0.',
+            line = line_no,
+            severity = 'warning',
+          }
+        elseif not GLSL_BUILTINS[name] and t then
           local notes = M.notes (comment, t)
           list[#list + 1] = {
             key = name,
@@ -208,7 +234,7 @@ function M.glsl_uniforms (text)
         elseif
           not GLSL_BUILTINS[name]
           and not t
-          and not ty:match ('^sampler')
+          and not ty:match ('sampler')
         then
           errors[#errors + 1] = {
             message = 'The preview has no control for a uniform '
@@ -245,6 +271,7 @@ function M.glsl_program (text, vertex)
   local code = strip_comments (text)
   local source, offset = text, 0
   local shadertoy = false
+  local extra = {} ---@type integer[]
   if not code:find ('^%s*#%s*version') then
     shadertoy = uses (code, 'mainImage') and not code:find ('%f[%w_]main%s*%(')
     local head = { '#version 300 es', 'precision highp float;' } ---@type string[]
@@ -254,7 +281,15 @@ function M.glsl_program (text, vertex)
           .. GLSL_BUILTINS[name]
           .. ' '
           .. name
+          .. (GLSL_ARRAYS[name] and ('[' .. GLSL_ARRAYS[name] .. ']') or '')
           .. ';'
+      end
+    end
+    for i = 0, passes.COUNT - 1 do
+      local name = 'iChannel' .. i
+      if uses (code, name) and not declared[name] then
+        head[#head + 1] = 'uniform highp sampler2D ' .. name .. ';'
+        extra[#extra + 1] = i
       end
     end
     if uses (code, 'v_uv') and not code:find ('in%s+vec2%s+v_uv') then
@@ -275,6 +310,10 @@ function M.glsl_program (text, vertex)
         .. '}\n'
     end
   end
+  local channels, channel_errors = passes.glsl_channels (text, extra)
+  for _, e in ipairs (channel_errors) do
+    errors[#errors + 1] = e
+  end
   local vert = compile.GLSL_VERTEX
   local vert_offset = 0
   if vertex and vertex:find ('%S') then
@@ -294,6 +333,7 @@ function M.glsl_program (text, vertex)
     vertex_offset = vert_offset,
     shadertoy = shadertoy,
     user_lines = count_lines (text) + 1,
+    channels = channels,
   }
   return program, errors
 end
@@ -377,6 +417,10 @@ function M.wgsl_program (text)
       message = 'Add a fragment entry point, such as @fragment fn fs_main(...) -> @location(0) vec4f.',
     }
   end
+  local bindings, channels, resource_errors = passes.wgsl_resources (text, code)
+  for _, e in ipairs (resource_errors) do
+    errors[#errors + 1] = e
+  end
   local source = text
   if not vertex then
     local stage = compile.WGSL_VERTEX
@@ -395,6 +439,8 @@ function M.wgsl_program (text)
     layout = lay,
     offset = 0,
     user_lines = count_lines (text) + 1,
+    channels = channels,
+    bindings = bindings,
   }
   return program, errors
 end
@@ -479,6 +525,52 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
   vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0.0, 2.0, 4.0));
   fragColor = vec4(col, 1.0);
+}
+]],
+  buffer = [[
+// A buffer: a pass of this shader that draws into a picture of its own before the image
+// each frame. The image, and every pass, can read that picture through a channel. This one
+// reads its own last frame on iChannel0, so what it drew fades instead of vanishing: a
+// trail behind the mouse. Set a channel of the image to this buffer to show it.
+// @channel 0 {{BUFFER}}
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+  vec2 uv = fragCoord / iResolution.xy;
+  vec3 last = texture(iChannel0, uv).rgb;
+  vec2 mouse = iResolution.xy * (0.5 + 0.3 * vec2(cos(iTime), sin(iTime * 1.3)));
+  if (iMouse.z > 0.0) {
+    mouse = iMouse.xy;
+  }
+  float spot = 1.0 - smoothstep(0.0, 18.0, length(fragCoord - mouse));
+  fragColor = vec4(max(last * 0.97, vec3(spot)), 1.0);
+}
+]],
+  buffer_wgsl = [[
+// A buffer: a pass of this shader that draws into a picture of its own before the image
+// each frame. The image, and every pass, can read that picture through a channel. This one
+// reads its own last frame on iChannel0, so what it drew fades instead of vanishing: a
+// trail behind the mouse. Set a channel of the image to this buffer to show it.
+struct Uniforms {
+  resolution: vec2f,
+  time: f32,
+  frame: f32,
+  mouse: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(1) @binding(0) var iChannel0: texture_2d<f32>; // @channel 0 {{BUFFER}}
+@group(1) @binding(1) var iChannel0_sampler: sampler;
+
+@fragment
+fn fs_main(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  // A texture's rows count from its top, as the position's y does.
+  let last = textureSample(iChannel0, iChannel0_sampler, position.xy / u.resolution).rgb;
+  let frag = vec2f(position.x, u.resolution.y - position.y);
+  var mouse = u.resolution * (0.5 + 0.3 * vec2f(cos(u.time), sin(u.time * 1.3)));
+  if (u.mouse.z > 0.0) {
+    mouse = u.mouse.xy;
+  }
+  let spot = 1.0 - smoothstep(0.0, 18.0, length(frag - mouse));
+  return vec4f(max(last * 0.97, vec3f(spot)), 1.0);
 }
 ]],
   vertex = [[

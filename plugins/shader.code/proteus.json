@@ -29,6 +29,7 @@
   },
   "issue": null,
   "files": [
-    "init.lua"
+    "init.lua",
+    "tests/code.test.lua"
   ]
 }

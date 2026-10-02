@@ -70,8 +70,8 @@ end
 return {
   name = 'Sheet',
   description = 'A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.',
-  version = '1.2.0',
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  version = '1.3.0',
+  requires = { proteus = '>=0.3.1', features = { 'permissions', 'menus' } },
   -- Import, Export and opening a file in place read and write CSV and Excel files anywhere on
   -- disk, and Paste reads the clipboard. The Excel reader runs here in Lua, so it needs the
   -- file itself, which `files` gives and a file grant, made for web views, does not.
@@ -103,7 +103,15 @@ return {
     local notify = app.try_use ('notify')
     local picker = app.try_use ('picker')
     local menus = app.try_use ('menus')
+    local keys = app.try_use ('keys')
     ui.css (CSS)
+
+    ---A key as menus show it on this computer, such as Ctrl+V, or Cmd+V on a Mac.
+    ---@param combo string
+    ---@return string?
+    local function keys_label (combo)
+      return keys and keys.pretty (keys.normalize (combo)) or nil
+    end
 
     local book = nil ---@type Sheet.Book?
     local file = nil ---@type string?
@@ -1975,14 +1983,8 @@ return {
     ---@param id string
     ---@return Proteus.MenuItem
     local function run_item (label, icon, id)
-      return {
-        label = label,
-        icon = icon,
-        disabled = not commands.can_run (id),
-        run = function ()
-          commands.run (id)
-        end,
-      }
+      -- The menu takes the key, the state and the run from the command itself.
+      return { command = id, label = label, icon = icon }
     end
 
     ---Filters the sheet to the rows that show the active cell's value in its column.
@@ -2017,52 +2019,16 @@ return {
       local has_link = s and s:link (grid.sel.r, grid.sel.c) ~= nil
       ---@type Proteus.MenuItem[]
       local items = {
+        { command = 'sheet.cut' },
+        { command = 'sheet.copy' },
+        -- The cell editor pastes on these keys, so they belong to no command.
+        { command = 'sheet.paste', key = keys_label ('ctrl+v') },
         {
-          label = 'Cut',
-          icon = 'scissors',
-          key = 'Ctrl+X',
-          run = function ()
-            grid.copy (true)
-          end,
+          command = 'sheet.paste_values',
+          key = keys_label ('ctrl+shift+v'),
         },
-        {
-          label = 'Copy',
-          icon = 'copy',
-          key = 'Ctrl+C',
-          run = function ()
-            grid.copy (false)
-          end,
-        },
-        {
-          label = 'Paste',
-          icon = 'clipboard-paste',
-          key = 'Ctrl+V',
-          run = function ()
-            grid.paste ()
-          end,
-        },
-        {
-          label = 'Paste values only',
-          icon = 'clipboard-type',
-          key = 'Ctrl+Shift+V',
-          run = function ()
-            grid.paste ({ only = 'values' })
-          end,
-        },
-        {
-          label = 'Paste formats only',
-          icon = 'clipboard-paste',
-          run = function ()
-            grid.paste ({ only = 'formats' })
-          end,
-        },
-        {
-          label = 'Paste transposed',
-          icon = 'clipboard-paste',
-          run = function ()
-            grid.paste ({ transpose = true })
-          end,
-        },
+        { command = 'sheet.paste_formats' },
+        { command = 'sheet.paste_transposed' },
         { separator = true },
         {
           label = grid.count_label ('Insert %s above', 'row'),
@@ -2107,7 +2073,11 @@ return {
           end,
         },
         { separator = true },
-        { label = 'Clear', icon = 'eraser', key = 'Del', run = grid.clear },
+        {
+          command = 'sheet.clear',
+          label = 'Clear',
+          key = keys_label ('delete'),
+        },
         run_item (
           'Sort A to Z by this column',
           'arrow-up-narrow-wide',

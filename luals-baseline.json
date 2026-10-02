@@ -1,0 +1,812 @@
+{
+  "types": {
+    "plugins/lang.css/init.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.Editor` to parameter `LangCss.RouterEditor`.": 1
+    },
+    "plugins/lang.css/lib/documents.lua": {
+      "undefined-doc-class  Undefined class `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `notify`.": 4,
+      "undefined-field  Undefined field `uri`.": 1
+    },
+    "plugins/lang.css/lib/languages.lua": {
+      "param-type-mismatch  Cannot assign `string?` to parameter `string`.": 1
+    },
+    "plugins/lang.css/lib/provider.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.CompletionItem`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `completion`.": 1,
+      "undefined-field  Undefined field `from`.": 1,
+      "undefined-field  Undefined field `items`.": 2,
+      "undefined-field  Undefined field `location`.": 1,
+      "undefined-field  Undefined field `markdown`.": 1,
+      "undefined-field  Undefined field `path`.": 1,
+      "undefined-field  Undefined field `request`.": 4,
+      "undefined-field  Undefined field `sync`.": 3
+    },
+    "plugins/lang.css/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ExtraModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `is_absolute`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 4,
+      "undefined-field  Undefined field `open`.": 2,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `reset`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.docker/init.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Paths`.": 1,
+      "undefined-field  Undefined field `new`.": 1
+    },
+    "plugins/lang.docker/lib/completion.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Range`.": 1,
+      "undefined-field  Undefined field `start`.": 2
+    },
+    "plugins/lang.docker/lib/edits.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Range`.": 1,
+      "undefined-field  Undefined field `start`.": 1
+    },
+    "plugins/lang.docker/lib/lint.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `to_disk`.": 1
+    },
+    "plugins/lang.docker/lib/provider.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.CompletionItem`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `completion`.": 1,
+      "undefined-field  Undefined field `location`.": 1,
+      "undefined-field  Undefined field `markdown`.": 2,
+      "undefined-field  Undefined field `request`.": 4,
+      "undefined-field  Undefined field `sync`.": 3
+    },
+    "plugins/lang.docker/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.DocumentsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `from_disk`.": 1,
+      "undefined-field  Undefined field `is_absolute`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 3,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `to_disk`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.gdscript/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2
+    },
+    "plugins/lang.gdscript/lib/server.lua": {
+      "missing-fields  Missing required fields in type `Proteus.ToolHandle`: `set_languages`": 1,
+      "param-type-mismatch  Cannot assign `fun(port: integer, root: string, init_options?: table)?` to parameter `fun(...any):...unknown`.": 1,
+      "undefined-doc-class  Undefined class `Lsp.Client`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `stop`.": 2
+    },
+    "plugins/lang.gdscript/tests/project.test.lua": {
+      "param-type-mismatch  Cannot assign `integer|nil` to parameter `integer`.": 3
+    },
+    "plugins/lang.gdscript/tests/provider.test.lua": {
+      "need-check-nil  Need check nil.": 4
+    },
+    "plugins/lang.gitfiles/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2
+    },
+    "plugins/lang.gitfiles/lib/commands.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `inside`.": 1,
+      "undefined-field  Undefined field `join`.": 3,
+      "undefined-field  Undefined field `name`.": 3,
+      "undefined-field  Undefined field `normalize`.": 1,
+      "undefined-field  Undefined field `parent`.": 2,
+      "undefined-field  Undefined field `relative`.": 1,
+      "undefined-field  Undefined field `same`.": 2
+    },
+    "plugins/lang.html/lib/completion.lua": {
+      "inject-field  Fields cannot be injected into the reference of `Lsp.Protocol` for `completion`. To do so, use `---@class` for `protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.CompletionItem`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1
+    },
+    "plugins/lang.html/lib/preview.lua": {
+      "return-type-mismatch  Annotations specify that return value #1 has a type of `(LangHtml.Page)?`, returning value of type `Proteus.CurrentDoc` here instead.": 1,
+      "return-type-mismatch  Annotations specify that return value #1 has a type of `(LangHtml.Page)?`, returning value of type `Proteus.DocInfo` here instead.": 1
+    },
+    "plugins/lang.html/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.javascript/lib/npm.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 1
+    },
+    "plugins/lang.json/lib/provider.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.CompletionItem`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `completion`.": 1,
+      "undefined-field  Undefined field `from`.": 1,
+      "undefined-field  Undefined field `items`.": 2,
+      "undefined-field  Undefined field `markdown`.": 1,
+      "undefined-field  Undefined field `request`.": 2,
+      "undefined-field  Undefined field `sync`.": 2
+    },
+    "plugins/lang.json/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.DocumentsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ExtraModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 5,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `path`.": 2,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.luau-lsp/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2
+    },
+    "plugins/lang.luau-lsp/lib/format.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.luau-lsp/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-field  Undefined field `join`.": 2,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.markdown/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.python/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.python/lib/edits.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Range`.": 1,
+      "undefined-field  Undefined field `start`.": 1
+    },
+    "plugins/lang.python/lib/format.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1,
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `LangPython.DocPath`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.python/lib/pyright.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1
+    },
+    "plugins/lang.python/lib/python.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `folds_case`.": 1,
+      "undefined-field  Undefined field `normalize`.": 3
+    },
+    "plugins/lang.python/lib/ruff.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.DocumentsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 4,
+      "undefined-field  Undefined field `path`.": 1,
+      "undefined-field  Undefined field `same`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.python/lib/select.lua": {
+      "param-type-mismatch  Cannot assign `(Proteus.CurrentDoc)?` to parameter `(LangPython.DocPath)?`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `relative`.": 1,
+      "undefined-field  Undefined field `same`.": 1
+    },
+    "plugins/lang.react/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 3,
+      "undefined-field  Undefined field `normalize`.": 2,
+      "undefined-field  Undefined field `parent`.": 3
+    },
+    "plugins/lang.rust/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `normalize`.": 1
+    },
+    "plugins/lang.rust/lib/cargo.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `native`.": 1,
+      "undefined-field  Undefined field `normalize`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.rust/lib/crates.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.rust/lib/registry.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 1
+    },
+    "plugins/lang.rust/lib/rustfmt.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `command`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.rust/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `relative`.": 1
+    },
+    "plugins/lang.sass/lib/client.lua": {
+      "assign-type-mismatch  Cannot assign `Proteus.Editor` to `LangSass.AttachEditor`.": 1,
+      "undefined-doc-class  Undefined class `Lsp.Client`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ExtraModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ProviderModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `is_absolute`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 5,
+      "undefined-field  Undefined field `open`.": 2,
+      "undefined-field  Undefined field `reset`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.sass/lib/documents.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `notify`.": 4,
+      "undefined-field  Undefined field `uri`.": 1
+    },
+    "plugins/lang.sass/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `notify`.": 1,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `ready`.": 1,
+      "undefined-field  Undefined field `running`.": 3,
+      "undefined-field  Undefined field `start`.": 1,
+      "undefined-field  Undefined field `stop`.": 1,
+      "undefined-field  Undefined field `to_disk`.": 1
+    },
+    "plugins/lang.shell/init.lua": {
+      "missing-fields  Missing required fields in type `Proteus.ToolSpec`: `kind`": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1
+    },
+    "plugins/lang.shell/lib/format.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.shell/lib/provider.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.CompletionItem`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Extra`.": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `completion`.": 1,
+      "undefined-field  Undefined field `from`.": 1,
+      "undefined-field  Undefined field `items`.": 2,
+      "undefined-field  Undefined field `location`.": 1,
+      "undefined-field  Undefined field `markdown`.": 2,
+      "undefined-field  Undefined field `request`.": 4,
+      "undefined-field  Undefined field `sync`.": 3
+    },
+    "plugins/lang.shell/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.DocumentsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ExtraModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `is_absolute`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 4,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `path`.": 1,
+      "undefined-field  Undefined field `same`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.tailwind/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2
+    },
+    "plugins/lang.tailwind/lib/client.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Callback`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 3,
+      "undefined-field  Undefined field `open`.": 2,
+      "undefined-field  Undefined field `reset`.": 1,
+      "undefined-field  Undefined field `sync`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.tailwind/lib/completion.lua": {
+      "param-type-mismatch  Cannot assign `function` to parameter `Lsp.Callback`.": 2
+    },
+    "plugins/lang.tailwind/lib/documents.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 2,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Rpc`.": 1,
+      "undefined-field  Undefined field `notify`.": 4,
+      "undefined-field  Undefined field `uri`.": 1
+    },
+    "plugins/lang.tailwind/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.toml/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `normalize`.": 2
+    },
+    "plugins/lang.toml/lib/format.lua": {
+      "undefined-field  Undefined field `formatter`.": 1
+    },
+    "plugins/lang.toml/lib/schemas.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `uri`.": 1
+    },
+    "plugins/lang.toml/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.typescript/lib/edits.lua": {
+      "undefined-doc-name  Undefined type or alias `Lsp.Range`.": 1,
+      "undefined-field  Undefined field `start`.": 1
+    },
+    "plugins/lang.typescript/lib/program.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/lang.typescript/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.DocumentsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Documents`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ExtraModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.MessagesModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.Protocol`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ProviderModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcHandlers`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.RpcModule`.": 1,
+      "undefined-field  Undefined field `is_absolute`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `new`.": 6,
+      "undefined-field  Undefined field `open`.": 2,
+      "undefined-field  Undefined field `parent`.": 1,
+      "undefined-field  Undefined field `path`.": 1,
+      "undefined-field  Undefined field `reset`.": 1,
+      "undefined-field  Undefined field `same`.": 1,
+      "undefined-field  Undefined field `sync`.": 1,
+      "undefined-field  Undefined field `uri`.": 2
+    },
+    "plugins/lang.yaml/lib/server.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Lsp.ClientModule`.": 1,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/proteus.code.explorer/init.lua": {
+      "undefined-doc-class  Undefined class `FileTree.Entry`.": 1,
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `Explorer.PathsModule`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileTree.Entry`.": 8,
+      "undefined-doc-name  Undefined type or alias `FileTree.How`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileTree.Look`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileTree.Module`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileTree.Move`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileTree.Step`.": 2,
+      "undefined-doc-name  Undefined type or alias `FileTree`.": 1,
+      "undefined-field  Undefined field `chosen`.": 1,
+      "undefined-field  Undefined field `clip`.": 1,
+      "undefined-field  Undefined field `collapse_all`.": 1,
+      "undefined-field  Undefined field `dir`.": 10,
+      "undefined-field  Undefined field `expand_to`.": 2,
+      "undefined-field  Undefined field `first_line`.": 1,
+      "undefined-field  Undefined field `folds_case`.": 1,
+      "undefined-field  Undefined field `follow_move`.": 1,
+      "undefined-field  Undefined field `free_path`.": 1,
+      "undefined-field  Undefined field `from`.": 4,
+      "undefined-field  Undefined field `inside`.": 2,
+      "undefined-field  Undefined field `join`.": 2,
+      "undefined-field  Undefined field `keep_focus`.": 1,
+      "undefined-field  Undefined field `kind`.": 3,
+      "undefined-field  Undefined field `moves`.": 2,
+      "undefined-field  Undefined field `name`.": 7,
+      "undefined-field  Undefined field `native`.": 3,
+      "undefined-field  Undefined field `new`.": 1,
+      "undefined-field  Undefined field `normalize`.": 1,
+      "undefined-field  Undefined field `parent`.": 15,
+      "undefined-field  Undefined field `paste`.": 1,
+      "undefined-field  Undefined field `path`.": 13,
+      "undefined-field  Undefined field `paths`.": 2,
+      "undefined-field  Undefined field `relative`.": 1,
+      "undefined-field  Undefined field `render_soon`.": 3,
+      "undefined-field  Undefined field `reveal_label`.": 1,
+      "undefined-field  Undefined field `select_after`.": 1,
+      "undefined-field  Undefined field `select`.": 2,
+      "undefined-field  Undefined field `set_clip`.": 1,
+      "undefined-field  Undefined field `start_copy`.": 1,
+      "undefined-field  Undefined field `start_create`.": 2,
+      "undefined-field  Undefined field `start_rename`.": 1,
+      "undefined-field  Undefined field `to`.": 3,
+      "undefined-field  Undefined field `what`.": 3
+    },
+    "plugins/proteus.code.plugins/init.lua": {
+      "undefined-doc-name  Undefined type or alias `ProteusFolder`.": 1,
+      "undefined-field  Undefined field `available`.": 1,
+      "undefined-field  Undefined field `dir`.": 2,
+      "undefined-field  Undefined field `loaded`.": 1,
+      "undefined-field  Undefined field `offer_reload`.": 1,
+      "undefined-field  Undefined field `write_all`.": 1
+    },
+    "plugins/proteus.code.project/exclude.lua": {
+      "undefined-doc-name  Undefined type or alias `FileGlob`.": 2,
+      "undefined-field  Undefined field `matches`.": 2
+    },
+    "plugins/proteus.code.project/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileGlob`.": 1,
+      "undefined-field  Undefined field `folds_case`.": 1,
+      "undefined-field  Undefined field `join`.": 1,
+      "undefined-field  Undefined field `name`.": 3,
+      "undefined-field  Undefined field `native`.": 7,
+      "undefined-field  Undefined field `normalize`.": 3,
+      "undefined-field  Undefined field `relative`.": 2,
+      "undefined-field  Undefined field `same`.": 4
+    },
+    "plugins/proteus.code.search/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-doc-name  Undefined type or alias `FileGlob`.": 1,
+      "undefined-field  Undefined field `folds_case`.": 1,
+      "undefined-field  Undefined field `join`.": 4,
+      "undefined-field  Undefined field `matches`.": 1,
+      "undefined-field  Undefined field `native`.": 1,
+      "undefined-field  Undefined field `relative`.": 1
+    },
+    "plugins/proteus.code.welcome/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `name`.": 1,
+      "undefined-field  Undefined field `native`.": 2,
+      "undefined-field  Undefined field `parent`.": 1
+    },
+    "plugins/proteus.kanban/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'code-insights'|'file-kinds'|'file-tree'|'folders'...(+23)`.": 1
+    },
+    "plugins/proteus.sheet/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'code-insights'|'file-kinds'|'file-tree'|'folders'...(+23)`.": 1
+    },
+    "plugins/proteus.terminal/init.lua": {
+      "undefined-doc-name  Undefined type or alias `DiskPaths`.": 1,
+      "undefined-field  Undefined field `native`.": 1
+    },
+    "plugins/shader.canvas/commands.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `NodeCanvas.Edge`.": 6,
+      "luadoc-miss-symbol  `}` expected.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Edge`.": 1,
+      "undefined-doc-name  Undefined type or alias `menu`.": 1,
+      "undefined-field  Undefined field `center_on`.": 1,
+      "undefined-field  Undefined field `h`.": 1,
+      "undefined-field  Undefined field `menu`.": 1,
+      "undefined-field  Undefined field `title_el`.": 1,
+      "undefined-field  Undefined field `w`.": 1,
+      "undefined-field  Undefined field `x`.": 1,
+      "undefined-field  Undefined field `y`.": 1
+    },
+    "plugins/shader.canvas/edit.lua": {
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 4,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Edge`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Point`.": 5,
+      "undefined-field  Undefined field `align`.": 1,
+      "undefined-field  Undefined field `between`.": 1,
+      "undefined-field  Undefined field `bounds`.": 1,
+      "undefined-field  Undefined field `distribute`.": 1,
+      "undefined-field  Undefined field `ease`.": 1,
+      "undefined-field  Undefined field `frame_around`.": 1,
+      "undefined-field  Undefined field `h`.": 3,
+      "undefined-field  Undefined field `layered_columns`.": 1,
+      "undefined-field  Undefined field `overlaps`.": 1,
+      "undefined-field  Undefined field `point_key`.": 1,
+      "undefined-field  Undefined field `seen`.": 1,
+      "undefined-field  Undefined field `title_el`.": 1,
+      "undefined-field  Undefined field `w`.": 3,
+      "undefined-field  Undefined field `x`.": 5,
+      "undefined-field  Undefined field `y`.": 5
+    },
+    "plugins/shader.canvas/frames.lua": {
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 1,
+      "undefined-field  Undefined field `draw`.": 1,
+      "undefined-field  Undefined field `frame_layer`.": 1,
+      "undefined-field  Undefined field `h`.": 1,
+      "undefined-field  Undefined field `place`.": 1,
+      "undefined-field  Undefined field `w`.": 1,
+      "undefined-field  Undefined field `x`.": 1,
+      "undefined-field  Undefined field `y`.": 1
+    },
+    "plugins/shader.canvas/gestures.lua": {
+      "param-type-mismatch  Cannot assign `NodeCanvas.Box` to parameter `NodeCanvas.Point`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 6,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Gesture`.": 3,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Point`.": 7,
+      "undefined-field  Undefined field `box_to_world`.": 1,
+      "undefined-field  Undefined field `curve`.": 1,
+      "undefined-field  Undefined field `data`.": 7,
+      "undefined-field  Undefined field `delta`.": 2,
+      "undefined-field  Undefined field `drag`.": 1,
+      "undefined-field  Undefined field `h`.": 3,
+      "undefined-field  Undefined field `inside`.": 1,
+      "undefined-field  Undefined field `kind`.": 10,
+      "undefined-field  Undefined field `marquee`.": 1,
+      "undefined-field  Undefined field `moved`.": 5,
+      "undefined-field  Undefined field `origins`.": 2,
+      "undefined-field  Undefined field `panned`.": 1,
+      "undefined-field  Undefined field `pick`.": 1,
+      "undefined-field  Undefined field `point_key`.": 1,
+      "undefined-field  Undefined field `press`.": 7,
+      "undefined-field  Undefined field `title_el`.": 1,
+      "undefined-field  Undefined field `touching`.": 1,
+      "undefined-field  Undefined field `w`.": 3,
+      "undefined-field  Undefined field `wheel`.": 1,
+      "undefined-field  Undefined field `x`.": 5,
+      "undefined-field  Undefined field `y`.": 5,
+      "undefined-field  Undefined field `zoom`.": 2
+    },
+    "plugins/shader.canvas/init.lua": {
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 2,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.View`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas`.": 1,
+      "undefined-field  Undefined field `CSS`.": 1,
+      "undefined-field  Undefined field `center_on`.": 1,
+      "undefined-field  Undefined field `draw`.": 1,
+      "undefined-field  Undefined field `el`.": 1,
+      "undefined-field  Undefined field `minimap`.": 1,
+      "undefined-field  Undefined field `x`.": 2,
+      "undefined-field  Undefined field `y`.": 2
+    },
+    "plugins/shader.canvas/view.lua": {
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 3,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Point`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.View`.": 1,
+      "undefined-field  Undefined field `center_on`.": 1,
+      "undefined-field  Undefined field `fit`.": 1,
+      "undefined-field  Undefined field `grid`.": 1,
+      "undefined-field  Undefined field `h`.": 1,
+      "undefined-field  Undefined field `seen`.": 1,
+      "undefined-field  Undefined field `show_seen`.": 1,
+      "undefined-field  Undefined field `to_world`.": 1,
+      "undefined-field  Undefined field `transform`.": 1,
+      "undefined-field  Undefined field `w`.": 1,
+      "undefined-field  Undefined field `x`.": 7,
+      "undefined-field  Undefined field `y`.": 7,
+      "undefined-field  Undefined field `zoom`.": 3
+    },
+    "plugins/shader.canvas/wires.lua": {
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Point`.": 2,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.RoutePoint`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Target`.": 2,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.WireLine`.": 1,
+      "undefined-field  Undefined field `curve_points`.": 1,
+      "undefined-field  Undefined field `distance_to`.": 1,
+      "undefined-field  Undefined field `draw`.": 1,
+      "undefined-field  Undefined field `keep`.": 1,
+      "undefined-field  Undefined field `nearest`.": 1,
+      "undefined-field  Undefined field `point_key`.": 2,
+      "undefined-field  Undefined field `point_layer`.": 1,
+      "undefined-field  Undefined field `route`.": 1,
+      "undefined-field  Undefined field `set`.": 1,
+      "undefined-field  Undefined field `wire_layer`.": 1,
+      "undefined-field  Undefined field `wire_through`.": 1,
+      "undefined-field  Undefined field `x`.": 4,
+      "undefined-field  Undefined field `y`.": 4,
+      "undefined-field  Undefined field `zoom`.": 1
+    },
+    "plugins/shader.core/tests/core.test.lua": {
+      "missing-fields  Missing required fields in type `Shader.CanvasData`: `routes`": 1,
+      "missing-fields  Missing required fields in type `Shader.Frame`: `x`, `y`, `w`, `h`, `title`": 1
+    },
+    "plugins/shader.core/types/shader.lua": {
+      "duplicate-doc-field  Duplicate defined fields `category`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `description`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `helpers`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `inputs`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `outputs`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `settings`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `title`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `type`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `unique`.": 2,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Box`.": 7,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Edge`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.FrameLayer`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Gesture`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Minimap`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.PointLayer`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Point`.": 8,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.Target`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.View`.": 2,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas.WireLayer`.": 1,
+      "undefined-doc-name  Undefined type or alias `NodeCanvas`.": 1,
+      "undefined-doc-name  Undefined type or alias `ShaderCanvas.Html`.": 1
+    },
+    "plugins/shader.docs/tests/docs.test.lua": {
+      "missing-fields  Missing required fields in type `DocsTest.Run`: `api`, `files`, `listed`, `emit`, `flush`, `asked`, `closed`, `store`": 1,
+      "missing-fields  Missing required fields in type `Proteus.El`: `id`, `dom`": 2
+    },
+    "plugins/shader.preview/tests/preview.test.lua": {
+      "missing-fields  Missing required fields in type `PreviewTest.Run`: `docs`, `answer`, `page`, `flush`": 1,
+      "missing-fields  Missing required fields in type `Proteus.El`: `id`, `dom`": 2
+    },
+    "plugins/view.aseprite/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    },
+    "plugins/view.fonts/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    },
+    "plugins/view.images/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    }
+  },
+  "app": {
+    "plugins/lang.css/init.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.Editor` to parameter `LangCss.RouterEditor`.": 1
+    },
+    "plugins/lang.css/lib/documents.lua": {
+      "missing-fields  Missing required fields in type `LangCss.Documents`: `elsewhere`, `set_sync`": 1
+    },
+    "plugins/lang.css/lib/languages.lua": {
+      "param-type-mismatch  Cannot assign `string?` to parameter `string`.": 1
+    },
+    "plugins/lang.gdscript/lib/server.lua": {
+      "missing-fields  Missing required fields in type `Proteus.ToolHandle`: `set_languages`": 1,
+      "param-type-mismatch  Cannot assign `fun(port: integer, root: string, init_options?: table)?` to parameter `fun(...any):...unknown`.": 1
+    },
+    "plugins/lang.gdscript/tests/project.test.lua": {
+      "param-type-mismatch  Cannot assign `integer|nil` to parameter `integer`.": 3
+    },
+    "plugins/lang.gdscript/tests/provider.test.lua": {
+      "need-check-nil  Need check nil.": 4
+    },
+    "plugins/lang.html/lib/preview.lua": {
+      "return-type-mismatch  Annotations specify that return value #1 has a type of `(LangHtml.Page)?`, returning value of type `Proteus.CurrentDoc` here instead.": 1,
+      "return-type-mismatch  Annotations specify that return value #1 has a type of `(LangHtml.Page)?`, returning value of type `Proteus.DocInfo` here instead.": 1
+    },
+    "plugins/lang.json/lib/server.lua": {
+      "missing-fields  Missing required fields in type `Lsp.Rpc`: `connect`": 1
+    },
+    "plugins/lang.python/lib/format.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1,
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `LangPython.DocPath`.": 1
+    },
+    "plugins/lang.python/lib/pyright.lua": {
+      "param-type-mismatch  Cannot assign `Proteus.DocInfo` to parameter `(LangPython.DocPath)?`.": 1
+    },
+    "plugins/lang.python/lib/select.lua": {
+      "param-type-mismatch  Cannot assign `(Proteus.CurrentDoc)?` to parameter `(LangPython.DocPath)?`.": 1
+    },
+    "plugins/lang.sass/lib/client.lua": {
+      "assign-type-mismatch  Cannot assign `Proteus.Editor` to `LangSass.AttachEditor`.": 1,
+      "missing-fields  Missing required fields in type `LangSass.Client`: `connect`, `capabilities`, `apply_edit`": 1
+    },
+    "plugins/lang.sass/lib/documents.lua": {
+      "missing-fields  Missing required fields in type `Lsp.Documents`: `elsewhere`, `set_sync`": 1
+    },
+    "plugins/lang.shell/init.lua": {
+      "missing-fields  Missing required fields in type `Proteus.ToolSpec`: `kind`": 2
+    },
+    "plugins/lang.tailwind/lib/documents.lua": {
+      "missing-fields  Missing required fields in type `Lsp.Documents`: `elsewhere`, `set_sync`": 1
+    },
+    "plugins/lang.typescript/lib/server.lua": {
+      "missing-parameter  This function requires 2 argument(s) but instead it is receiving 1.": 1
+    },
+    "plugins/proteus.kanban/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'code-insights'|'file-kinds'|'file-tree'|'folders'...(+23)`.": 1
+    },
+    "plugins/proteus.sheet/init.lua": {
+      "assign-type-mismatch  Cannot assign `string` to `'autoplay'|'code-insights'|'file-kinds'|'file-tree'|'folders'...(+23)`.": 1
+    },
+    "plugins/shader.canvas/commands.lua": {
+      "luadoc-miss-symbol  `}` expected.": 1,
+      "undefined-doc-name  Undefined type or alias `menu`.": 1,
+      "undefined-field  Undefined field `menu`.": 1
+    },
+    "plugins/shader.core/tests/core.test.lua": {
+      "missing-fields  Missing required fields in type `Shader.CanvasData`: `routes`": 1,
+      "missing-fields  Missing required fields in type `Shader.Frame`: `x`, `y`, `w`, `h`, `title`": 1
+    },
+    "plugins/shader.core/types/shader.lua": {
+      "duplicate-doc-field  Duplicate defined fields `category`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `description`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `helpers`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `inputs`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `outputs`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `settings`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `title`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `type`.": 2,
+      "duplicate-doc-field  Duplicate defined fields `unique`.": 2,
+      "undefined-doc-name  Undefined type or alias `ShaderCanvas.Html`.": 1
+    },
+    "plugins/shader.docs/tests/docs.test.lua": {
+      "missing-fields  Missing required fields in type `DocsTest.Run`: `api`, `files`, `listed`, `emit`, `flush`, `asked`, `closed`, `store`": 1,
+      "missing-fields  Missing required fields in type `Proteus.El`: `id`, `dom`": 2
+    },
+    "plugins/shader.preview/tests/preview.test.lua": {
+      "missing-fields  Missing required fields in type `PreviewTest.Run`: `docs`, `answer`, `page`, `flush`": 1,
+      "missing-fields  Missing required fields in type `Proteus.El`: `id`, `dom`": 2
+    },
+    "plugins/view.aseprite/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    },
+    "plugins/view.fonts/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    },
+    "plugins/view.images/viewer.lua": {
+      "assign-type-mismatch  Cannot assign `nil` to `Proteus.Tab`.": 1
+    }
+  }
+}
