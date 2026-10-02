@@ -111,19 +111,26 @@ function compare(declared, meta, kind) {
 }
 
 // Tests can also check shader code with real compilers, through
-//   shader_check(lang, stage, source)
-// lang is 'glsl' or 'wgsl', and stage is 'fragment' or 'vertex' (WGSL checks the whole module).
-// It returns true when the code compiles, false and the compiler's messages when it does not,
-// and nil and why when the compiler is not installed: glslangValidator for GLSL ES, naga for
-// WGSL. With SHADER_TOOLS=required in the environment, as in the check workflow, a missing
-// compiler fails the test instead.
+//   shader_check(lang, stage, source, entry)
+// lang is 'glsl', 'wgsl' or 'hlsl', and stage is 'fragment' or 'vertex' (WGSL checks the whole
+// module). entry names the HLSL entry point, `main` when nil. It returns true when the code
+// compiles, false and the compiler's messages when it does not, and nil and why when the
+// compiler is not installed: glslangValidator for GLSL ES and HLSL, and naga for WGSL. With
+// SHADER_TOOLS=required in the environment, as in the check workflow, a missing compiler fails
+// the test instead.
 const SHADER_TOOLS = {
   glsl: { tool: 'glslangValidator', ext: { fragment: 'frag', vertex: 'vert' }, args: (file) => [file] },
   wgsl: { tool: 'naga', ext: { fragment: 'wgsl', vertex: 'wgsl' }, args: (file) => [file] },
+  // glslang reads HLSL only to make SPIR-V, which goes beside the source and is thrown away.
+  hlsl: {
+    tool: 'glslangValidator',
+    ext: { fragment: 'hlsl', vertex: 'hlsl' },
+    args: (file, stage, entry) => ['-D', '-V', '-S', stage === 'vertex' ? 'vert' : 'frag', '-e', entry || 'main', '-o', `${file}.spv`, file],
+  },
 };
 
 /** 'ok', 'missing:<why>' or 'error:<messages>', which the Lua side turns into its results. */
-function shaderCheck(lang, stage, source) {
+function shaderCheck(lang, stage, source, entry) {
   const spec = SHADER_TOOLS[String(lang)];
   const ext = spec?.ext[String(stage)];
   if (!spec || !ext) throw new Error(`shader_check: no compiler for ${lang} ${stage}`);
@@ -131,7 +138,10 @@ function shaderCheck(lang, stage, source) {
   try {
     const file = join(dir, `shader.${ext}`);
     writeFileSync(file, String(source));
-    const run = spawnSync(spec.tool, spec.args(file), { encoding: 'utf8', timeout: 30000 });
+    const run = spawnSync(spec.tool, spec.args(file, String(stage), entry == null ? '' : String(entry)), {
+      encoding: 'utf8',
+      timeout: 30000,
+    });
     if (run.error?.code === 'ENOENT') {
       const why = `${spec.tool} is not installed`;
       if (process.env.SHADER_TOOLS === 'required') throw new Error(`shader_check: ${why}`);
@@ -146,8 +156,8 @@ function shaderCheck(lang, stage, source) {
 }
 
 const SHADER_PRELUDE = `
-function shader_check (lang, stage, source)
-  local result = __shader_check (lang, stage, source)
+function shader_check (lang, stage, source, entry)
+  local result = __shader_check (lang, stage, source, entry)
   if result == 'ok' then return true end
   local kind, rest = result:match ('^(%a+):(.*)$')
   if kind == 'missing' then return nil, rest end

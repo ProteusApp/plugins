@@ -2,7 +2,7 @@
 title: shader: the Shader Builder's core
 section: Shader Builder
 order: 318
-keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format subgraph made node make unpack expand shader.core
+keywords: shader core service Shader.Core graph compile glsl wgsl nodes catalog code shader source uniforms passes channels buffers file history build examples format subgraph made node make unpack expand export hlsl godot three.js unity ir shader.core
 ---
 
 # shader: the Shader Builder's core
@@ -26,6 +26,7 @@ local shader = app.use ('shader') --[[@as Shader.Core]]
 | `file` | Reading and writing `*.shader.json` files. |
 | `history` | Undo and redo for a graph. |
 | `build` | The files a build writes. |
+| `export` | A graph written for other engines: HLSL, Godot, three.js and Unity. |
 | `examples` | The example graphs, and the start of a new graph buffer. |
 | `format` | Numbers and colours as the fields show them. |
 | `types`, `helpers`, `layout` | Port types, the helper functions the code calls, and the WGSL uniform layout. |
@@ -82,7 +83,7 @@ The compiler never sees a made node: `compile` calls `subgraph.expand (doc)` fir
 
 ## Compiling
 
-`compile.compile (doc)` returns a `Shader.CompileResult`. `ok` is true when the graph has no errors, `errors` lists the problems, each with the node it comes from, and `glsl` and `wgsl` are the two programs:
+`compile.compile (doc)` returns a `Shader.CompileResult`. `ok` is true when the graph has no errors, `errors` lists the problems, each with the node it comes from, `glsl` and `wgsl` are the two programs, and `ir` is the graph before it is written in a language:
 
 ```lua
 local shader = app.use ('shader') --[[@as Shader.Core]]
@@ -160,4 +161,28 @@ for name in pairs (files) do
 end
 ```
 
+`input.ir`, a graph's `result.ir`, adds a file for each engine `export` writes to.
+
 `examples.build (name)` makes one of the example graphs in `examples.names`, and `examples.buffer (pass)` makes a new graph buffer that reads its own last frame.
+
+## Other engines
+
+`export.export (id, ir)` writes a compiled graph for another engine. `ir` is `result.ir` from `compile`: each value in order as a GLSL expression, the helpers they call, the uniforms and the channels. `export.TARGETS` lists the engines, each with its `id`, `title`, the `ending` of its file's name and what the file holds:
+
+| `id` | What it writes |
+|------|----------------|
+| `hlsl` | HLSL for Direct3D 11 and later: a constant buffer, the channels as textures, `VSMain` and `PSMain` |
+| `godot` | A Godot 4 canvas item shader |
+| `three` | A JavaScript module whose `createMaterial ()` makes a three.js `ShaderMaterial` |
+| `unity` | An unlit Unity shader in ShaderLab for the built-in render pipeline |
+
+```lua
+local shader = app.use ('shader') --[[@as Shader.Core]]
+local result = shader.compile.compile (shader.graph.new ('Gradient'))
+for _, target in ipairs (shader.export.TARGETS) do
+  local text = shader.export.export (target.id, result.ir)
+  app.log (target.title, text and #text or 0)
+end
+```
+
+Each export reads its place from the UV the vertex stage passes, so it colours the surface of any mesh, and `fragCoord` is the UV times `u_resolution`. `export.rewrite (text, dialect, used)` is the rewriter they share: it turns GLSL into HLSL, such as `mix` into `lerp` and `vec3(x)` into a cast.

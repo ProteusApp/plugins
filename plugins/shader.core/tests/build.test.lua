@@ -173,6 +173,16 @@ test ('a broken shader does not compile', function ()
   ok (good ~= true)
   good = shader_check ('wgsl', 'fragment', 'fn f() -> f32 { return y; }\n')
   ok (good ~= true)
+  good = shader_check (
+    'hlsl',
+    'fragment',
+    'float4 PSMain() : SV_Target { return z; }\n',
+    'PSMain'
+  )
+  ok (good ~= true)
+  local fine =
+    'float4 PSMain() : SV_Target { return float4(1.0, 0.0, 0.0, 1.0); }\n'
+  ok (shader_check ('hlsl', 'fragment', fine, 'PSMain') ~= false)
 end)
 
 test (

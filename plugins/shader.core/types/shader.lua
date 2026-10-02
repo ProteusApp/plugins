@@ -288,6 +288,32 @@
 ---@field out_types table<string, table<string, Shader.Type>> Each node's output types.
 ---@field glsl Shader.Program
 ---@field wgsl Shader.Program
+---@field ir Shader.Ir The graph's values before they are written in a language, for exporters.
+
+---One value of a compiled graph.
+---@class Shader.Step
+---@field var string The name it is kept under, such as `n3_out`.
+---@field type Shader.Type
+---@field glsl string Its expression in GLSL.
+---@field node string The node that makes it.
+
+---A compiled graph before it is written in a language. The exporters write it in others.
+---@class Shader.Ir
+---@field name string
+---@field steps Shader.Step[] Each value, after the ones it reads.
+---@field color string The colour, as a GLSL expression of a `vec3`.
+---@field alpha string The alpha, as a GLSL expression of a `float`.
+---@field helpers string[] The helpers the values call, each after the ones it calls.
+---@field uniforms Shader.Uniform[] The Parameter nodes' uniforms.
+---@field extra string[] Builtin uniforms beyond the four every shader has, such as `'date'`.
+---@field channels Shader.Channel[] The channels Texture nodes read.
+
+---An engine a graph exports to.
+---@class Shader.ExportTarget
+---@field id 'hlsl'|'godot'|'three'|'unity'
+---@field title string
+---@field ending string The ending of its file's name, such as `.hlsl`.
+---@field about string What the file holds.
 
 ---@class Shader.History
 ---@field past Shader.Doc[]
@@ -381,6 +407,16 @@
 ---@field list fun(doc: Shader.Doc): { id: string, type: string, subgraph: Shader.Subgraph }[]
 ---@field expand fun(doc: Shader.Doc): Shader.Doc, Shader.Expansion?
 
+---@class Shader.ExportModule
+---@field TARGETS Shader.ExportTarget[]
+---@field target fun(id: string): Shader.ExportTarget?
+---@field export fun(id: string, ir: Shader.Ir): string?
+---@field hlsl fun(ir: Shader.Ir): string
+---@field godot fun(ir: Shader.Ir): string
+---@field three fun(ir: Shader.Ir): string
+---@field unity fun(ir: Shader.Ir): string
+---@field rewrite fun(text: string, dialect: Shader.Dialect, used: table<string, boolean>): string
+
 ---@class Shader.CompileModule
 ---@field GLSL_VERTEX string
 ---@field WGSL_VERTEX string
@@ -453,6 +489,7 @@
 ---@field wgsl? Shader.Program
 ---@field channels? table<integer, Shader.ChannelSource> What the image's channels show.
 ---@field buffers? Shader.BuildPass[] The buffers, in the order they draw. A language builds only when every buffer has code in it.
+---@field ir? Shader.Ir A graph's compiled program. With it, the build also writes the image for other engines.
 
 ---@class Shader.PagesModule
 ---@field GLSL string The page that runs GLSL passes on WebGL 2.
@@ -484,6 +521,7 @@
 ---@field examples Shader.ExamplesModule
 ---@field build Shader.BuildModule
 ---@field subgraph Shader.SubgraphModule
+---@field export Shader.ExportModule
 
 ---------------------------------------------------------------------------------------------
 -- The plugins around the core

@@ -1,7 +1,9 @@
 -- Builds a shader into files that stand on their own: the complete GLSL vertex and fragment
 -- shaders, the WGSL module, the code of each buffer, a page that runs them in any browser, a
--- JSON list of the uniforms and channels, and a README that says how to feed them.
+-- JSON list of the uniforms and channels, and a README that says how to feed them. A graph
+-- also builds for other engines: HLSL, Godot, three.js and Unity.
 
+local export = require ('shader_export') --[[@as Shader.ExportModule]]
 local file = require ('shader_file') --[[@as Shader.FileModule]]
 local pages = require ('shader_pages') --[[@as Shader.PagesModule]]
 local passes = require ('shader_passes') --[[@as Shader.PassesModule]]
@@ -238,6 +240,18 @@ function M.files (input)
     readme[#readme + 1] =
       '| `index.html` | Runs the WGSL shader in a browser with WebGPU |'
   end
+  if input.ir then
+    for _, t in ipairs (export.TARGETS) do
+      out[stem .. t.ending] = export.export (t.id, input.ir)
+      readme[#readme + 1] = '| `'
+        .. stem
+        .. t.ending
+        .. '` | '
+        .. t.about
+        .. (#buffers > 0 and ', of the image alone' or '')
+        .. ' |'
+    end
+  end
   readme[#readme + 1] = '| `uniforms.json` | Each uniform: '
     .. (glsl and 'its GLSL name, ' or '')
     .. (wgsl and 'its byte offset in the WGSL buffer, ' or '')
@@ -313,6 +327,13 @@ function M.files (input)
       readme[#readme + 1] =
         'Noise and Checker are textures of 256 by 256 pixels the page makes. An image goes beside the page under its own name, and a browser loads it only when the folder is served, such as with `npx serve`, not opened as a file.'
     end
+  end
+  if input.ir then
+    readme[#readme + 1] = ''
+    readme[#readme + 1] = '## Other engines'
+    readme[#readme + 1] = ''
+    readme[#readme + 1] =
+      'The files for other engines colour the surface of any mesh from its UV, and `fragCoord` is the UV times `u_resolution`. Godot and Unity keep the time themselves. Set the other uniforms the way each file says at its top. A channel is a texture the engine gives it.'
   end
   readme[#readme + 1] = ''
   out['README.md'] = table.concat (readme, '\n')

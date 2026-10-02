@@ -41,6 +41,7 @@ local core = {
   examples = core_require ('shader_examples'),
   build = core_require ('shader_build'),
   subgraph = core_require ('shader_subgraph'),
+  export = core_require ('shader_export'),
 }
 
 local plugin =

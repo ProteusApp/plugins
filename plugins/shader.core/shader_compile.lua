@@ -336,6 +336,8 @@ local function compile_flat (doc)
   -- The channels Texture nodes read, and the uniforms nodes ask for beyond the four.
   local reads = {} ---@type table<integer, string[]>
   local wants = {} ---@type table<string, boolean>
+  -- Each value in GLSL, in order, for the exporters to write in other languages.
+  local steps = {} ---@type Shader.Step[]
 
   for _, id in ipairs (order) do
     local n = graph.node (doc, id) --[[@as Shader.Node]]
@@ -468,6 +470,10 @@ local function compile_flat (doc)
               )
             local list = stmts[lang]
             list[#list + 1] = { text = line, node = id }
+            if lang == 'glsl' then
+              steps[#steps + 1] =
+                { var = var, type = ot, glsl = expr, node = id }
+            end
           end
         end
       end
@@ -720,6 +726,16 @@ local function compile_flat (doc)
       offset = 0,
       channels = channels,
       bindings = bindings,
+    },
+    ir = {
+      name = doc.name or 'Untitled',
+      steps = steps,
+      color = final.glsl.color or 'vec3(0.0)',
+      alpha = final.glsl.alpha or '1.0',
+      helpers = helpers.closure (helper_names),
+      uniforms = params,
+      extra = optional,
+      channels = channels,
     },
   }
   return result

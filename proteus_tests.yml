@@ -31,3 +31,5 @@ globals:
       - type: string
       - type: string
       - type: string
+      - type: string
+        required: false

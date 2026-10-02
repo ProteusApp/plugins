@@ -1,15 +1,16 @@
 -- shader.build: turns the shader in front into files that stand on their own. A graph builds
--- into GLSL and WGSL both. A code shader builds in its own language, with everything a short
--- shader leaves out filled in. Each build also writes a page that runs the shader in any
--- browser, the list of its uniforms, and a README.
+-- into GLSL and WGSL both, and for other engines: HLSL, Godot, three.js and Unity. A code
+-- shader builds in its own language, with everything a short shader leaves out filled in.
+-- Each build also writes a page that runs the shader in any browser, the list of its
+-- uniforms, and a README.
 
 local BUILD_FOLDER = 'shaders/build'
 
 ---@type Proteus.Plugin
 return {
   name = 'Shader build',
-  description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, and a list of its uniforms.',
-  version = '1.2.0',
+  description = 'Builds the shader in front into complete GLSL and WGSL files, a page that runs it, a list of its uniforms, and a graph for other engines.',
+  version = '1.3.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'folders' } },
   -- Export to Folder writes the build anywhere on disk the user picks.
   permissions = { 'files' },
@@ -55,7 +56,7 @@ return {
     ---A pass's code in each language it has, or why it cannot build.
     ---@param path string
     ---@param label string
-    ---@return { glsl?: Shader.Program, wgsl?: Shader.Program }?, string?
+    ---@return { glsl?: Shader.Program, wgsl?: Shader.Program, ir?: Shader.Ir }?, string?
     local function code_of (path, label)
       if docs.kind_of (path) == 'graph' then
         local result = docs.compiled (path)
@@ -69,7 +70,7 @@ return {
               .. result.errors[1].message
               .. ' Fix them to build it.'
         end
-        return { glsl = result.glsl, wgsl = result.wgsl }
+        return { glsl = result.glsl, wgsl = result.wgsl, ir = result.ir }
       end
       local program, errors = docs.program (path)
       if not program then
@@ -116,6 +117,7 @@ return {
         wgsl = code.wgsl,
         channels = docs.channels (image),
         buffers = {},
+        ir = code.ir,
       }
       local any = { glsl = code.glsl ~= nil, wgsl = code.wgsl ~= nil }
       for _, b in ipairs (core.passes.BUFFERS) do
@@ -263,6 +265,64 @@ return {
             end
           end)
         end)
+      end,
+    })
+
+    ---Copies the graph in front, written for another engine.
+    ---@param target Shader.ExportTarget
+    local function copy_for (target)
+      local d = docs.active ()
+      local result = d and docs.compiled (d.path)
+      if not result then
+        warn ('Only a node graph exports to other engines.')
+        return
+      end
+      if not result.ok then
+        warn (
+          'The graph has problems: '
+            .. result.errors[1].message
+            .. ' Fix them to export it.'
+        )
+        return
+      end
+      local text = core.export.export (target.id, result.ir)
+      if text then
+        app.system.clipboard (text)
+        say ('Copied the shader for ' .. target.title .. '.')
+      end
+    end
+
+    commands.register ({
+      id = 'shader.copy_engine',
+      category = 'Shader',
+      title = 'Copy the Shader for Another Engine...',
+      menu = 'Build',
+      icon = 'copy',
+      when = function ()
+        local d = docs.active ()
+        return d ~= nil and d.kind == 'graph'
+      end,
+      run = function ()
+        local picker = app.try_use ('picker')
+        if not picker then
+          copy_for (core.export.TARGETS[1])
+          return
+        end
+        local items = {} ---@type Proteus.PickItem[]
+        for _, t in ipairs (core.export.TARGETS) do
+          items[#items + 1] =
+            { label = t.title, detail = t.about, value = t.id }
+        end
+        picker.pick ({
+          placeholder = 'Copy the shader for which engine?',
+          items = items,
+          on_pick = function (item)
+            local target = core.export.target (tostring (item.value))
+            if target then
+              copy_for (target)
+            end
+          end,
+        })
       end,
     })
 
