@@ -1,0 +1,53 @@
+{
+  "id": "lang.python",
+  "name": "Python",
+  "description": "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify",
+    "proteus.ui.palette"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/config.lua",
+    "lib/edits.lua",
+    "lib/format.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/pyright.lua",
+    "lib/python.lua",
+    "lib/release.lua",
+    "lib/ruff.lua",
+    "lib/select.lua",
+    "lib/venv.lua",
+    "tests/config.test.lua",
+    "tests/edits.test.lua",
+    "tests/launch.test.lua",
+    "tests/venv.test.lua"
+  ]
+}

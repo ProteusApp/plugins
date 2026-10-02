@@ -4,16 +4,30 @@
 --
 -- A graph is a *.shader.json file. A code shader is a .frag, .glsl or .wgsl file, and a .vert
 -- file beside a .frag file of the same name is its vertex shader. New files go in shaders/,
--- which it claims in `folders`. On the first start it copies the examples there.
+-- which it claims in `folders`, and it copies the examples there.
+--
+-- Its handbook/ folder holds Learning shaders, a course in the Handbook that goes from a first
+-- shader to the weather system in examples/weather.frag.
 
 local FOLDER = 'shaders'
 local EXTENSIONS = { '.shader.json', '.frag', '.vert', '.glsl', '.wgsl' }
+-- The examples that came with 1.0, which a workspace from then has copied already.
+local FIRST_EXAMPLES = {
+  'cells.shader.json',
+  'clouds.shader.json',
+  'plasma.shader.json',
+  'raymarch.frag',
+  'shadertoy.frag',
+  'shapes.shader.json',
+  'tunnel.wgsl',
+  'waves.frag',
+}
 
 ---@type Proteus.Plugin
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.1.0',
+  version = '1.2.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },
@@ -1147,19 +1161,37 @@ return {
       end,
     })
 
-    -- The first start copies the examples into shaders/, where they can be changed and saved.
-    if not app.store.get ('examples', false) then
-      for _, entry in ipairs (app.plugin.list ('examples')) do
+    -- Each example is copied into shaders/ once, where it can be changed and saved. An example
+    -- added in a later version reaches a workspace that started before it, and one the user
+    -- deleted stays deleted.
+    local copied = {} ---@type table<string, boolean>
+    local stored = app.store.get ('examples', false)
+    if stored == true then
+      -- Before 1.1.0 the store held true once the first examples were copied.
+      for _, name in ipairs (FIRST_EXAMPLES) do
+        copied[name] = true
+      end
+    elseif type (stored) == 'table' then
+      for _, name in
+        ipairs (stored --[[@as string[] ]])
+      do
+        copied[name] = true
+      end
+    end
+    local names = {} ---@type string[]
+    for _, entry in ipairs (app.plugin.list ('examples')) do
+      if not entry.dir then
         local target = FOLDER .. '/' .. entry.name
-        if not entry.dir and not app.fs.exists (target) then
+        if not copied[entry.name] and not app.fs.exists (target) then
           local text = app.plugin.read ('examples/' .. entry.name)
           if text then
             app.fs.write (target, text)
           end
         end
+        names[#names + 1] = entry.name
       end
-      app.store.set ('examples', true)
     end
+    app.store.set ('examples', names)
 
     -- The shaders open at the last close open again, once every opener is in place. On the
     -- first start the Plasma example opens.

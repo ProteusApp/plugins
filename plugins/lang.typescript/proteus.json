@@ -1,0 +1,44 @@
+{
+  "id": "lang.typescript",
+  "name": "TypeScript",
+  "description": "TypeScript with typescript-language-server: completion, hover help, go to definition, problems and Organize Imports, on one server that JavaScript and React files share.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/edits.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/server.lua",
+    "tests/edits.test.lua",
+    "tests/launch.test.lua"
+  ]
+}

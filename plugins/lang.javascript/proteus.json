@@ -1,0 +1,35 @@
+{
+  "id": "lang.javascript",
+  "name": "JavaScript",
+  "description": "JavaScript on the TypeScript language server: completion, hover help, go to definition and problems, with npm packages completed in package.json.",
+  "version": "1.0.0",
+  "depends": [
+    "lang.typescript",
+    "proteus.core.settings",
+    "proteus.core.files"
+  ],
+  "optional": [],
+  "permissions": [
+    "net"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/npm.lua",
+    "lib/package_context.lua",
+    "tests/npm.test.lua",
+    "tests/package_context.test.lua"
+  ]
+}

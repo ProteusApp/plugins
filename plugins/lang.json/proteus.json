@@ -1,0 +1,50 @@
+{
+  "id": "lang.json",
+  "name": "JSON",
+  "description": "JSON with vscode-json-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process",
+    "net"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/completion.lua",
+    "lib/language.lua",
+    "lib/launch.lua",
+    "lib/program.lua",
+    "lib/provider.lua",
+    "lib/schemas.lua",
+    "lib/server.lua",
+    "tests/completion.test.lua",
+    "tests/language.test.lua",
+    "tests/launch.test.lua",
+    "tests/schemas.test.lua"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "lang.yaml",
+  "name": "YAML",
+  "description": "YAML with yaml-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/config.lua",
+    "lib/globs.lua",
+    "lib/schemas.lua",
+    "lib/server.lua",
+    "tests/config.test.lua",
+    "tests/globs.test.lua"
+  ]
+}

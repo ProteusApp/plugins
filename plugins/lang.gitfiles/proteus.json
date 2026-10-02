@@ -1,0 +1,53 @@
+{
+  "id": "lang.gitfiles",
+  "name": "Git Files",
+  "description": "Colors, completion and hover help for .gitignore, .gitattributes and .gitconfig, .gitignore templates, and schemas and Actions completion for GitHub workflows.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.palette",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "net",
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "languages"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/actions.lua",
+    "lib/actions_context.lua",
+    "lib/actions_data.lua",
+    "lib/associations.lua",
+    "lib/attributes.lua",
+    "lib/commands.lua",
+    "lib/ignore.lua",
+    "lib/languages.lua",
+    "lib/templates.lua",
+    "tests/actions.test.lua",
+    "tests/actions_context.test.lua",
+    "tests/attributes.test.lua",
+    "tests/data.test.lua",
+    "tests/ignore.test.lua",
+    "tests/templates.test.lua"
+  ]
+}

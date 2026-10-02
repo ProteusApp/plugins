@@ -1,0 +1,40 @@
+{
+  "id": "lang.react",
+  "name": "React",
+  "description": "JSX and TSX on the TypeScript language server, with completion for React hooks and components, and New React Component.",
+  "version": "1.0.0",
+  "depends": [
+    "lang.typescript",
+    "proteus.core.commands",
+    "proteus.core.files",
+    "proteus.editor.core",
+    "proteus.ui.palette"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/component.lua",
+    "lib/hooks.lua",
+    "tests/component.test.lua",
+    "tests/hooks.test.lua"
+  ]
+}

@@ -1,0 +1,212 @@
+:root {
+  --bg: #1b1d23;
+  --bg-alt: #16181d;
+  --bg-elev: #252830;
+  --bg-hover: #2c3039;
+  --fg: #dcdfe4;
+  --fg-muted: #9aa1ad;
+  --fg-faint: #646b78;
+  --border: #2c3039;
+  --accent: #7c6cff;
+  --danger: #ff6b6b;
+  --font-ui: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  color-scheme: dark;
+}
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+body {
+  display: flex;
+  flex-direction: column;
+}
+#main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+#frame {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+#frame.dragging {
+  cursor: grabbing;
+}
+#box {
+  position: absolute;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+#box[hidden] {
+  display: none;
+}
+/* Squares that follow the theme: a little lighter and a little darker than the background. */
+#box.checker {
+  --checker-a: color-mix(in srgb, var(--fg) 10%, var(--bg));
+  --checker-b: color-mix(in srgb, var(--fg) 20%, var(--bg));
+  background-color: var(--checker-a);
+  background-image: conic-gradient(
+    var(--checker-b) 25%,
+    var(--checker-a) 0 50%,
+    var(--checker-b) 0 75%,
+    var(--checker-a) 0
+  );
+  background-size: 16px 16px;
+}
+#box canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+#note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: 80%;
+  transform: translate(-50%, -50%);
+  color: var(--fg-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+#note.error {
+  color: var(--danger);
+}
+[hidden] {
+  display: none !important;
+}
+
+#side {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 200px;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+#side .head {
+  padding: 6px 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+#layers {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 6px;
+  overflow: auto;
+  list-style: none;
+}
+.layer label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 0;
+  cursor: pointer;
+}
+.layer:hover {
+  background: var(--bg-hover);
+}
+.layer input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.layer .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.layer.group .name {
+  font-weight: 600;
+}
+.layer .detail {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+.layer.off .name {
+  color: var(--fg-faint);
+}
+#side-note {
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+#timeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-alt);
+}
+#timeline button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+#timeline button:hover {
+  background: var(--bg-hover);
+}
+#timeline svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+#scrub {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent);
+}
+#frame-label {
+  flex: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+#tag {
+  flex: none;
+  max-width: 180px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  font: inherit;
+}
+
+@media (max-width: 480px) {
+  #side {
+    display: none;
+  }
+}

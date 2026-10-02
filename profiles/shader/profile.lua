@@ -1,10 +1,11 @@
 -- The Shader Builder: GLSL and WGSL shaders, built from a node graph or written as code, with
 -- a live preview on WebGL 2 and WebGPU. Shaders live in shaders/, and a build writes complete
--- shader files and a page that runs them.
+-- shader files and a page that runs them. The Handbook holds Learning shaders, a course from a
+-- first shader to a weather system, beside the builder.
 return {
   name = 'Shader Builder',
   description = 'Build GLSL and WGSL shaders from nodes or code, with a live preview.',
-  version = '1.1.0',
+  version = '1.2.0',
   plugins = {
     'theme.midnight',
     'theme.daylight',
@@ -20,8 +21,9 @@ return {
     'ui.notify',
     'ui.settings',
     'core.profiles',
+    'proteus.handbook',
     -- The marketplace, for more plugins and profiles.
-    'marketplace',
+    'proteus.marketplace',
     'shader.core',
     'shader.docs',
     'shader.canvas',

@@ -41,6 +41,54 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "view.aseprite",
+      "name": "Aseprite viewer",
+      "description": "Opens Aseprite sprites in a tab that plays their frames and tags, with zoom and a list of layers to hide and show.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.tabs",
+        "proteus.editor.core"
+      ],
+      "optional": [
+        "proteus.core.commands",
+        "proteus.core.settings",
+        "proteus.core.themes",
+        "proteus.core.icons",
+        "proteus.core.files"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "webview",
+          "webview-disk"
+        ]
+      },
+      "files": [
+        "README.md",
+        "formats.lua",
+        "init.lua",
+        "page/aseprite-parse.js",
+        "page/aseprite-play.js",
+        "page/aseprite-render.js",
+        "page/aseprite.js",
+        "page/index.html",
+        "page/theme.js",
+        "page/viewer.css",
+        "page/zoom.js",
+        "tests/viewer.test.lua",
+        "viewer.lua"
+      ],
+      "commit": "0ef0bd985b5a1bd23db763e5bccaaca03132ccfc",
+      "updated": "2026-10-01T17:28:52-06:00"
+    },
+    {
       "id": "theme.bevel",
       "name": "Bevel theme",
       "description": "A 1990s desktop: silver panels with raised and sunken bevels, and navy title bars.",
@@ -119,6 +167,54 @@
       "updated": "2026-09-30T20:09:08Z"
     },
     {
+      "id": "lang.css",
+      "name": "CSS",
+      "description": "CSS and Less with vscode-css-language-server: completion, hover help with browser support, problems and go to definition.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.core.files",
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/completion.lua",
+        "lib/documents.lua",
+        "lib/languages.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/provider.lua",
+        "lib/router.lua",
+        "lib/server.lua",
+        "tests/completion.test.lua",
+        "tests/languages.test.lua",
+        "tests/launch.test.lua",
+        "tests/router.test.lua"
+      ],
+      "commit": "c51b7ecf90da0b309b4b5e8da4efd5cea84d15d1",
+      "updated": "2026-10-01T17:28:50-06:00"
+    },
+    {
       "id": "proteus.discord.rpc",
       "name": "Discord Rich Presence",
       "description": "Shows what you are doing in Proteus on your Discord profile.",
@@ -153,6 +249,58 @@
       "updated": "2026-10-01T18:50:52Z"
     },
     {
+      "id": "lang.docker",
+      "name": "Docker",
+      "description": "Dockerfiles with docker-langserver and Hadolint: completion, hover help, problems and formatting. Compose files get their schema for a YAML plugin.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/completion.lua",
+        "lib/compose.lua",
+        "lib/config.lua",
+        "lib/edits.lua",
+        "lib/hadolint.lua",
+        "lib/launch.lua",
+        "lib/lint.lua",
+        "lib/program.lua",
+        "lib/provider.lua",
+        "lib/release.lua",
+        "lib/server.lua",
+        "tests/completion.test.lua",
+        "tests/compose.test.lua",
+        "tests/config.test.lua",
+        "tests/edits.test.lua",
+        "tests/hadolint.test.lua"
+      ],
+      "commit": "8a25e91a60696ef2fa3fbf8618678161b4249957",
+      "updated": "2026-10-01T17:53:25-06:00"
+    },
+    {
       "id": "theme.dracula",
       "name": "Dracula theme",
       "description": "A dark theme with vivid pink, purple and green, from the Dracula palette.",
@@ -177,6 +325,101 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "view.fonts",
+      "name": "Font viewer",
+      "description": "Opens TTF, OTF, TTC, WOFF and WOFF2 fonts in a tab with their names, a sample to type in, a range of sizes and every character they have.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.tabs",
+        "proteus.editor.core"
+      ],
+      "optional": [
+        "proteus.core.commands",
+        "proteus.core.settings",
+        "proteus.core.themes",
+        "proteus.core.icons",
+        "proteus.core.files"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "webview",
+          "webview-disk"
+        ]
+      },
+      "files": [
+        "README.md",
+        "formats.lua",
+        "init.lua",
+        "page/font-parse.js",
+        "page/fonts.js",
+        "page/index.html",
+        "page/theme.js",
+        "page/viewer.css",
+        "tests/viewer.test.lua",
+        "viewer.lua"
+      ],
+      "commit": "f90f38877ab136808d579ef6141aea1893fa8416",
+      "updated": "2026-10-01T17:28:51-06:00"
+    },
+    {
+      "id": "lang.gdscript",
+      "name": "GDScript",
+      "description": "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "net",
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "languages",
+          "tcp"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/godot.lua",
+        "lib/hover.lua",
+        "lib/languages.lua",
+        "lib/project.lua",
+        "lib/provider.lua",
+        "lib/server.lua",
+        "tests/godot.test.lua",
+        "tests/hover.test.lua",
+        "tests/languages.test.lua",
+        "tests/project.test.lua",
+        "tests/provider.test.lua"
+      ],
+      "commit": "a6311f07cdcf79feee3ec9b19cbdb6b7705d8204",
+      "updated": "2026-10-01T17:53:25-06:00"
     },
     {
       "id": "proteus.git",
@@ -219,6 +462,57 @@
       ],
       "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
       "updated": "2026-10-01T18:37:03Z"
+    },
+    {
+      "id": "lang.gitfiles",
+      "name": "Git Files",
+      "description": "Colors, completion and hover help for .gitignore, .gitattributes and .gitconfig, .gitignore templates, and schemas and Actions completion for GitHub workflows.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.palette",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "net",
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "languages"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/actions.lua",
+        "lib/actions_context.lua",
+        "lib/actions_data.lua",
+        "lib/associations.lua",
+        "lib/attributes.lua",
+        "lib/commands.lua",
+        "lib/ignore.lua",
+        "lib/languages.lua",
+        "lib/templates.lua",
+        "tests/actions.test.lua",
+        "tests/actions_context.test.lua",
+        "tests/attributes.test.lua",
+        "tests/data.test.lua",
+        "tests/ignore.test.lua",
+        "tests/templates.test.lua"
+      ],
+      "commit": "0aaa9ae457370d30b2f78267e7e09ac5f61ff24e",
+      "updated": "2026-10-01T17:28:49-06:00"
     },
     {
       "id": "theme.gruvbox",
@@ -270,6 +564,178 @@
       ],
       "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
       "updated": "2026-10-01T18:37:03Z"
+    },
+    {
+      "id": "lang.html",
+      "name": "HTML",
+      "description": "HTML with VS Code's language server: completion, hover help and problems, also inside style and script, and a live preview.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.views",
+        "proteus.ui.tabs",
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "webview"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/completion.lua",
+        "lib/markup.lua",
+        "lib/preview.lua",
+        "lib/server.lua",
+        "tests/markup.test.lua"
+      ],
+      "commit": "9eb059e0bbcc6a9dd094d8380929f16ae78bf758",
+      "updated": "2026-10-01T17:28:50-06:00"
+    },
+    {
+      "id": "view.images",
+      "name": "Image viewer",
+      "description": "Opens PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG files in a tab with zoom, panning and a checkerboard behind clear parts.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.tabs",
+        "proteus.editor.core"
+      ],
+      "optional": [
+        "proteus.core.commands",
+        "proteus.core.settings",
+        "proteus.core.themes",
+        "proteus.core.icons",
+        "proteus.core.files"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "webview",
+          "webview-disk"
+        ]
+      },
+      "files": [
+        "README.md",
+        "formats.lua",
+        "init.lua",
+        "page/images.js",
+        "page/index.html",
+        "page/svg-size.js",
+        "page/theme.js",
+        "page/viewer.css",
+        "page/zoom.js",
+        "tests/viewer.test.lua",
+        "viewer.lua"
+      ],
+      "commit": "eaaae862969b3f735c13d677fe132792d7c0e784",
+      "updated": "2026-10-01T17:28:51-06:00"
+    },
+    {
+      "id": "lang.javascript",
+      "name": "JavaScript",
+      "description": "JavaScript on the TypeScript language server: completion, hover help, go to definition and problems, with npm packages completed in package.json.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lang.typescript",
+        "proteus.core.settings",
+        "proteus.core.files"
+      ],
+      "optional": [],
+      "permissions": [
+        "net"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/npm.lua",
+        "lib/package_context.lua",
+        "tests/npm.test.lua",
+        "tests/package_context.test.lua"
+      ],
+      "commit": "eb6fba9fb625efadd2a4a5b4af54dbe641650c0d",
+      "updated": "2026-10-01T17:28:48-06:00"
+    },
+    {
+      "id": "lang.json",
+      "name": "JSON",
+      "description": "JSON with vscode-json-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process",
+        "net"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/completion.lua",
+        "lib/language.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/provider.lua",
+        "lib/schemas.lua",
+        "lib/server.lua",
+        "tests/completion.test.lua",
+        "tests/language.test.lua",
+        "tests/launch.test.lua",
+        "tests/schemas.test.lua"
+      ],
+      "commit": "7263cf0a6694a7a13f8d79d230644620d9229dd2",
+      "updated": "2026-10-01T17:28:47-06:00"
     },
     {
       "id": "proteus.kanban",
@@ -380,10 +846,108 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "lang.luau-lsp",
+      "name": "Luau",
+      "description": "Luau with luau-lsp: completion, hover help, go to definition and type problems, with Roblox types, Rojo sourcemaps and StyLua formatting.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "net",
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions",
+          "languages"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/definitions.lua",
+        "lib/format.lua",
+        "lib/language.lua",
+        "lib/launch.lua",
+        "lib/project.lua",
+        "lib/release.lua",
+        "lib/server.lua",
+        "lib/sourcemap.lua",
+        "tests/definitions.test.lua",
+        "tests/language.test.lua",
+        "tests/launch.test.lua",
+        "tests/project.test.lua"
+      ],
+      "commit": "a713066e7a37a3a2f34f10ee9afa183c3a8ec7be",
+      "updated": "2026-10-01T17:53:25-06:00"
+    },
+    {
+      "id": "lang.markdown",
+      "name": "Markdown",
+      "description": "Markdown with Marksman: completion for links and headings, go to definition and problems, and a live preview beside the code.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics",
+        "proteus.ui.tabs",
+        "proteus.ui.views"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process",
+        "net"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/blocks.lua",
+        "lib/links.lua",
+        "lib/preview.lua",
+        "lib/release.lua",
+        "lib/render.lua",
+        "lib/server.lua",
+        "tests/blocks.test.lua",
+        "tests/links.test.lua",
+        "tests/render.test.lua"
+      ],
+      "commit": "a6ef64dbd6e23099cbb3036945df92c029fe3410",
+      "updated": "2026-10-01T17:28:49-06:00"
+    },
+    {
       "id": "code.minimap",
       "name": "Minimap",
-      "description": "Shows the file in front in miniature beside the code, shades the part on screen, and scrolls there on a click.",
-      "version": "1.0.0",
+      "description": "Shows the file in front in miniature at the side of the code, with the part on screen, the selection and problems marked.",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "proteus.lib.ui",
@@ -392,7 +956,9 @@
         "proteus.editor.core"
       ],
       "optional": [
-        "proteus.core.settings"
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.tools.diagnostics"
       ],
       "permissions": [
         "files"
@@ -410,8 +976,8 @@
         "minimap_render.lua",
         "tests/render.test.lua"
       ],
-      "commit": "5be43989bc636a311483ff92101f4a11f07511d0",
-      "updated": "2026-10-01T14:42:51-06:00"
+      "commit": "c85a2117cefa265bb1f20a5ce8b58b6442a3a28f",
+      "updated": "2026-10-01T15:20:40-06:00"
     },
     {
       "id": "theme.nanoqoi",
@@ -693,6 +1259,95 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "lang.python",
+      "name": "Python",
+      "description": "Python with basedpyright and Ruff: completion, hover help, go to definition, type and lint problems, formatting, and the project's own interpreter.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify",
+        "proteus.ui.palette"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/config.lua",
+        "lib/edits.lua",
+        "lib/format.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/pyright.lua",
+        "lib/python.lua",
+        "lib/release.lua",
+        "lib/ruff.lua",
+        "lib/select.lua",
+        "lib/venv.lua",
+        "tests/config.test.lua",
+        "tests/edits.test.lua",
+        "tests/launch.test.lua",
+        "tests/venv.test.lua"
+      ],
+      "commit": "fc5c72c2a4e8f1be146668e6fb37f8fc68d61516",
+      "updated": "2026-10-01T17:53:25-06:00"
+    },
+    {
+      "id": "lang.react",
+      "name": "React",
+      "description": "JSX and TSX on the TypeScript language server, with completion for React hooks and components, and New React Component.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "lang.typescript",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.ui.palette"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/component.lua",
+        "lib/hooks.lua",
+        "tests/component.test.lua",
+        "tests/hooks.test.lua"
+      ],
+      "commit": "bea906fdefbcb69a1375d2d4e1df65f7f38e9a9b",
+      "updated": "2026-10-01T17:28:48-06:00"
+    },
+    {
       "id": "lang.rust",
       "name": "Rust",
       "description": "Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.",
@@ -768,6 +1423,50 @@
       ],
       "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
       "updated": "2026-09-30T16:51:35Z"
+    },
+    {
+      "id": "lang.sass",
+      "name": "Sass",
+      "description": "Sass and SCSS with Some Sass: completion across @use and @import, hover help, go to definition and problems.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify",
+        "lang.css"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/attach.lua",
+        "lib/client.lua",
+        "lib/documents.lua",
+        "lib/languages.lua",
+        "lib/server.lua",
+        "tests/attach.test.lua",
+        "tests/languages.test.lua"
+      ],
+      "commit": "9f11bf7df4fb895951c233e21ca418acc44a4554",
+      "updated": "2026-10-01T17:28:51-06:00"
     },
     {
       "id": "proteus.code.search",
@@ -905,7 +1604,7 @@
       "id": "shader.core",
       "name": "Shader core",
       "description": "The logic behind the shader builder: nodes, graphs, the GLSL and WGSL compiler, code shaders and files.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "nanoqoi",
       "depends": [],
       "optional": [],
@@ -936,14 +1635,14 @@
         "tests/source.test.lua",
         "types/shader.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "shader.docs",
       "name": "Shader documents",
       "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -978,10 +1677,27 @@
         "examples/shapes.shader.json",
         "examples/tunnel.wgsl",
         "examples/waves.frag",
+        "examples/weather.frag",
+        "handbook/colour.md",
+        "handbook/debugging.md",
+        "handbook/first-shader.md",
+        "handbook/glsl-language.md",
+        "handbook/learn-shaders.md",
+        "handbook/lighting.md",
+        "handbook/node-graphs.md",
+        "handbook/noise.md",
+        "handbook/raymarching.md",
+        "handbook/resources.md",
+        "handbook/shapes.md",
+        "handbook/shaping.md",
+        "handbook/space.md",
+        "handbook/volumes.md",
+        "handbook/weather.md",
+        "handbook/wgsl.md",
         "init.lua"
       ],
-      "commit": "bde9bb768d54fe0a5cb318d651cdfed0ad1f8027",
-      "updated": "2026-10-01T17:10:33Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "shader.library",
@@ -1125,6 +1841,56 @@
       "updated": "2026-10-01T18:37:03Z"
     },
     {
+      "id": "lang.shell",
+      "name": "Shell",
+      "description": "Shell scripts with bash-language-server, ShellCheck and shfmt: completion, hover help, go to definition, problems and formatting.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.core.files",
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/completion.lua",
+        "lib/config.lua",
+        "lib/dialect.lua",
+        "lib/format.lua",
+        "lib/helper.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/provider.lua",
+        "lib/release.lua",
+        "lib/server.lua",
+        "tests/completion.test.lua",
+        "tests/config.test.lua",
+        "tests/dialect.test.lua",
+        "tests/launch.test.lua"
+      ],
+      "commit": "8e98f09f4152e3ccd472878464c06b6570181ed9",
+      "updated": "2026-10-01T17:53:25-06:00"
+    },
+    {
       "id": "theme.solarized",
       "name": "Solarized themes",
       "description": "The precise, low-contrast Solarized colors, in a dark and a light theme.",
@@ -1149,6 +1915,57 @@
       ],
       "commit": "b0aba7b35d1033c95741248b44f9abef2d08b325",
       "updated": "2026-09-30T20:09:08Z"
+    },
+    {
+      "id": "lang.tailwind",
+      "name": "Tailwind CSS",
+      "description": "Tailwind CSS class completion, with the CSS each class makes, and problems such as conflicting classes, in HTML, CSS, JSX, TSX, Vue and Svelte files.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/client.lua",
+        "lib/completion.lua",
+        "lib/config.lua",
+        "lib/detect.lua",
+        "lib/documents.lua",
+        "lib/items.lua",
+        "lib/languages.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/server.lua",
+        "tests/config.test.lua",
+        "tests/detect.test.lua",
+        "tests/items.test.lua",
+        "tests/languages.test.lua",
+        "tests/launch.test.lua"
+      ],
+      "commit": "14bf4c7a724913e01baffb71ff49d7b0aa214e73",
+      "updated": "2026-10-01T17:53:25-06:00"
     },
     {
       "id": "proteus.nodal.terminal",
@@ -1294,6 +2111,48 @@
       "updated": "2026-09-30T16:51:35Z"
     },
     {
+      "id": "lang.typescript",
+      "name": "TypeScript",
+      "description": "TypeScript with typescript-language-server: completion, hover help, go to definition, problems and Organize Imports, on one server that JavaScript and React files share.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/edits.lua",
+        "lib/launch.lua",
+        "lib/program.lua",
+        "lib/server.lua",
+        "tests/edits.test.lua",
+        "tests/launch.test.lua"
+      ],
+      "commit": "7ba22151699f629e857e6835c7105898b2dc816a",
+      "updated": "2026-10-01T17:28:47-06:00"
+    },
+    {
       "id": "icons.vivid",
       "name": "Vivid Icons",
       "description": "A file icon pack: a Lucide icon for each kind of file, in the colors each language is known by.",
@@ -1361,6 +2220,48 @@
       ],
       "commit": "3a0b882e64a05ad9b894dad25140b281a2c84a89",
       "updated": "2026-10-01T18:37:03Z"
+    },
+    {
+      "id": "lang.yaml",
+      "name": "YAML",
+      "description": "YAML with yaml-language-server: completion, hover help and problems from JSON schemas. Other plugins add schemas as file associations.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.core.files",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/config.lua",
+        "lib/globs.lua",
+        "lib/schemas.lua",
+        "lib/server.lua",
+        "tests/config.test.lua",
+        "tests/globs.test.lua"
+      ],
+      "commit": "c325a2713e3fb863a2b4568402462908b386d9b0",
+      "updated": "2026-10-01T17:28:49-06:00"
     }
   ],
   "profiles": [
@@ -1634,7 +2535,7 @@
       "id": "shader",
       "name": "Shader Builder",
       "description": "Build GLSL and WGSL shaders from nodes or code, with a live preview.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "plugins": [
         "theme.midnight",
@@ -1651,6 +2552,7 @@
         "ui.notify",
         "ui.settings",
         "core.profiles",
+        "proteus.handbook",
         "shader.core",
         "shader.docs",
         "shader.canvas",
@@ -1663,8 +2565,8 @@
       "files": [
         "profile.lua"
       ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
+      "commit": "3df5856f5c910021e9ff1594023e197e9ff02398",
+      "updated": "2026-10-01T17:25:25-06:00"
     },
     {
       "id": "sheet",
