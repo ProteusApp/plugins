@@ -452,7 +452,7 @@ function El:widget (method, ...) end
 ---A real terminal. It runs a program in a pseudo-terminal, so colours, cursor keys and
 ---full-screen programs such as vim work. Needs the desktop app.
 ---Methods: `start`, `stop`, `restart`, `send` (text), `focus`, `clear`, `fit`, `running`,
----`set_program` (program, args?, cwd?), `set_font_size` (size).
+---`set_program` (program, args?, cwd?), `set_font_size` (size), `set_meta` (text).
 ---@class Proteus.TerminalOptions
 ---@field program? string The system shell when empty.
 ---@field args? string[]
@@ -460,9 +460,14 @@ function El:widget (method, ...) end
 ---@field env? table<string, string> Variables added to the app's own.
 ---@field font_size? number
 ---@field autostart? boolean Starts once it has a size. True when nil.
----@field on_started? fun()
+---@field keep? boolean Keeps the program running through a reload of the window, for a while, so the plugin can take it back with `attach`. Needs the `terminal-sessions` feature.
+---@field meta? string Text kept with a kept terminal, such as its tab's name, which `app.process.waiting_terminals` hands back. Up to 4 KB.
+---@field attach? integer Takes back a kept terminal from before the reload, by the id `app.process.waiting_terminals` gave. Its recent output shows first.
+---@field on_attach? fun(ok: boolean) After `attach`: true when the terminal is back, false when it has gone. Then a new program starts, unless `autostart` is false.
+---@field on_started? fun() When the program runs, after a start or after `attach` took it back.
 ---@field on_exit? fun(code: integer?)
 ---@field on_title? fun(title: string)
+---@field on_line? fun(line: string) Each line the program prints, without colours or other escape sequences. Needs the `terminal-lines` feature.
 
 ---@class Proteus.CodeOptions
 ---@field text? string

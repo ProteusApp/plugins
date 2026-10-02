@@ -1307,6 +1307,17 @@ function Terminal.open (opts) end
 ---@return string[]
 function Terminal.profiles () end
 
+---The labels of the tasks a terminal can run: those of the open folder's `.proteus/tasks.json`,
+---when the user trusts the folder, then those of the `terminal.tasks` setting.
+---@return string[]
+function Terminal.tasks () end
+
+---Runs a task by its label in a terminal of its own, or again in the one it ran in before.
+---Returns false when there is no such task, or no terminals, as in a browser.
+---@param label string
+---@return boolean
+function Terminal.run_task (label) end
+
 ---------------------------------------------------------------------------------------------
 -- app.process (the kernel)
 ---------------------------------------------------------------------------------------------
@@ -1383,6 +1394,18 @@ function Process.spawn (program, args, opts) end
 ---@param program string
 ---@param cb fun(path: string?)
 function Process.which (program, cb) end
+
+---A kept terminal that waits for its plugin after the window reloaded.
+---@class Proteus.WaitingTerminal
+---@field id integer What the terminal widget's `attach` takes.
+---@field meta string The text the terminal kept, from the widget's `meta` or `set_meta`.
+---@field ended boolean True when its program stopped while the window reloaded.
+
+---The terminals this plugin opened with `keep` before the window reloaded, oldest first. Each
+---waits 30 seconds for the plugin to take it back with the terminal widget's `attach`, and
+---then stops.
+---@param cb fun(list: Proteus.WaitingTerminal[]?, err: string?)
+function Process.waiting_terminals (cb) end
 
 ---Copies the builtin plugins, profiles, docs and types to a folder on disk, for tools that
 ---need real files. Calls `cb(folder)`.

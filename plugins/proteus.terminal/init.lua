@@ -8,10 +8,19 @@
 -- `terminal.profiles` adds named programs with their arguments, variables and folder.
 -- Other plugins with the `files` permission open terminals through the `terminal` service,
 -- such as Open in Terminal in the Code Editor's file tree.
+--
+-- Run Task runs a task from the open folder's `.proteus/tasks.json`, once the user trusts the
+-- folder, or from the `terminal.tasks` setting, in a terminal tab of its own. Its problem
+-- matchers send what they find in its output to the Problems panel.
+--
+-- The terminals survive a reload of the window: the app keeps their programs running, and
+-- the panel takes them back into the same tabs.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
 local groups = require ('terminal_groups') --[[@as Terminal.Groups]]
 local profiles = require ('terminal_profiles') --[[@as Terminal.Profiles]]
+local session = require ('terminal_session') --[[@as Terminal.Session]]
+local tasks = require ('terminal_tasks') --[[@as Terminal.Tasks]]
 
 -- lang=css
 local CSS = [[
@@ -46,6 +55,14 @@ local CSS = [[
 ---@field title string What the program calls itself, or what it runs.
 ---@field name? string A name the user gave it, which the program's title does not change.
 ---@field cwd string The folder it started in. `''` for the home folder.
+---@field profile string The name of the profile it runs.
+---@field task? string The label of the task it runs.
+---@field matcher? Terminal.Matcher Reads the task's output for problems.
+---@field found table<string, Proteus.Diagnostic[]> The problems its task found, by full path.
+---@field published table<string, true> The paths whose problems went to the Problems panel.
+---@field new_run boolean True once its program stopped, so the next line starts a new run.
+---@field meta string What it keeps through a reload, as last sent.
+---@field attaching boolean True until the panel knows whether the terminal from before a reload came back.
 ---@field widget Proteus.El
 ---@field pane Proteus.El
 ---@field exited boolean
@@ -62,16 +79,29 @@ local CSS = [[
 ---@field el Proteus.El
 ---@field panes string The ids of the terminals it shows, in order, as drawn last.
 
+---How the panel opens a terminal: what the service takes, and what only the panel uses.
+---@class Terminal.OpenOptions: Proteus.TerminalOpenOptions
+---@field task? Terminal.Task Runs this task.
+---@field attach? integer Takes back the terminal with this id, after a reload.
+---@field saved? Terminal.Saved What that terminal kept through the reload.
+---@field meta? string The text it kept, as the app gave it back.
+---@field quiet? boolean Leaves the keyboard focus where it is.
+
 ---@type Proteus.Plugin
 return {
   name = 'Terminal',
   description = 'Terminals in the bottom dock, with split panes and shell profiles, for the Plugin Editor and the Code Editor.',
-  version = '2.0.0',
+  version = '2.1.0',
   -- `process` runs the shell in each terminal. `files` lets it start in a folder on disk, such
   -- as the Code Editor's, which the `project` service hands out, and lets Run Selection read
   -- the editor. `clipboard` is for Paste in its menu.
   permissions = { 'process', 'files', 'clipboard' },
-  requires = { proteus = '>=0.3.0', features = { 'permissions' } },
+  -- `terminal-sessions` keeps the terminals through a reload, and `terminal-lines` hands a
+  -- task's output to its problem matchers.
+  requires = {
+    proteus = '>=0.3.1',
+    features = { 'permissions', 'terminal-sessions', 'terminal-lines' },
+  },
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -85,6 +115,7 @@ return {
     'proteus.ui.palette',
     'proteus.ui.notify',
     'proteus.editor.core',
+    'proteus.tools.diagnostics',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -117,6 +148,12 @@ return {
       title = 'Terminal font size',
       type = 'number',
       default = 13,
+    })
+    settings.define ('terminal.tasks', {
+      title = 'Tasks',
+      type = 'json',
+      default = {},
+      description = 'Tasks Run Task offers, after those of the open folder\'s .proteus/tasks.json. Each has a label and a command or a program, such as { "label": "Build", "command": "npm run build", "group": "build", "problems": "tsc" }.',
     })
 
     local root = project and project.root () or nil
@@ -158,6 +195,41 @@ return {
       return list
     end
 
+    local tasks_warned = '' ---@type string
+    ---Every task: the open folder's, then the setting's, saying once what is wrong with them.
+    ---The folder's `.proteus/tasks.json` comes from its `.proteus` layer, which the app
+    ---mounts only for a folder the user trusts. An untrusted folder's tasks are never read.
+    ---@return Terminal.Task[]
+    local function all_tasks ()
+      local taken = {} ---@type table<string, true>
+      local list, problems = {}, {} ---@type Terminal.Task[], string[]
+      local text = app.fs.read ('tasks.json', 'project')
+      if text then
+        local ok, value = pcall (app.json.decode, text)
+        if ok then
+          list, problems = tasks.read (value, 'folder', taken)
+        else
+          problems[#problems + 1] = '.proteus/tasks.json is not JSON'
+        end
+      end
+      local more, more_problems =
+        tasks.read (settings.get ('terminal.tasks'), 'settings', taken)
+      for _, t in ipairs (more) do
+        list[#list + 1] = t
+      end
+      for _, p in ipairs (more_problems) do
+        problems[#problems + 1] = p
+      end
+      local said = table.concat (problems, '; ')
+      if said ~= tasks_warned then
+        tasks_warned = said
+        if said ~= '' then
+          say ('warn', 'Tasks: ' .. said)
+        end
+      end
+      return list
+    end
+
     local tab_row = ui.div ({ style = { display = 'contents' } })
     local body = ui.div ({ class = 'term-body' })
 
@@ -176,6 +248,37 @@ return {
         text = text .. ' (exited ' .. tostring (term.code or 0) .. ')'
       end
       return text
+    end
+
+    -- True while the tabs from before a reload are built again, when places are not final.
+    local rebuilding = false
+
+    ---Sends each terminal what it keeps through a reload, when that changed: where it sits,
+    ---its names, its folder and what it runs.
+    local function remember ()
+      if rebuilding then
+        return
+      end
+      for id, term in pairs (terms) do
+        local where = session.place (state, id)
+        if where and not term.closed then
+          local text = app.json.encode ({
+            group = where.group,
+            pane = where.pane,
+            front = where.front,
+            focus = where.focus,
+            name = term.name,
+            title = term.title,
+            cwd = term.cwd,
+            profile = term.profile,
+            task = term.task,
+          })
+          if text ~= term.meta then
+            term.meta = text
+            term.widget:widget ('set_meta', text)
+          end
+        end
+      end
     end
 
     local focus_term ---@type fun(term: Terminal.Term?)
@@ -265,6 +368,7 @@ return {
           tabs[id] = nil
         end
       end
+      remember ()
     end
 
     ---Gives a terminal the focus and brings its tab to the front.
@@ -285,12 +389,114 @@ return {
       end
     end
 
+    ---Sends a task's problems to the Problems panel, and clears the files it no longer has
+    ---problems in.
+    ---@param term Terminal.Term
+    local function publish (term)
+      local diagnostics = app.try_use ('diagnostics')
+      if not diagnostics or not term.task then
+        return
+      end
+      local source = 'task: ' .. term.task
+      for path in pairs (term.published) do
+        if not term.found[path] then
+          diagnostics.set (source, path, {})
+        end
+      end
+      term.published = {}
+      for path, list in pairs (term.found) do
+        diagnostics.set (source, path, list)
+        term.published[path] = true
+      end
+    end
+
+    local publish_queued = false
+    local dirty = {} ---@type table<Terminal.Term, true>
+    ---Sends a task's problems a moment later, so a burst of output sends them once.
+    ---@param term Terminal.Term
+    local function publish_soon (term)
+      dirty[term] = true
+      if publish_queued then
+        return
+      end
+      publish_queued = true
+      app.timer.after (150, function ()
+        publish_queued = false
+        local list = dirty
+        dirty = {}
+        for t in pairs (list) do
+          publish (t)
+        end
+      end)
+    end
+
+    ---Starts a task's problems over, for a new run.
+    ---@param term Terminal.Term
+    ---@param names? string[] The problem matchers, when they changed.
+    local function fresh_problems (term, names)
+      if not term.task then
+        return
+      end
+      local task = names and { problems = names }
+        or tasks.find (all_tasks (), term.task)
+      term.matcher = task and tasks.matcher (task.problems) or nil
+      term.found = {}
+      term.new_run = false
+      publish_soon (term)
+    end
+
+    ---One line of a task's output, for its problem matchers.
+    ---@param term Terminal.Term
+    ---@param line string
+    local function task_line (term, line)
+      if term.new_run then
+        fresh_problems (term)
+      end
+      local matcher = term.matcher
+      local found = matcher and matcher.feed (line)
+      if not found or not term.task then
+        return
+      end
+      local path = tasks.full_path (found.file, term.cwd)
+      local list = term.found[path] or {}
+      term.found[path] = list
+      list[#list + 1] = tasks.diagnostic (found, 'task: ' .. term.task)
+      publish_soon (term)
+    end
+
+    ---@param term Terminal.Term
+    ---@param code integer?
+    local function task_ended (term, code)
+      term.new_run = true
+      publish (term)
+      local count = 0
+      for _, list in pairs (term.found) do
+        count = count + #list
+      end
+      local text = (term.task or 'The task')
+        .. (
+          code == 0 and ' finished'
+          or (' stopped with code ' .. tostring (code or '?'))
+        )
+      if count > 0 then
+        text = text
+          .. ', with '
+          .. count
+          .. (count == 1 and ' problem' or ' problems')
+      end
+      say (code == 0 and count == 0 and 'info' or 'warn', text .. '.')
+    end
+
     ---@param term Terminal.Term
     close_term = function (term)
       if term.closed then
         return
       end
       term.closed = true
+      if term.task then
+        term.found = {}
+        publish (term)
+      end
       local next_focus = groups.remove (state, term.id)
       terms[term.id] = nil
       term.pane:remove ()
@@ -302,6 +508,10 @@ return {
         local term = terms[id]
         if term then
           term.closed = true
+          if term.task then
+            term.found = {}
+            publish (term)
+          end
           term.pane:remove ()
           terms[id] = nil
         end
@@ -325,30 +535,65 @@ return {
     end
 
     local opening = false
+    -- True until the terminals from before a reload are back.
+    local restoring = desktop
+    local shown_while_restoring = false
 
-    ---Opens a terminal, in a tab of its own or split beside the one with the focus.
-    ---@param opts? Proteus.TerminalOpenOptions
+    ---Opens a terminal, in a tab of its own or split beside the one with the focus. It runs a
+    ---profile, or a task, or takes back a terminal from before a reload.
+    ---@param opts? Terminal.OpenOptions
     ---@return Terminal.Term?
     local function new_term (opts)
       if not desktop then
         return nil
       end
       local o = opts or {}
+      local saved = o.saved
       local profile = profiles.pick (
         all_profiles (),
-        o.profile,
+        saved and saved.profile or o.profile,
         tostring (settings.get ('terminal.default_profile') or '')
       )
+      local task = o.task
+      local task_label = task and task.label or (saved and saved.task)
+      if not task and task_label then
+        task = tasks.find (all_tasks (), task_label)
+      end
       local id = next_id
       next_id = next_id + 1
-      local cwd = profiles.cwd (o.cwd, profile, root, workspace)
+      local cwd ---@type string
+      if saved then
+        cwd = saved.cwd
+      elseif task then
+        cwd = tasks.cwd (task, root, workspace)
+      else
+        cwd = profiles.cwd (o.cwd, profile, root, workspace)
+      end
+      local program, args, env = profile.program, profile.args, profile.env
+      if task then
+        program, args = tasks.command_line (task, app.os)
+        env = task.env
+      end
       local term ---@type Terminal.Term
       local widget = ui.widget ('terminal', {
-        program = profile.program,
-        args = profile.args,
-        env = profile.env,
+        program = program,
+        args = args,
+        env = env,
         cwd = cwd,
         font_size = tonumber (settings.get ('terminal.font_size')) or 13,
+        -- The program keeps running through a reload, and the panel takes it back.
+        keep = true,
+        attach = o.attach,
+        autostart = o.attach == nil,
+        on_attach = function (ok)
+          if term and not term.closed then
+            term.attaching = false
+            -- A terminal that stopped for good while the window reloaded goes.
+            if not ok then
+              close_term (term)
+            end
+          end
+        end,
         on_started = function ()
           if term and not term.closed then
             -- A terminal started again after it exited drops "(exited N)" from its tab.
@@ -367,6 +612,10 @@ return {
             term.exited = true
             term.started = false
             term.code = code
+            -- The exit of a task that ended while the window reloaded was told already.
+            if term.task and not term.attaching then
+              task_ended (term, code)
+            end
             draw ()
           end
         end,
@@ -376,13 +625,32 @@ return {
             draw ()
           end
         end,
+        -- Only a task's output goes to its problem matchers.
+        on_line = task_label and function (line)
+          if term and not term.closed then
+            task_line (term, line)
+          end
+        end or nil,
       })
       local name = o.name and o.name ~= '' and o.name or nil
+      if saved then
+        name = saved.name
+      elseif task and not name then
+        name = task.label
+      end
       term = {
         id = id,
-        title = profile.label,
+        title = saved and saved.title or profile.label,
         name = name,
         cwd = cwd,
+        profile = profile.name,
+        task = task_label,
+        matcher = task and tasks.matcher (task.problems) or nil,
+        found = {},
+        published = {},
+        new_run = false,
+        meta = o.meta or '',
+        attaching = o.attach ~= nil,
         widget = widget,
         pane = ui.div ({ class = 'term-pane', widget }),
         exited = false,
@@ -404,11 +672,15 @@ return {
       else
         groups.add (state, id)
       end
-      focus_term (term)
+      if o.quiet then
+        draw ()
+      else
+        focus_term (term)
+      end
       return term
     end
 
-    ---@param opts? Proteus.TerminalOpenOptions
+    ---@param opts? Terminal.OpenOptions
     ---@return Terminal.Term?
     local function open (opts)
       -- Showing the panel opens a terminal when it has none, so it waits for this one.
@@ -421,8 +693,141 @@ return {
     local function restart ()
       local term = active ()
       if term then
+        fresh_problems (term)
         term.widget:widget ('restart')
         focus_term (term)
+      end
+    end
+
+    local last_task = nil ---@type string?
+
+    ---Runs a task in a terminal tab of its own, or again in the one it ran in before.
+    ---@param task Terminal.Task
+    ---@return boolean
+    local function run_task (task)
+      if not desktop then
+        return false
+      end
+      last_task = task.label
+      for _, term in pairs (terms) do
+        if
+          not term.closed
+          and term.task
+          and term.task:lower () == task.label:lower ()
+        then
+          local program, args = tasks.command_line (task, app.os)
+          term.cwd = tasks.cwd (task, root, workspace)
+          term.widget:widget ('set_program', program, args, term.cwd)
+          fresh_problems (term, task.problems)
+          opening = true
+          views.show ('terminal')
+          opening = false
+          term.widget:widget ('restart')
+          focus_term (term)
+          return true
+        end
+      end
+      return open ({ task = task }) ~= nil
+    end
+
+    ---What a task runs, for a picker.
+    ---@param task Terminal.Task
+    ---@return string
+    local function task_detail (task)
+      local program, args = tasks.command_line (task, app.os)
+      local line = task.command
+      if not line then
+        line = program
+        for _, a in ipairs (args) do
+          line = line .. ' ' .. a
+        end
+      end
+      local from = task.source == 'folder' and 'the folder' or 'settings'
+      return (task.detail or line) .. ' · from ' .. from
+    end
+
+    ---Asks which of the tasks to run.
+    ---@param list Terminal.Task[]
+    ---@param placeholder string
+    local function pick_task (list, placeholder)
+      local picker = app.try_use ('picker')
+      if not picker then
+        if list[1] then
+          run_task (list[1])
+        end
+        return
+      end
+      local items = {} ---@type Proteus.PickItem[]
+      for _, t in ipairs (list) do
+        items[#items + 1] = {
+          label = t.label,
+          detail = task_detail (t),
+          icon = t.group == 'test' and 'flask-conical'
+            or t.group == 'build' and 'hammer'
+            or 'play',
+          value = t.label,
+        }
+      end
+      picker.pick ({
+        items = items,
+        placeholder = placeholder,
+        on_pick = function (item)
+          local t = tasks.find (list, tostring (item.value or ''))
+          if t then
+            run_task (t)
+          end
+        end,
+      })
+    end
+
+    ---Says so when the open folder has tasks that do not run because the user has not
+    ---trusted it. Its file is only looked at, never read.
+    local function tell_untrusted ()
+      if not root or app.fs.read ('tasks.json', 'project') then
+        return
+      end
+      app.fs.stat_path (root .. '/.proteus/tasks.json', function (stat)
+        if stat and stat.exists and not stat.dir then
+          say (
+            'info',
+            "The open folder's .proteus/tasks.json runs only once you trust the folder."
+          )
+        end
+      end)
+    end
+
+    ---Run Task, or with a group, Run Build Task and Run Test Task: the group's default task
+    ---runs at once, and otherwise a picker offers the tasks.
+    ---@param group? 'build'|'test'
+    local function choose_task (group)
+      local list = all_tasks ()
+      tell_untrusted ()
+      if #list == 0 then
+        say (
+          'info',
+          'There are no tasks. Add them to .proteus/tasks.json in the open folder, or to the terminal.tasks setting.'
+        )
+        return
+      end
+      if group then
+        local one, choices = tasks.of_group (list, group)
+        if one then
+          run_task (one)
+          return
+        elseif #choices > 0 then
+          pick_task (choices, 'Pick the ' .. group .. ' task to run')
+          return
+        end
+      end
+      pick_task (list, 'Pick a task to run')
+    end
+
+    local function rerun_task ()
+      local task = tasks.find (all_tasks (), last_task)
+      if task then
+        run_task (task)
+      else
+        choose_task ()
       end
     end
 
@@ -557,6 +962,13 @@ return {
       end
       items[#items + 1] = { separator = true }
       items[#items + 1] = {
+        label = 'Run Task…',
+        icon = 'play',
+        run = function ()
+          choose_task ()
+        end,
+      }
+      items[#items + 1] = {
         label = 'Split Terminal',
         icon = 'columns-2',
         run = function ()
@@ -608,6 +1020,50 @@ return {
       })
     end
 
+    ---Builds the tabs again from the terminals that kept running through a reload, and takes
+    ---each one back.
+    ---@param list Proteus.WaitingTerminal[]
+    local function restore (list)
+      local waiting = {} ---@type Terminal.Waiting[]
+      for _, w in ipairs (list) do
+        local ok, value = pcall (app.json.decode, w.meta or '')
+        waiting[#waiting + 1] = {
+          id = w.id,
+          meta = w.meta,
+          saved = session.read (ok and value or nil),
+          ended = w.ended == true,
+        }
+      end
+      local saved_groups, front = session.layout (waiting)
+      local focused = {} ---@type table<integer, integer>
+      rebuilding = true
+      for gi, g in ipairs (saved_groups) do
+        for pi, w in ipairs (g.items) do
+          local term = new_term ({
+            attach = w.id,
+            saved = w.saved,
+            meta = w.meta,
+            split = pi > 1,
+            quiet = true,
+          })
+          if term and pi == g.focus then
+            focused[gi] = term.id
+          end
+        end
+      end
+      for gi, id in pairs (focused) do
+        if gi ~= front then
+          groups.focus (state, id)
+        end
+      end
+      local front_id = front and focused[front]
+      if front_id then
+        groups.focus (state, front_id)
+      end
+      rebuilding = false
+      draw ()
+    end
+
     -- A terminal's program starts once the panel has a size, so a hidden panel waits.
     views.add ('bottom', {
       id = 'terminal',
@@ -620,7 +1076,11 @@ return {
       content = content,
       on_show = function ()
         local term = active ()
-        if opening then
+        if restoring then
+          -- The terminals from before a reload come back first.
+          shown_while_restoring = true
+          return
+        elseif opening then
           return
         elseif desktop and not term then
           new_term ()
@@ -629,6 +1089,18 @@ return {
         end
       end,
     })
+
+    if desktop then
+      app.process.waiting_terminals (function (list)
+        restoring = false
+        if list and #list > 0 then
+          restore (list)
+        end
+        if shown_while_restoring and not active () then
+          new_term ()
+        end
+      end)
+    end
 
     settings.watch ('terminal.font_size', function (size)
       for _, t in pairs (terms) do
@@ -656,6 +1128,18 @@ return {
           out[i] = p.name
         end
         return out
+      end,
+      tasks = function ()
+        local out = {} ---@type string[]
+        for i, t in ipairs (all_tasks ()) do
+          out[i] = t.label
+        end
+        return out
+      end,
+      run_task = function (wanted)
+        local task = type (wanted) == 'string'
+          and tasks.find (all_tasks (), wanted)
+        return task and run_task (task) or false
       end,
     } --[[@as Proteus.Terminal]], { needs = 'files' })
 
@@ -748,6 +1232,46 @@ return {
           return desktop and editor ~= nil and editor.current () ~= nil
         end,
         run = run_selection,
+      })
+      commands.register ({
+        id = 'terminal.run_task',
+        category = 'Terminal',
+        title = 'Run Task…',
+        icon = 'play',
+        menu = 'View',
+        order = 61,
+        when = on_desktop,
+        run = function ()
+          choose_task ()
+        end,
+      })
+      commands.register ({
+        id = 'terminal.run_build_task',
+        category = 'Terminal',
+        title = 'Run Build Task',
+        icon = 'hammer',
+        when = on_desktop,
+        run = function ()
+          choose_task ('build')
+        end,
+      })
+      commands.register ({
+        id = 'terminal.run_test_task',
+        category = 'Terminal',
+        title = 'Run Test Task',
+        icon = 'flask-conical',
+        when = on_desktop,
+        run = function ()
+          choose_task ('test')
+        end,
+      })
+      commands.register ({
+        id = 'terminal.rerun_task',
+        category = 'Terminal',
+        title = 'Run Last Task Again',
+        icon = 'repeat',
+        when = on_desktop,
+        run = rerun_task,
       })
       commands.register ({
         id = 'terminal.restart',

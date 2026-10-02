@@ -55,6 +55,8 @@
 ---| 'webview-files' # `files` and `mounts` in `ui.webview`, and `exports` in a plugin's table.
 ---| 'webview-disk' # `view:widget ('send_path', path)`: the bytes of a file the plugin names, in its web view.
 ---| 'tcp' # `app.net.connect`, which connects to a server on this computer's loopback address.
+---| 'terminal-sessions' # Terminals that survive a reload: the terminal widget's `keep` and `attach`, and `app.process.waiting_terminals`.
+---| 'terminal-lines' # The terminal widget's `on_line`, which hands over each line a program prints.
 
 ---@class Proteus.Requires
 ---@field proteus? string The versions of Proteus it runs on, such as `'>=0.2.0'`. Conditions separated by spaces must all hold.
