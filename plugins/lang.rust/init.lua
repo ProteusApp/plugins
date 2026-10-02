@@ -43,15 +43,17 @@ local SCHEMAS = {
 ---@field workspace string The workspace folder, with `/`.
 ---@field project_root? string The folder open in the Code Editor.
 ---@field crates LangRust.Crates
----@field full_path fun(doc: Proteus.DocInfo): string A document's full path on disk.
 ---@field notify fun(level: 'info'|'warn'|'error', text: string) A pop-up, when ui.notify runs.
 
 ---@type Proteus.Plugin
 return {
   name = 'Rust',
   description = 'Rust with rust-analyzer, rustfmt and Cargo: completion, hover help, go to definition, problems, formatting and a Cargo panel.',
-  version = '1.0.4',
-  requires = { proteus = '>=0.2.0', features = { 'permissions' } },
+  version = '1.0.5',
+  requires = {
+    proteus = '>=0.2.0',
+    features = { 'permissions', 'tool-command' },
+  },
   -- The language server and Cargo are programs it runs and downloads, on files anywhere on disk.
   permissions = { 'net', 'files', 'process' },
   depends = {
@@ -109,10 +111,6 @@ return {
       workspace = workspace,
       project_root = project and project.root () or nil,
       crates = crates_module.new (app),
-      full_path = function (doc)
-        return doc.external and disk.normalize (doc.path)
-          or disk.join (workspace, doc.path)
-      end,
       notify = function (level, text)
         local n = app.try_use ('notify')
         if n then
