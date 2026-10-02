@@ -136,7 +136,7 @@ end
 return {
   name = 'Git',
   description = 'Stage, commit, branch and browse the history of a Git repository.',
-  version = '1.0.0',
+  version = '1.0.1',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- It runs the git program, and reads the changed files in a repository anywhere on disk.
   permissions = { 'files', 'process' },
@@ -1010,6 +1010,7 @@ return {
 
     local function new_branch ()
       if not picker then
+        fail ('New Branch needs the command palette.')
         return
       end
       picker.input ({
