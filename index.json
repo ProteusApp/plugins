@@ -1171,6 +1171,42 @@
       "updated": "2026-09-30T20:33:10Z"
     },
     {
+      "id": "proteus.template",
+      "name": "Plugin Template",
+      "description": "A start for a plugin of your own: a command, a setting, a panel, a service, a folder, tests and a Handbook page.",
+      "version": "1.0.0",
+      "author": "ProteusApp",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.ui.views",
+        "proteus.core.commands",
+        "proteus.core.settings"
+      ],
+      "optional": [
+        "proteus.ui.notify"
+      ],
+      "permissions": [],
+      "folders": [
+        "template"
+      ],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "handbook/template.md",
+        "init.lua",
+        "lib/greetings.lua",
+        "tests/template.test.lua",
+        "types/template.lua"
+      ],
+      "commit": "055fb04c89e65d2b9953f1515c0017493814b179",
+      "updated": "2026-10-02T06:24:12Z"
+    },
+    {
       "id": "theme.pocket",
       "name": "Pocket theme",
       "description": "The four greens of an early handheld game screen, with square corners, pixel shadows and an LCD dot grid.",
@@ -1449,35 +1485,6 @@
       ],
       "commit": "a02032c0360a9079e5a0e6576893bb0bac0c0d3c",
       "updated": "2026-10-02T16:53:40Z"
-    },
-    {
-      "id": "sample.plugin",
-      "name": "Sample Plugin",
-      "description": "A sample plugin.",
-      "version": "1.0.6",
-      "author": "nanoqoi",
-      "depends": [
-        "lib.ui",
-        "core.commands"
-      ],
-      "optional": [
-        "ui.notify",
-        "ui.toolbar",
-        "ui.menubar"
-      ],
-      "permissions": [],
-      "folders": [],
-      "requires": {
-        "proteus": ">=0.2.0",
-        "features": [
-          "permissions"
-        ]
-      },
-      "files": [
-        "init.lua"
-      ],
-      "commit": "fe75ad28c10d4cc05c947858892d626a73e2436d",
-      "updated": "2026-09-30T16:51:35Z"
     },
     {
       "id": "lang.sass",
