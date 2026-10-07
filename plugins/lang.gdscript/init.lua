@@ -18,6 +18,7 @@
 --   hover      Godot's hover help as plain Markdown
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
+local editor_module = require ('lib.editor') --[[@as LangGdscript.EditorModule]]
 local godot = require ('lib.godot') --[[@as LangGdscript.GodotModule]]
 local languages = require ('lib.languages') --[[@as LangGdscript.LanguagesModule]]
 local project = require ('lib.project') --[[@as LangGdscript.ProjectModule]]
@@ -37,7 +38,7 @@ local server_module = require ('lib.server') --[[@as LangGdscript.ServerModule]]
 return {
   name = 'GDScript',
   description = "GDScript for Godot 4: completion, hover help, go to definition and problems from the Godot editor's language server.",
-  version = '1.1.0',
+  version = '1.2.0',
   requires = {
     proteus = '>=0.3.1',
     features = { 'permissions', 'languages', 'tcp' },
@@ -54,7 +55,12 @@ return {
     'proteus.tools.registry',
     'proteus.tools.diagnostics',
   },
-  optional = { 'proteus.code.project', 'proteus.ui.notify' },
+  optional = {
+    'proteus.code.project',
+    'proteus.ui.notify',
+    -- Nests Godot's .uid files and adds Open in the Godot Editor to a scene's menu.
+    'proteus.code.explorer',
+  },
   activate = function (app)
     local ui = app.use ('ui')
     local settings = app.use ('settings')
@@ -181,6 +187,19 @@ return {
         end
         server.restart ()
       end)
+    end
+
+    -- Godot writes a .uid file beside each script and shader. It sits under that file in the
+    -- Code Editor's file tree, and a scene's right-click menu opens it in the Godot editor.
+    local explorer = app.try_use ('code.explorer')
+    if explorer and explorer.add_nesting then
+      explorer.add_nesting ({ ['*'] = { '${capture}.uid' } })
+      explorer.add_menu_item ({
+        label = 'Open in the Godot Editor',
+        icon = 'app-window',
+        when = godot.is_scene,
+        run = editor_module.opener (app, settings, ctx.notify),
+      })
     end
 
     server.start (nil)

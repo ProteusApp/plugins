@@ -153,3 +153,43 @@ test ('split_args splits at spaces outside double quotes', function ()
   eq (godot.split_args (''), {})
   eq (godot.split_args (nil), {})
 end)
+
+test ('is_scene knows the scene files Godot opens', function ()
+  eq (godot.is_scene ('/p/Scenes/Main.tscn'), true)
+  eq (godot.is_scene ('/p/Scenes/Main.SCN'), true)
+  eq (godot.is_scene ('/p/Scripts/Main.cs'), false)
+  eq (godot.is_scene ('/p/Scripts/Main.cs.uid'), false)
+end)
+
+test ('res_path names a file inside the project', function ()
+  eq (
+    godot.res_path ('/p/game', '/p/game/Scenes/Main.tscn'),
+    'res://Scenes/Main.tscn'
+  )
+  eq (godot.res_path ('/p/game/', '/p/game/Main.tscn'), 'res://Main.tscn')
+  eq (godot.res_path ('/p/game', '/p/gamer/Main.tscn'), nil)
+end)
+
+test ('editor_running finds a Godot editor on the project alone', function ()
+  local ps = table.concat ({
+    '84094 /usr/lib/godot-mono/godot.mono --path /p/game --editor',
+    '84100 /usr/bin/godot-mono --path /p/other -e',
+  }, '\n')
+  eq (godot.editor_running (ps, '/p/game'), true)
+  eq (godot.editor_running (ps, '/p/other/'), true)
+  eq (godot.editor_running (ps, '/p/third'), false)
+  -- The game runs with --path too, but without --editor.
+  eq (
+    godot.editor_running ('90 /usr/bin/godot-mono --path /p/game', '/p/game'),
+    false
+  )
+  eq (godot.editor_running ('91 godot --editor --path=/p/game', '/p/game'), true)
+  -- A language server with no window is not an editor to open scenes in.
+  eq (
+    godot.editor_running (
+      '92 godot --path /p/game --editor --headless --lsp-port 6005',
+      '/p/game'
+    ),
+    false
+  )
+end)

@@ -38,7 +38,7 @@ local server_module = require ('lib.server') --[[@as LangCsharp.ServerModule]]
 return {
   name = 'C# for Godot',
   description = 'C# for Godot 4 .NET projects: completion of your scripts and the Godot API with csharp-ls, build errors in Problems, run the game, and open scripts from Godot.',
-  version = '1.0.0',
+  version = '1.1.0',
   requires = { proteus = '>=0.3.0', features = { 'permissions' } },
   -- csharp-ls, dotnet and Godot are programs it runs, on project files anywhere on disk.
   permissions = { 'files', 'process' },
@@ -55,6 +55,8 @@ return {
   optional = {
     'proteus.code.project',
     'proteus.ui.notify',
+    -- Nests Godot's .uid files and adds Open in the Godot Editor to a scene's menu.
+    'proteus.code.explorer',
   },
   activate = function (app)
     local ui = app.use ('ui')
@@ -252,6 +254,19 @@ return {
         menu = 'Run',
         group = 'csharp',
         run = spec.run,
+      })
+    end
+
+    -- Godot writes a .uid file beside each script and shader. It sits under that file in the
+    -- Code Editor's file tree, and a scene's right-click menu opens it in the Godot editor.
+    local explorer = app.try_use ('code.explorer')
+    if explorer and explorer.add_nesting then
+      explorer.add_nesting ({ ['*'] = { '${capture}.uid' } })
+      explorer.add_menu_item ({
+        label = 'Open in the Godot Editor',
+        icon = 'app-window',
+        when = godot.is_scene,
+        run = build.open_scene,
       })
     end
 
