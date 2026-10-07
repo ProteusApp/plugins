@@ -223,6 +223,59 @@ function M.build_problems (text)
   return out
 end
 
+---True for a scene file, which the Godot editor can open from the command line.
+---@param path string
+---@return boolean
+function M.is_scene (path)
+  local lower = path:lower ()
+  return lower:sub (-5) == '.tscn' or lower:sub (-4) == '.scn'
+end
+
+---The `res://` path of a file inside a project, or nil for one outside it.
+---@param root string The project's folder, with `/`.
+---@param path string The file's full path, with `/`.
+---@return string?
+function M.res_path (root, path)
+  local base = root:gsub ('/+$', '') .. '/'
+  if path:sub (1, #base) ~= base then
+    return nil
+  end
+  return 'res://' .. path:sub (#base + 1)
+end
+
+---True when `pgrep -af godot` output shows a Godot editor window on the project in `root`.
+---Godot starts its editor with `--path <folder> --editor`, from the project manager too. One
+---with `--headless` has no window, such as the language server the GDScript plugin starts,
+---so it does not count.
+---@param text string One process a line: its id, then its command line.
+---@param root string The project's folder, with `/`.
+---@return boolean
+function M.editor_running (text, root)
+  local want = root:gsub ('/+$', '')
+  for line in (text .. '\n'):gmatch ('([^\n]*)\n') do
+    local editor, headless, path = false, false, nil ---@type boolean, boolean, string?
+    local words = {} ---@type string[]
+    for word in line:gmatch ('%S+') do
+      words[#words + 1] = word
+    end
+    for i, word in ipairs (words) do
+      if word == '-e' or word == '--editor' then
+        editor = true
+      elseif word == '--headless' then
+        headless = true
+      elseif word == '--path' then
+        path = words[i + 1]
+      elseif word:sub (1, 7) == '--path=' then
+        path = word:sub (8)
+      end
+    end
+    if editor and not headless and path and path:gsub ('/+$', '') == want then
+      return true
+    end
+  end
+  return false
+end
+
 ---The solution or project file the language server should load, from a folder's file names:
 ---the one .sln, or else the one .csproj. Nil when there is none, or more than one of a kind
 ---and none named after the project.

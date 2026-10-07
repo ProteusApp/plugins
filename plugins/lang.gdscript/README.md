@@ -8,6 +8,8 @@ GDScript support for the Proteus code editor, built on the language server insid
 - **Completion, hover help, go to definition and problems**, from the Godot editor's language server.
 - **Scenes and resources.** `.tscn`, `.tres`, `project.godot` and `.import` files get colors of their own.
 - **`res://` paths.** F12 on a path in quotes, such as `preload ("res://enemy.tscn")` or `path="res://player.gd"` in a scene, opens that file.
+- **Open in the Godot Editor** in a scene's right-click menu, in the Code Editor's file tree, starts the Godot editor on that scene. Godot can only open a scene when it starts. So when a Godot window already has the project open, the plugin says so instead of starting a second editor. On Windows it cannot tell, so it always starts one.
+- **`.uid` files** sit under the file they belong to in the file tree, such as `player.gd.uid` under `player.gd`.
 
 ## How it connects
 

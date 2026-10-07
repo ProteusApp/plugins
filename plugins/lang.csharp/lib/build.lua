@@ -1,6 +1,7 @@
 -- build: the Godot side. Build runs `dotnet build` and puts its errors in the Problems
 -- panel. Run builds, then starts the game with Godot. Open in Godot starts the Godot editor
--- on the project. The output of each shows in the Tools panel, under Godot (C#).
+-- on the project, or on one of its scenes, unless one is open on it already. The output of
+-- each shows in the Tools panel, under Godot (C#).
 
 local disk = require ('disk_paths')
 local godot = require ('lib.godot') --[[@as LangCsharp.GodotModule]]
@@ -14,6 +15,7 @@ local SOURCE = 'dotnet build'
 ---@field run fun()
 ---@field stop fun()
 ---@field open_editor fun()
+---@field open_scene fun(path: string) Starts the Godot editor on a scene, given its full path.
 
 ---@class LangCsharp.BuildModule
 local M = {}
@@ -98,6 +100,77 @@ function M.install (ctx, server)
       end)
     end
     step ()
+  end
+
+  ---Tells whether a Godot editor already has the project open. Godot has no lock file and
+  ---no way to hand a running editor a file, so this reads the running programs. Windows has
+  ---no pgrep, so there the answer is always no.
+  ---@param project LangCsharp.GodotProject
+  ---@param cb fun(open: boolean)
+  local function editor_open (project, cb)
+    if app.os == 'windows' then
+      cb (false)
+      return
+    end
+    app.process.run ('pgrep', { '-af', 'godot' }, nil, function (result)
+      cb (
+        result ~= nil
+          and godot.editor_running (result.stdout or '', project.root)
+      )
+    end)
+  end
+
+  ---Starts the Godot editor on the project, and on a scene in it when `scene` is a
+  ---`res://` path. With an editor already open on the project, it says so instead, since a
+  ---second editor on one project fights the first over its files.
+  ---@param project LangCsharp.GodotProject
+  ---@param scene? string
+  local function start_editor (project, scene)
+    editor_open (project, function (open)
+      if open then
+        local name = project.info.name or disk.name (project.root)
+        ctx.notify (
+          'info',
+          scene
+              and ('Godot already has ' .. name .. ' open. Open ' .. scene .. ' there.')
+            or ('Godot already has ' .. name .. ' open.')
+        )
+        return
+      end
+      find_godot (function (path)
+        if not path then
+          ctx.notify (
+            'warn',
+            'Godot was not found. Set its path in Settings (csharp.godot_path).'
+          )
+          return
+        end
+        local args = { '--path', project.root, '--editor' }
+        if scene then
+          args[#args + 1] = '--scene'
+          args[#args + 1] = scene
+        end
+        for _, arg in
+          ipairs (godot.split_args (settings.get ('csharp.godot_args')))
+        do
+          args[#args + 1] = arg
+        end
+        log ('info', path .. ' ' .. table.concat (args, ' '))
+        app.process.spawn (path, args, {
+          cwd = project.root,
+          framing = 'lines',
+          on_message = function (line)
+            log ('out', line)
+          end,
+          on_stderr = function (line)
+            log ('err', line)
+          end,
+          on_error = function (why)
+            ctx.notify ('error', 'Godot did not start: ' .. why)
+          end,
+        })
+      end)
+    end)
   end
 
   ---Puts a build's problems in the Problems panel, in place of the last build's.
@@ -262,35 +335,18 @@ function M.install (ctx, server)
     end,
     open_editor = function ()
       with_project (function (project)
-        find_godot (function (path)
-          if not path then
-            ctx.notify (
-              'warn',
-              'Godot was not found. Set its path in Settings (csharp.godot_path).'
-            )
-            return
-          end
-          local args = { '--path', project.root, '--editor' }
-          for _, arg in
-            ipairs (godot.split_args (settings.get ('csharp.godot_args')))
-          do
-            args[#args + 1] = arg
-          end
-          log ('info', path .. ' ' .. table.concat (args, ' '))
-          app.process.spawn (path, args, {
-            cwd = project.root,
-            framing = 'lines',
-            on_message = function (line)
-              log ('out', line)
-            end,
-            on_stderr = function (line)
-              log ('err', line)
-            end,
-            on_error = function (why)
-              ctx.notify ('error', 'Godot did not start: ' .. why)
-            end,
-          })
-        end)
+        start_editor (project, nil)
+      end)
+    end,
+    open_scene = function (path)
+      path = disk.normalize (path)
+      ctx.projects.of (disk.parent (path), function (project)
+        local scene = project and godot.res_path (project.root, path)
+        if not project or not scene then
+          ctx.notify ('warn', 'No project.godot is above this scene.')
+          return
+        end
+        start_editor (project, scene)
       end)
     end,
   }

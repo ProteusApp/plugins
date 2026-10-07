@@ -26,12 +26,17 @@
 -- `lib/file_tree.lua`, which the Plugin Editor's Plugins panel draws too. This file reads the
 -- folder from disk, changes it, and adds Git, the trash and Undo.
 --
+-- Files that belong with another file sit under it, such as package-lock.json under
+-- package.json, by the `code.explorer.nest` setting and the rules other plugins add. The
+-- shared tree draws the groups. This file works out who goes where, with file_nesting.lua.
+--
 -- Paths inside the tree are relative to the project folder, which is ''. They become full
 -- paths only where they leave it: on disk, in the editor, and in the `code:disk_renamed` and
 -- `code:search_folder` events.
 
 local disk = require ('disk_paths') --[[@as DiskPaths]]
 local file_tree = require ('file_tree') --[[@as FileTree.Module]]
+local nesting = require ('file_nesting') --[[@as CodeExplorer.Nesting]]
 local paths = require ('explorer_paths') --[[@as Explorer.PathsModule]]
 
 -- lang=css
@@ -51,6 +56,30 @@ local CSS = [[
 -- The most file changes Undo remembers.
 local UNDO_LIMIT = 50
 
+-- Files the tree draws under another file unless the setting says otherwise.
+local NEST = {
+  ['package.json'] = {
+    'package-lock.json',
+    'npm-shrinkwrap.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'bun.lock',
+    'bun.lockb',
+    '.npmrc',
+    '.yarnrc.yml',
+  },
+  ['tsconfig.json'] = { 'tsconfig.*.json', '*.tsbuildinfo' },
+  ['Cargo.toml'] = { 'Cargo.lock' },
+  ['*.ts'] = {
+    '${capture}.js',
+    '${capture}.js.map',
+    '${capture}.d.ts',
+    '${capture}.d.ts.map',
+  },
+  ['*.js'] = { '${capture}.js.map', '${capture}.min.js', '${capture}.d.ts' },
+}
+
 -- The letter shown after a name for each thing Git can say about a file.
 ---@type table<string, string>
 local GIT_LETTER = {
@@ -66,7 +95,19 @@ local GIT_LETTER = {
 
 ---A file or folder in the tree.
 ---@class CodeExplorer.Entry: FileTree.Entry
+---@field name string
+---@field path string From the root of the tree, with `/`.
+---@field dir boolean
+---@field kids? CodeExplorer.Entry[] Files drawn under this file, by `code.explorer.nest`.
+---@field nested_in? string The path of the file this one is drawn under.
 ---@field ignored? boolean `.gitignore` leaves it out.
+
+---An item another plugin adds to the right-click menu of a file.
+---@class CodeExplorer.MenuItemSpec
+---@field label string
+---@field icon? string
+---@field when? fun(path: string): boolean Shows the item only for files it is true for. `path` is the full path on disk.
+---@field run fun(path: string) Gets the full path on disk.
 
 ---The icon a plugin draws when no icon pack has one.
 ---@param entry FileTree.Entry
@@ -105,7 +146,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.3.1',
+  version = '1.4.0',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -150,6 +191,14 @@ return {
       default = false,
       description = 'Leaves out of the Code Editor file tree what .gitignore ignores, such as build output. Off, it shows dimmed.',
     })
+    settings.define ('code.explorer.nest', {
+      title = 'Files the file tree nests',
+      type = 'json',
+      default = NEST,
+      description = 'Maps a file name pattern to the patterns of the files drawn under it, such as {"package.json": ["yarn.lock"]}. '
+        .. 'The first * in a key is kept, and ${capture} below stands for it, so {"*.ts": ["${capture}.js"]} puts app.js under app.ts. '
+        .. 'Use {} to turn these off. Rules from other plugins, such as Godot .uid files, stay while those plugins run.',
+    })
 
     -- With no folder open there is no tree. The Welcome page opens a folder instead.
     if not root then
@@ -169,6 +218,58 @@ return {
       end
       -- A `project` service from before 1.1.0 has no patterns to match.
       return project.excludes ~= nil and project.excludes (path, is_dir)
+    end
+
+    -- Nest rules from other plugins, by plugin id. Each maps a pattern to the patterns under
+    -- it, the same way the setting does.
+    local plugin_nests = {} ---@type table<string, table<string, string[]>>
+    local nest_rules = {} ---@type CodeExplorer.NestRule[]
+
+    ---Reads the setting and the plugins' rules into `nest_rules`. A pattern the setting holds
+    ---wins over a plugin's rule for the same pattern.
+    local function read_nest_rules ()
+      local merged = {} ---@type table<string, any>
+      local ids = {} ---@type string[]
+      for id in pairs (plugin_nests) do
+        ids[#ids + 1] = id
+      end
+      table.sort (ids)
+      for _, id in ipairs (ids) do
+        for top, under in pairs (plugin_nests[id]) do
+          merged[top] = under
+        end
+      end
+      local value = settings.get ('code.explorer.nest')
+      if type (value) == 'table' then
+        for top, under in pairs (value) do
+          merged[top] = under
+        end
+      end
+      nest_rules = nesting.rules (merged, fold)
+    end
+    read_nest_rules ()
+
+    ---Marks which files of a folder sit under another file.
+    ---@param list CodeExplorer.Entry[] The folder's entries.
+    local function nest_entries (list)
+      local names = {} ---@type string[]
+      local by_name = {} ---@type table<string, CodeExplorer.Entry>
+      for _, e in ipairs (list) do
+        e.kids, e.nested_in = nil, nil
+        if not e.dir then
+          names[#names + 1] = e.name
+          by_name[e.name] = e
+        end
+      end
+      for top, kids in pairs (nesting.group (names, nest_rules, fold)) do
+        local parent = by_name[top]
+        parent.kids = {}
+        for _, name in ipairs (kids) do
+          local kid = by_name[name]
+          kid.nested_in = parent.path
+          parent.kids[#parent.kids + 1] = kid
+        end
+      end
     end
 
     ---The full path of a path in the tree.
@@ -296,6 +397,7 @@ return {
             end
             return a.name:lower () < b.name:lower ()
           end)
+          nest_entries (list)
           listing[dir] = list
         end
         if again[dir] then
@@ -687,6 +789,9 @@ return {
 
     -- The right-click menu ---------------------------------------------------------------
 
+    -- Items other plugins add to a file's menu, in the order they were added.
+    local plugin_items = {} ---@type { owner: string, spec: CodeExplorer.MenuItemSpec }[]
+
     ---@param list FileTree.Entry[]
     ---@param full boolean
     local function copy_paths (list, full)
@@ -766,6 +871,25 @@ return {
             open_file (path)
           end,
         })
+        -- Two plugins may add the same item, such as both Godot plugins. The first one shows.
+        local full = abs (path)
+        local shown = {} ---@type table<string, boolean>
+        for _, item in ipairs (plugin_items) do
+          local spec = item.spec
+          if
+            not shown[spec.label]
+            and (not spec.when or app.try (spec.when, full) == true)
+          then
+            shown[spec.label] = true
+            add ({
+              label = spec.label,
+              icon = spec.icon,
+              run = function ()
+                app.try (spec.run, full)
+              end,
+            })
+          end
+        end
         add (sep)
       end
       add ({
@@ -1063,6 +1187,16 @@ return {
       end)
     end)
 
+    ---Groups the folders read so far again, without reading the disk.
+    local function regroup ()
+      read_nest_rules ()
+      for _, list in pairs (listing) do
+        nest_entries (list)
+      end
+      tree.render_soon ()
+    end
+    settings.watch ('code.explorer.nest', regroup)
+
     for _, key in ipairs ({ 'project.exclude', 'code.explorer.gitignore' }) do
       settings.watch (key, function ()
         if listing[''] then
@@ -1136,15 +1270,83 @@ return {
       content = content,
     })
 
-    -- Other plugins add sections under the tree, such as the folder's own Proteus plugins. A
-    -- restricted plugin adds sections only to its own views, so the explorer adds them for it.
-    app.provide ('code.explorer', {
-      ---@param spec Proteus.ViewSectionSpec
-      ---@return Proteus.ViewSection?
-      add_section = function (spec)
-        return views.add_section ('explorer', spec)
-      end,
-    })
+    -- Other plugins add to the tree: sections under it, such as the folder's own Proteus
+    -- plugins, files to nest, and items in a file's right-click menu. A restricted plugin
+    -- adds sections only to its own views, so the explorer adds them for it. What a plugin
+    -- added goes away when it stops.
+    app.provide_scoped ('code.explorer', function (consumer)
+      local id = consumer.id
+      consumer.dispose (function ()
+        for i = #plugin_items, 1, -1 do
+          if plugin_items[i].owner == id then
+            table.remove (plugin_items, i)
+          end
+        end
+        if plugin_nests[id] then
+          plugin_nests[id] = nil
+          regroup ()
+        end
+      end)
+      return {
+        ---@param spec Proteus.ViewSectionSpec
+        ---@return Proteus.ViewSection?
+        add_section = function (spec)
+          return views.add_section ('explorer', spec)
+        end,
+        ---Adds files to nest, as `code.explorer.nest` names them. A pattern the setting
+        ---holds wins over the plugin's.
+        ---@param rules table<string, string[]>
+        add_nesting = function (rules)
+          if type (rules) ~= 'table' then
+            error ('add_nesting takes a table of patterns', 2)
+          end
+          local mine = plugin_nests[id] or {}
+          for top, under in pairs (rules) do
+            if type (top) == 'string' and type (under) == 'table' then
+              local list = {} ---@type string[]
+              for _, v in ipairs (under) do
+                if type (v) == 'string' then
+                  list[#list + 1] = v
+                end
+              end
+              mine[top] = list
+            end
+          end
+          plugin_nests[id] = mine
+          regroup ()
+        end,
+        ---Adds an item to a file's right-click menu. It hands the plugin full paths on disk,
+        ---so a restricted plugin needs `files`.
+        ---@param spec CodeExplorer.MenuItemSpec
+        add_menu_item = function (spec)
+          local allowed = consumer.trusted ~= false
+          for _, p in ipairs (consumer.permissions or {}) do
+            if p == 'files' then
+              allowed = true
+            end
+          end
+          if not allowed then
+            error ('add_menu_item needs the files permission', 2)
+          end
+          if
+            type (spec) ~= 'table'
+            or type (spec.label) ~= 'string'
+            or type (spec.run) ~= 'function'
+          then
+            error ('add_menu_item needs a label and a run function', 2)
+          end
+          plugin_items[#plugin_items + 1] = {
+            owner = id,
+            spec = {
+              label = spec.label,
+              icon = spec.icon,
+              when = spec.when,
+              run = spec.run,
+            },
+          }
+        end,
+      }
+    end)
 
     local commands = app.try_use ('commands')
     if commands then

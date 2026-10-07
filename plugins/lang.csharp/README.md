@@ -7,7 +7,9 @@ C# for Godot 4 .NET projects in the Code Editor: completion of your scripts and 
 - **Completion** of your scripts and Godot's API (`Node`, `GD`, `Input` and the rest), with hover help, go to definition (F12) and problems as you type, from [csharp-ls](https://github.com/razzmatazz/csharp-language-server). It runs `dotnet restore` first, which fetches the GodotSharp package that holds Godot's API.
 - **Godot: Build C#** runs `dotnet build` and puts its errors in the Problems panel.
 - **Godot: Run the Game** builds, then starts the game. **Godot: Stop the Game** stops it.
-- **Godot: Open in the Godot Editor** starts the Godot editor on the project.
+- **Godot: Open in the Godot Editor** starts the Godot editor on the project. When Godot already has the project open, it says so rather than start a second editor. On Windows it cannot tell, so it always starts one.
+- **Open in the Godot Editor** in a scene's right-click menu, in the Code Editor's file tree, starts the Godot editor on that scene. Godot can only open a scene when it starts, so with the project already open in Godot, it says so instead.
+- Godot's `.uid` files sit under the file they belong to in the file tree, such as `Player.cs.uid` under `Player.cs`.
 - **Godot: Use Proteus as Godot's Editor…** shows what to type into Godot, so that a double-click on a C# script in Godot opens it here, at the line.
 
 The commands are in the Run menu and the palette. The output of each shows in the Tools panel, under csharp-ls and Godot (C#).
