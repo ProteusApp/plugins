@@ -2,7 +2,7 @@
 -- panel. Run builds, then starts the game with Godot. Open in Godot starts the Godot editor
 -- on the project. The output of each shows in the Tools panel, under Godot (C#).
 
-local disk = require ('disk_paths') --[[@as DiskPaths]]
+local disk = require ('disk_paths')
 local godot = require ('lib.godot') --[[@as LangCsharp.GodotModule]]
 local program = require ('lib.program') --[[@as LangCsharp.ProgramModule]]
 

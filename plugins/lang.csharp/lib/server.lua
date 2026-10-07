@@ -2,8 +2,8 @@
 -- the first C# file that opens. It first runs `dotnet restore`, which fetches the GodotSharp
 -- package that holds Godot's API, so completion knows Node, GD and the rest.
 
-local client_module = require ('lsp.client') --[[@as Lsp.ClientModule]]
-local disk = require ('disk_paths') --[[@as DiskPaths]]
+local client_module = require ('lsp.client')
+local disk = require ('disk_paths')
 local program = require ('lib.program') --[[@as LangCsharp.ProgramModule]]
 
 -- The settings that belong to the server. Changing one restarts it.

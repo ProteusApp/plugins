@@ -18,7 +18,7 @@
 --   build    dotnet build, the game and the Godot editor
 
 local build_module = require ('lib.build') --[[@as LangCsharp.BuildModule]]
-local disk = require ('disk_paths') --[[@as DiskPaths]]
+local disk = require ('disk_paths')
 local godot = require ('lib.godot') --[[@as LangCsharp.GodotModule]]
 local project_module = require ('lib.project') --[[@as LangCsharp.ProjectModule]]
 local server_module = require ('lib.server') --[[@as LangCsharp.ServerModule]]

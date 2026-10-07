@@ -2,7 +2,7 @@
 -- and the solution and project files in it. Each folder is looked up once, until a
 -- project.godot, .sln or .csproj changes on disk.
 
-local disk = require ('disk_paths') --[[@as DiskPaths]]
+local disk = require ('disk_paths')
 local godot = require ('lib.godot') --[[@as LangCsharp.GodotModule]]
 
 ---A Godot project on disk.
