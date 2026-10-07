@@ -350,6 +350,49 @@
       ]
     },
     {
+      "id": "lang.csharp",
+      "name": "C# for Godot",
+      "description": "C# for Godot 4 .NET projects: completion of your scripts and the Godot API with csharp-ls, build errors in Problems, run the game, and open scripts from Godot.",
+      "version": "1.0.0",
+      "author": "nanoqoi",
+      "depends": [
+        "proteus.lib.ui",
+        "proteus.core.settings",
+        "proteus.core.commands",
+        "proteus.editor.core",
+        "proteus.tools.registry",
+        "proteus.tools.diagnostics",
+        "proteus.ui.overlays"
+      ],
+      "optional": [
+        "proteus.code.project",
+        "proteus.ui.notify"
+      ],
+      "permissions": [
+        "files",
+        "process"
+      ],
+      "folders": [],
+      "requires": {
+        "proteus": ">=0.3.0",
+        "features": [
+          "permissions"
+        ]
+      },
+      "files": [
+        "README.md",
+        "init.lua",
+        "lib/build.lua",
+        "lib/godot.lua",
+        "lib/program.lua",
+        "lib/project.lua",
+        "lib/server.lua",
+        "tests/godot.test.lua"
+      ],
+      "commit": "b448bcecff685812e5a552aa54fa76cad8afd01f",
+      "updated": "2026-10-07T23:01:02Z"
+    },
+    {
       "id": "theme.catppuccin",
       "name": "Catppuccin themes",
       "description": "Soothing pastel themes: Mocha, which is dark, and Latte, which is light.",
@@ -5631,7 +5674,7 @@
       "id": "shader.preview",
       "name": "Shader preview",
       "description": "Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -5663,9 +5706,44 @@
         "page/preview.js",
         "tests/preview.test.lua"
       ],
-      "commit": "044c6cf507935e2ddd1cc4b3d889f0512d0e6f83",
-      "updated": "2026-10-02T16:59:20Z",
+      "commit": "0edcf9f63553bff999c2aeec296b715a5c7d2b3e",
+      "updated": "2026-10-07T22:56:52Z",
       "versions": [
+        {
+          "version": "1.2.0",
+          "depends": [
+            "lib.ui",
+            "shader.core",
+            "shader.docs",
+            "ui.views",
+            "core.commands"
+          ],
+          "optional": [
+            "ui.tabs",
+            "shader.canvas",
+            "ui.statusbar",
+            "ui.notify"
+          ],
+          "permissions": [],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.2.0",
+            "features": [
+              "permissions",
+              "webview",
+              "grants"
+            ]
+          },
+          "files": [
+            "init.lua",
+            "page/preview.css",
+            "page/preview.html",
+            "page/preview.js",
+            "tests/preview.test.lua"
+          ],
+          "commit": "044c6cf507935e2ddd1cc4b3d889f0512d0e6f83",
+          "updated": "2026-10-02T16:59:20Z"
+        },
         {
           "version": "1.1.0",
           "depends": [
@@ -5773,7 +5851,7 @@
       "id": "proteus.sheet",
       "name": "Sheet",
       "description": "A spreadsheet with formulas, charts and several sheets per workbook, saved in data/proteus.sheet.",
-      "version": "1.3.1",
+      "version": "1.3.2",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -5882,9 +5960,121 @@
         "tests/sheet_xlsx.test.lua",
         "tests/sheet_xml.test.lua"
       ],
-      "commit": "74bcf10f757189bba7b58e4dcf73a06449e9263f",
-      "updated": "2026-10-02T21:57:16Z",
+      "commit": "0edcf9f63553bff999c2aeec296b715a5c7d2b3e",
+      "updated": "2026-10-07T22:56:52Z",
       "versions": [
+        {
+          "version": "1.3.1",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.shell",
+            "proteus.ui.views",
+            "proteus.core.commands"
+          ],
+          "optional": [
+            "proteus.ui.toolbar",
+            "proteus.ui.statusbar",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.core.keys",
+            "proteus.ui.menus",
+            "proteus.ui.menubar",
+            "proteus.ui.tabs",
+            "proteus.core.files",
+            "proteus.editor.core"
+          ],
+          "permissions": [
+            "clipboard",
+            "files"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions",
+              "menus"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua",
+            "sheet_book.lua",
+            "sheet_calendar.lua",
+            "sheet_chart.lua",
+            "sheet_commands.lua",
+            "sheet_ctl.lua",
+            "sheet_example.lua",
+            "sheet_files.lua",
+            "sheet_fn_arrays.lua",
+            "sheet_fn_date.lua",
+            "sheet_fn_finance.lua",
+            "sheet_fn_logic_info.lua",
+            "sheet_fn_lookup.lua",
+            "sheet_fn_math.lua",
+            "sheet_fn_more.lua",
+            "sheet_fn_stats.lua",
+            "sheet_fn_text.lua",
+            "sheet_format.lua",
+            "sheet_formula.lua",
+            "sheet_formula_edit.lua",
+            "sheet_formula_eval.lua",
+            "sheet_formula_kit.lua",
+            "sheet_formula_lex.lua",
+            "sheet_formula_parse.lua",
+            "sheet_grid.lua",
+            "sheet_grid_act.lua",
+            "sheet_grid_calc.lua",
+            "sheet_grid_draw.lua",
+            "sheet_grid_edit.lua",
+            "sheet_grid_keys.lua",
+            "sheet_grid_mouse.lua",
+            "sheet_grid_tabs.lua",
+            "sheet_json.lua",
+            "sheet_menus.lua",
+            "sheet_model.lua",
+            "sheet_model_clip.lua",
+            "sheet_model_data.lua",
+            "sheet_model_style.lua",
+            "sheet_ops.lua",
+            "sheet_panel_chart.lua",
+            "sheet_panel_find.lua",
+            "sheet_panel_names.lua",
+            "sheet_panel_pop.lua",
+            "sheet_panel_rules.lua",
+            "sheet_panel_side.lua",
+            "sheet_panel_sort.lua",
+            "sheet_panel_text.lua",
+            "sheet_panel_validation.lua",
+            "sheet_panels.lua",
+            "sheet_toolbar.lua",
+            "sheet_xlsx.lua",
+            "sheet_xlsx_parts.lua",
+            "sheet_xlsx_read.lua",
+            "sheet_xlsx_write.lua",
+            "sheet_xml.lua",
+            "tests/sheet.test.lua",
+            "tests/sheet_book.test.lua",
+            "tests/sheet_book_parts.test.lua",
+            "tests/sheet_chart.test.lua",
+            "tests/sheet_ctl.test.lua",
+            "tests/sheet_files.test.lua",
+            "tests/sheet_format.test.lua",
+            "tests/sheet_formula.test.lua",
+            "tests/sheet_formula_parts.test.lua",
+            "tests/sheet_grid.test.lua",
+            "tests/sheet_grid_input.test.lua",
+            "tests/sheet_model.test.lua",
+            "tests/sheet_model_parts.test.lua",
+            "tests/sheet_model_style.test.lua",
+            "tests/sheet_ops.test.lua",
+            "tests/sheet_panel_side.test.lua",
+            "tests/sheet_panels.test.lua",
+            "tests/sheet_xlsx.test.lua",
+            "tests/sheet_xml.test.lua"
+          ],
+          "commit": "74bcf10f757189bba7b58e4dcf73a06449e9263f",
+          "updated": "2026-10-02T21:57:16Z"
+        },
         {
           "version": "1.3.0",
           "depends": [
