@@ -114,7 +114,7 @@ local DIMS =
 return {
   name = 'Shader preview',
   description = 'Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.',
-  version = '1.2.0',
+  version = '1.2.1',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'webview', 'grants' },
@@ -524,7 +524,7 @@ return {
 
       ---@param list Shader.Uniform[]
       local function draw_uniforms (list)
-        local shape = {} ---@type string[]
+        local marks = {} ---@type string[]
         -- The values count too, so an undo moves the controls back. A control's own moves
         -- change no document, so they never draw the controls again mid-drag.
         for _, u in ipairs (list) do
@@ -532,8 +532,8 @@ return {
           for i, v in ipairs (u.value) do
             values[i] = tostring (v)
           end
-          shape[#shape + 1] = table.concat (values, ' ')
-          shape[#shape + 1] = u.key
+          marks[#marks + 1] = table.concat (values, ' ')
+          marks[#marks + 1] = u.key
             .. ':'
             .. u.type
             .. ':'
@@ -543,7 +543,7 @@ return {
             .. ':'
             .. u.max
         end
-        local key = (shown_path or '') .. '|' .. table.concat (shape, ',')
+        local key = (shown_path or '') .. '|' .. table.concat (marks, ',')
         if key == uniform_shape then
           return
         end
@@ -665,15 +665,15 @@ return {
       ---@param sources table<integer, Shader.ChannelSource>
       local function draw_channels (path, p, sources)
         local list = p and p.channels or {}
-        local shape = { path or '' } ---@type string[]
+        local marks = { path or '' } ---@type string[]
         for _, c in ipairs (list) do
-          shape[#shape + 1] = table.concat (c.names, ',')
+          marks[#marks + 1] = table.concat (c.names, ',')
             .. '='
             .. source_key (sources[c.index])
             .. ':'
             .. tostring (sources[c.index] and sources[c.index].name)
         end
-        local key = table.concat (shape, '|')
+        local key = table.concat (marks, '|')
         if key == channel_shape then
           return
         end

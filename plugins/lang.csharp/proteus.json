@@ -1,0 +1,45 @@
+{
+  "id": "lang.csharp",
+  "name": "C# for Godot",
+  "description": "C# for Godot 4 .NET projects: completion of your scripts and the Godot API with csharp-ls, build errors in Problems, run the game, and open scripts from Godot.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.core.settings",
+    "proteus.core.commands",
+    "proteus.editor.core",
+    "proteus.tools.registry",
+    "proteus.tools.diagnostics",
+    "proteus.ui.overlays"
+  ],
+  "optional": [
+    "proteus.code.project",
+    "proteus.ui.notify"
+  ],
+  "permissions": [
+    "files",
+    "process"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "lib/build.lua",
+    "lib/godot.lua",
+    "lib/program.lua",
+    "lib/project.lua",
+    "lib/server.lua",
+    "tests/godot.test.lua"
+  ]
+}

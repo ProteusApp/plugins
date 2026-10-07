@@ -2,7 +2,7 @@
   "id": "shader.preview",
   "name": "Shader preview",
   "description": "Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "depends": [
     "lib.ui",
     "shader.core",
