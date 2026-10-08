@@ -14,7 +14,6 @@ local THEMES = { ['core.themes'] = true, ['proteus.core.themes'] = true }
 ---True when a plugin's table names one of `wanted` in `depends`.
 ---@param plugin table
 ---@param wanted table<string, true>
----@return boolean
 local function depends_on (plugin, wanted)
   for _, dep in ipairs (plugin.depends or {}) do
     if wanted[dep] then
