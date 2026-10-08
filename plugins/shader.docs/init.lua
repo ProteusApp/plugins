@@ -2,7 +2,7 @@
 -- undo history of each graph, knows which one is in front, and compiles each on demand.
 -- Other plugins draw the documents: an opener for each kind makes the tab's content.
 --
--- A graph is a *.shader.json file. A code shader is a .frag, .glsl or .wgsl file, and a .vert
+-- A graph is a *.shader.json file. A code shader is a .frag, .glsl, .wgsl or .gdshader file, and a .vert
 -- file beside a .frag file of the same name is its vertex shader. `x.buffer-a.frag` is Buffer A
 -- of the shader `x.frag`: a pass drawn before it each frame, which its channels can read. New
 -- files go in shaders/, which it claims in `folders`, and it copies the examples there.
@@ -11,7 +11,8 @@
 -- shader to the weather system in examples/weather.frag.
 
 local FOLDER = 'shaders'
-local EXTENSIONS = { '.shader.json', '.frag', '.vert', '.glsl', '.wgsl' }
+local EXTENSIONS =
+  { '.shader.json', '.frag', '.vert', '.glsl', '.wgsl', '.gdshader' }
 -- The examples that came with 1.0, which a workspace from then has copied already.
 local FIRST_EXAMPLES = {
   'cells.shader.json',
@@ -28,7 +29,7 @@ local FIRST_EXAMPLES = {
 return {
   name = 'Shader documents',
   description = 'Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.',
-  version = '1.4.0',
+  version = '1.5.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'folders', 'plugin-files' },
@@ -131,6 +132,61 @@ return {
     ---@return boolean
     local function in_folder (path)
       return path == FOLDER or path:sub (1, #FOLDER + 1) == FOLDER .. '/'
+    end
+
+    -- Shaders from a folder on disk, such as the Code Editor's, by full path. A plugin with the
+    -- `files` permission reads them and hands their text over, and saves go back through it.
+    local disk = {} ---@type table<string, string>
+    local disk_writer = nil ---@type Shader.DiskWriter?
+    -- Set when another plugin reopens files itself, so the shaders open at the last close stay
+    -- closed.
+    local skip_reopen = false
+
+    ---True for a full path on disk, rather than a path in the workspace.
+    ---@param path string
+    ---@return boolean
+    local function on_disk (path)
+      return path:sub (1, 1) == '/' or path:match ('^%a:[/\\]') ~= nil
+    end
+
+    ---A file's text, from the workspace or from what was handed over from disk.
+    ---@param path string
+    ---@return string?
+    local function read (path)
+      if on_disk (path) then
+        return disk[path]
+      end
+      return app.fs.read (path)
+    end
+
+    ---@param path string
+    ---@return boolean
+    local function exists (path)
+      if on_disk (path) then
+        return disk[path] ~= nil
+      end
+      return app.fs.exists (path)
+    end
+
+    ---Writes a file. One on disk is written through the plugin that handed it over, and an
+    ---error it gives later arrives through `on_error`.
+    ---@param path string
+    ---@param text string
+    ---@param on_error? fun(err: string)
+    local function write (path, text, on_error)
+      if not on_disk (path) then
+        app.fs.write (path, text)
+        return
+      end
+      if not disk_writer then
+        error ('nothing can write files on disk here', 0)
+      end
+      disk[path] = text
+      disk_writer (path, text, function (err)
+        if err and on_error then
+          on_error (err)
+        end
+      end)
     end
 
     local function remember ()
@@ -295,7 +351,7 @@ return {
           app.store.set ('channels:' .. path, doc.channels)
         end
       else
-        local text = app.fs.read (path)
+        local text = read (path)
         if not text then
           warn ('There is no file at ' .. path .. '.')
           return nil
@@ -368,7 +424,7 @@ return {
       end
       local path = FOLDER .. '/' .. clean .. ext
       local n = 2
-      while app.fs.exists (path) do
+      while exists (path) do
         path = FOLDER .. '/' .. clean .. '-' .. n .. ext
         n = n + 1
       end
@@ -390,7 +446,7 @@ return {
       if other then
         return other.text
       end
-      return app.fs.read (vert)
+      return read (vert)
     end
 
     ---The text a save writes.
@@ -447,7 +503,7 @@ return {
       if not d or asking[d] then
         return
       end
-      local text = app.fs.read (path)
+      local text = read (path)
       if text == nil then
         if not d.missing then
           d.missing = true
@@ -506,7 +562,7 @@ return {
         },
         on_pick = function (item)
           asking[d] = nil
-          local now = open[d.path] == d and app.fs.read (d.path)
+          local now = open[d.path] == d and read (d.path)
           if not now then
             return
           end
@@ -580,7 +636,7 @@ return {
       if ending (to) ~= ending (path) then
         return 'Keep the ending ' .. ending (path) .. '.'
       end
-      if to ~= path and app.fs.exists (to) then
+      if to ~= path and exists (to) then
         return 'A file has that name already.'
       end
       return nil
@@ -594,7 +650,7 @@ return {
       if d then
         return d
       end
-      local text = app.fs.read (path)
+      local text = read (path)
       if not text then
         peeked[path] = nil
         return nil
@@ -645,7 +701,7 @@ return {
         -- A vertex shader runs with the fragment shader beside it.
         local frag = d.path:gsub ('%.vert$', '.frag')
         local frag_doc = open[frag]
-        local frag_text = frag_doc and frag_doc.text or app.fs.read (frag)
+        local frag_text = frag_doc and frag_doc.text or read (frag)
         if not frag_text then
           return nil,
             {
@@ -696,7 +752,7 @@ return {
       ---@return string?
       local function find (pass)
         for _, p in ipairs (core.passes.pass_paths (base, pass)) do
-          if open[p] or app.fs.exists (p) then
+          if open[p] or exists (p) then
             return p
           end
         end
@@ -855,7 +911,15 @@ return {
           return false
         end
         local text = body_of (d)
-        local ok, err = pcall (app.fs.write, path, text)
+        local before = d.saved
+        local ok, err = pcall (write, path, text, function (late)
+          -- A file on disk failed to write after all, so the shader has unsaved changes again.
+          if open[path] == d and d.saved == text then
+            d.saved = before
+            mark (d)
+          end
+          warn ('Could not save ' .. d.title .. ': ' .. late)
+        end)
         if not ok then
           warn ('Could not save ' .. d.title .. ': ' .. tostring (err))
           return false
@@ -972,7 +1036,7 @@ return {
             or t.buffer
           text = template:gsub ('{{BUFFER}}', 'buffer-' .. free) --[[@as string]]
         end
-        local ok, err = pcall (app.fs.write, target, text)
+        local ok, err = pcall (write, target, text)
         if not ok then
           return nil, tostring (err)
         end
@@ -1029,6 +1093,10 @@ return {
 
       remove = function (path)
         local d = open[path]
+        if on_disk (path) then
+          warn ('Delete ' .. base_name (path) .. ' in the file tree.')
+          return false
+        end
         local ok, err = pcall (app.fs.remove, path)
         if not ok then
           warn ('Could not delete ' .. path .. ': ' .. tostring (err))
@@ -1036,7 +1104,7 @@ return {
         end
         file_list = nil
         if d and open[path] == d then
-          local text = app.fs.read (path)
+          local text = read (path)
           if text then
             -- The example underneath shows again in place of the changed copy.
             reload (d, text)
@@ -1050,6 +1118,9 @@ return {
       rename = function (path, to)
         if to == path then
           return true
+        end
+        if on_disk (path) or on_disk (to) then
+          return false, 'Rename it in the file tree.'
         end
         local problem = rename_problem (path, to)
         if problem then
@@ -1065,6 +1136,43 @@ return {
         return true
       end,
 
+      skip_reopen = function ()
+        skip_reopen = true
+      end,
+
+      attach_disk = function (writer)
+        disk_writer = writer
+        return function ()
+          if disk_writer == writer then
+            disk_writer = nil
+          end
+        end
+      end,
+
+      open_disk = function (path, texts)
+        for p, text in pairs (texts) do
+          if on_disk (p) and not (open[p] and open[p].dirty) then
+            disk[p] = text
+          end
+        end
+        file_list = nil
+        return open_path (path)
+      end,
+
+      disk_changed = function (path, text)
+        if not on_disk (path) then
+          return
+        end
+        if text == nil and not open[path] then
+          disk[path] = nil
+          return
+        end
+        disk[path] = text
+        if open[path] then
+          check_soon (path)
+        end
+      end,
+
       new_graph = function (name)
         local path = free_path (name or 'graph', core.file.EXTENSION)
         local doc = core.graph.new (name or 'Untitled')
@@ -1076,9 +1184,11 @@ return {
         local t = core.source.TEMPLATES
         local text = template
           or (lang == 'wgsl' and t.wgsl)
+          or (lang == 'gdshader' and t.gdshader)
           or (lang == 'vertex' and t.vertex)
           or t.glsl
         local ext = lang == 'wgsl' and '.wgsl'
+          or (lang == 'gdshader' and '.gdshader')
           or (lang == 'vertex' and '.vert')
           or '.frag'
         local path = name and name:find ('/', 1, true) and name
@@ -1118,7 +1228,7 @@ return {
         and not app.dom.focus_info ().editable
     end
 
-    ---@param lang 'glsl'|'wgsl'|'vertex'|'shadertoy'
+    ---@param lang 'glsl'|'wgsl'|'gdshader'|'vertex'|'shadertoy'
     ---@param title string
     local function ask_new (lang, title)
       local function make_it (name)
@@ -1196,6 +1306,19 @@ return {
       end,
     })
     commands.register ({
+      id = 'shader.new_godot',
+      category = 'Shader',
+      title = 'New Godot Shader',
+      shared = true,
+      menu = 'File',
+      group = '1-new',
+      order = 4,
+      icon = 'gamepad-2',
+      run = function ()
+        ask_new ('gdshader', 'Name the new Godot shader')
+      end,
+    })
+    commands.register ({
       id = 'shader.new_shadertoy',
       category = 'Shader',
       title = 'New Shadertoy-Style Shader',
@@ -1228,7 +1351,7 @@ return {
           return
         end
         local vert = d.path:gsub ('%.[%w]+$', '.vert')
-        if app.fs.exists (vert) then
+        if exists (vert) then
           open_path (vert)
         else
           api.new_code ('vertex', vert)
@@ -1346,7 +1469,7 @@ return {
                 ))
                 .. '.'
             end
-            if app.fs.exists (text) then
+            if exists (text) then
               return 'A file has that name already.'
             end
             return nil
@@ -1462,6 +1585,9 @@ return {
     -- The shaders open at the last close open again, once every opener is in place. On the
     -- first start the Plasma example opens.
     app.timer.after (0, function ()
+      if skip_reopen then
+        return
+      end
       local list = app.store.get ('open', nil)
       if type (list) ~= 'table' then
         list = { FOLDER .. '/plasma.shader.json' }

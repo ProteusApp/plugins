@@ -2,7 +2,7 @@
   "id": "shader.docs",
   "name": "Shader documents",
   "description": "Opens, saves and compiles the shaders in the builder, and keeps the undo history of each graph.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "depends": [
     "lib.ui",
     "shader.core",

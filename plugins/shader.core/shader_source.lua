@@ -90,6 +90,7 @@ local EXTENSIONS = {
   vert = { 'glsl', 'vertex' },
   vs = { 'glsl', 'vertex' },
   wgsl = { 'wgsl', 'fragment' },
+  gdshader = { 'gdshader', 'fragment' },
 }
 
 local M = {}
@@ -460,6 +461,17 @@ function M.program (lang, text, vertex)
   if lang == 'wgsl' then
     return M.wgsl_program (text)
   end
+  if lang == 'gdshader' then
+    -- Required here, since shader_godot requires this module.
+    local godot = require ('shader_godot') --[[@as Shader.GodotModule]]
+    local program, errors = godot.program (text)
+    if program then
+      return program, errors
+    end
+    -- A program that draws nothing, so the preview shows the problems instead.
+    local empty = M.glsl_program ('void main() { fragColor = vec4(0.0); }')
+    return empty, errors
+  end
   return M.glsl_program (text, vertex)
 end
 
@@ -522,6 +534,19 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let wave = 0.5 + 0.5 * sin(length(p) * 18.0 - u.time * u.speed * 3.0);
   let color = mix(vec3f(0.05), u.tint, wave);
   return vec4f(color, 1.0);
+}
+]],
+  gdshader = [[
+// A Godot 4 canvas item shader. Put it on a Sprite2D or a ColorRect in Godot. The preview
+// runs it here too: TEXTURE reads channel 0, and each uniform gets a control.
+shader_type canvas_item;
+
+uniform float speed : hint_range(0.0, 4.0) = 1.0;
+uniform vec4 tint : source_color = vec4(0.3, 0.6, 1.0, 1.0);
+
+void fragment() {
+	vec3 col = 0.5 + 0.5 * cos(TIME * speed + UV.xyx + vec3(0.0, 2.0, 4.0));
+	COLOR = vec4(col * tint.rgb, 1.0);
 }
 ]],
   shadertoy = [[

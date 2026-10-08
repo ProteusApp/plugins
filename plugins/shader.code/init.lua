@@ -86,6 +86,32 @@ local WGSL_WORDS = {
   'var<uniform>',
 }
 
+-- The app's help for Godot shaders, in versions of Proteus that ship it.
+local has_godot, godot_lib = pcall (require, 'gdshader')
+
+---Completion and hover help for a Godot shader, from the app's `gdshader` library, or nil
+---when this version of Proteus has none.
+---@param text fun(): string The shader's text now.
+---@return Proteus.CodeProvider?
+local function godot_provider (text)
+  if not has_godot or type (godot_lib) ~= 'table' then
+    return nil
+  end
+  local lib = godot_lib --[[@as table]]
+  ---@type Proteus.CodeProvider
+  return {
+    complete = lib.complete and function (pos, respond)
+      respond (lib.complete (text (), pos.line, pos.character))
+    end or nil,
+    hover = lib.hover and function (pos, respond)
+      respond (lib.hover (text (), pos.line, pos.character))
+    end or nil,
+    signature = lib.signature and function (pos, respond)
+      respond (lib.signature (text (), pos.line, pos.character))
+    end or nil,
+  }
+end
+
 -- lang=css
 local CSS = [[
 .sc-root { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -119,17 +145,18 @@ local CSS = [[
 ---@type Proteus.Plugin
 return {
   name = 'Shader code',
-  description = 'Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.',
-  version = '1.0.1',
+  description = 'Edits GLSL, WGSL and Godot shaders with problems from the real compiler, and shows the code a graph turns into.',
+  version = '1.1.0',
   requires = { proteus = '>=0.2.0', features = { 'permissions', 'languages' } },
   permissions = {},
-  depends = { 'lib.ui', 'shader.docs', 'core.commands' },
+  depends = { 'lib.ui', 'shader.core', 'shader.docs', 'core.commands' },
   optional = { 'ui.views', 'shader.canvas', 'ui.notify', 'ui.palette' },
   activate = function (app)
     local ui = app.use ('ui')
     ui.language (GLSL)
     ui.language (WGSL)
     local docs = app.use ('shader.docs') --[[@as Shader.Docs]]
+    local core = app.use ('shader') --[[@as Shader.Core]]
     local commands = app.use ('commands')
     local views = app.try_use ('views')
     local canvas = app.try_use ('shader.canvas') --[[@as Shader.CanvasService?]]
@@ -185,7 +212,15 @@ return {
       editor = ui.widget ('code', {
         text = doc.text,
         language = doc.language,
-        completions = doc.language == 'wgsl' and WGSL_WORDS or GLSL_WORDS,
+        completions = doc.language == 'wgsl' and WGSL_WORDS
+          or doc.language ~= 'gdshader' and GLSL_WORDS
+          or nil,
+        provider = doc.language == 'gdshader'
+            and godot_provider (function ()
+              return editor and editor:alive () and editor:widget ('get_text')
+                or doc.text
+            end)
+          or nil,
         on_change = function ()
           if not pending then
             pending = true
@@ -201,6 +236,7 @@ return {
         local program = docs.program (path)
         local parts = {} ---@type string[]
         parts[#parts + 1] = doc.language == 'wgsl' and 'WGSL · WebGPU'
+          or doc.language == 'gdshader' and 'Godot 4 shader · runs here as GLSL'
           or 'GLSL ES 3.00 · WebGL 2'
         if doc.stage == 'vertex' then
           parts[#parts + 1] = 'vertex shader'
@@ -225,7 +261,12 @@ return {
 
       local bar = ui.div ({
         class = 'sc-bar',
-        ui.icon (doc.language == 'wgsl' and 'file-code-2' or 'file-code', 14),
+        ui.icon (
+          doc.language == 'wgsl' and 'file-code-2'
+            or doc.language == 'gdshader' and 'gamepad-2'
+            or 'file-code',
+          14
+        ),
         note,
         ui.span ({ class = 'sc-grow' }),
         ui.button ({
@@ -294,6 +335,13 @@ return {
       local result = docs.compiled (path) --[[@as Shader.CompileResult]]
       if which == 'vertex' then
         return result.glsl.vertex or '', 'glsl', {}
+      elseif which == 'godot' then
+        if not result.ir or #result.errors > 0 then
+          return '// Fix the problems in the graph to see its Godot shader.\n',
+            'gdshader',
+            {}
+        end
+        return core.export.godot (result.ir), 'gdshader', {}
       elseif which == 'wgsl' then
         return result.wgsl.source, 'wgsl', result.wgsl.lines or {}
       end
@@ -397,6 +445,7 @@ return {
           tab ('glsl', 'GLSL fragment'),
           tab ('vertex', 'GLSL vertex'),
           tab ('wgsl', 'WGSL'),
+          tab ('godot', 'Godot'),
         }),
         out_note,
         ui.span ({ class = 'sc-grow' }),
@@ -480,6 +529,8 @@ return {
         local stem = d.title
         if which == 'wgsl' then
           docs.new_code ('wgsl', stem, result.wgsl.source)
+        elseif which == 'godot' and result.ir and #result.errors == 0 then
+          docs.new_code ('gdshader', stem, core.export.godot (result.ir))
         else
           docs.new_code ('glsl', stem, result.glsl.source)
         end

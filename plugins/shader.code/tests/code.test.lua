@@ -122,6 +122,13 @@ local function start ()
   local services = {
     ui = ui,
     ['shader.docs'] = docs,
+    shader = {
+      export = {
+        godot = function ()
+          return 'GODOT SOURCE'
+        end,
+      },
+    },
     commands = {
       register = function (spec)
         run.commands[spec.id] = spec

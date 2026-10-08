@@ -3,7 +3,8 @@
 -- Types for the shader builder: the pure core in plugins/shader/shader.core, served as the
 -- `shader` service, and the services of the plugins around it.
 
----@alias Shader.Lang 'glsl'|'wgsl'
+---A code shader's language. A Godot shader runs in the preview as GLSL.
+---@alias Shader.Lang 'glsl'|'wgsl'|'gdshader'
 
 ---A value a wire carries.
 ---@alias Shader.Type 'float'|'vec2'|'vec3'|'vec4'
@@ -447,7 +448,7 @@
 
 ---@class Shader.SourceModule
 ---@field GLSL_BUILTINS table<string, string>
----@field TEMPLATES { glsl: string, wgsl: string, shadertoy: string, vertex: string, buffer: string, buffer_wgsl: string }
+---@field TEMPLATES { glsl: string, wgsl: string, gdshader: string, shadertoy: string, vertex: string, buffer: string, buffer_wgsl: string }
 ---@field kind_of fun(path: string): Shader.Lang?, ('fragment'|'vertex')?
 ---@field notes fun(comment: string, t: Shader.UniformType): Shader.Notes
 ---@field glsl_uniforms fun(text: string): Shader.Uniform[], table<string, boolean>, Shader.CompileError[]
@@ -455,6 +456,11 @@
 ---@field wgsl_uniforms fun(text: string): Shader.Layout?, Shader.Uniform[], Shader.CompileError[]
 ---@field wgsl_program fun(text: string): Shader.Program, Shader.CompileError[]
 ---@field program fun(lang: Shader.Lang, text: string, vertex?: string): Shader.Program, Shader.CompileError[]
+
+---@class Shader.GodotModule
+---@field TYPES string[] The shader types the preview runs.
+---@field translate fun(text: string): string?, Shader.CompileError[], string?
+---@field program fun(text: string): Shader.Program?, Shader.CompileError[]
 
 ---@class Shader.FileModule
 ---@field KIND string
@@ -550,6 +556,9 @@
 ---@field tab? Proteus.Tab
 
 ---The `shader.docs` service from `shader.docs`.
+---Writes a shader's file on disk, then calls `done` with nil, or with why it could not.
+---@alias Shader.DiskWriter fun(path: string, text: string, done: fun(err: string?))
+
 ---@class Shader.Docs
 ---@field folder string Where new shaders go.
 ---@field extensions string[]
@@ -577,6 +586,10 @@
 ---@field remove fun(path: string): boolean Deletes a shader's file and closes its tab. A changed example goes back to the original, and its tab shows that.
 ---@field rename fun(path: string, to: string): boolean, string? Renames a shader's file. An open shader moves to a new tab with its undo and unsaved changes. False and why when it cannot.
 ---@field new_graph fun(name?: string): Shader.OpenDoc?
+---@field skip_reopen fun() Keeps the shaders open at the last close closed, for a profile that reopens its own files.
+---@field attach_disk fun(writer: Shader.DiskWriter): fun() Lets shaders on disk save, through a plugin that may write there. Returns a function that takes it back.
+---@field open_disk fun(path: string, texts: table<string, string>): Shader.OpenDoc? Opens a shader on disk by its full path. `texts` holds its text and its neighbours', such as its .vert file and buffers, by full path.
+---@field disk_changed fun(path: string, text: string?) A file on disk changed, or was deleted when `text` is nil.
 ---@field new_code fun(lang: Shader.Lang|'vertex', name?: string, template?: string): Shader.OpenDoc?
 
 ---The `shader.canvas` service from `shader.canvas`.

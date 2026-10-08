@@ -1,10 +1,11 @@
 {
   "id": "shader.code",
   "name": "Shader code",
-  "description": "Edits GLSL and WGSL shaders with problems from the real compiler, and shows the code a graph turns into.",
-  "version": "1.0.1",
+  "description": "Edits GLSL, WGSL and Godot shaders with problems from the real compiler, and shows the code a graph turns into.",
+  "version": "1.1.0",
   "depends": [
     "lib.ui",
+    "shader.core",
     "shader.docs",
     "core.commands"
   ],

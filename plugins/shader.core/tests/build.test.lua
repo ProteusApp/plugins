@@ -156,6 +156,11 @@ test ('every example code shader and template compiles', function ()
         'the vertex template',
         (source.glsl_program (source.TEMPLATES.glsl, text))
       )
+    elseif key == 'gdshader' then
+      program_compiles (
+        'the Godot template',
+        (source.program ('gdshader', text))
+      )
     elseif key == 'wgsl' or key == 'buffer_wgsl' then
       program_compiles ('the WGSL template', (source.wgsl_program (text)))
     else

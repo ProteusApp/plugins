@@ -114,7 +114,7 @@ local DIMS =
 return {
   name = 'Shader preview',
   description = 'Runs the shader in front live, flat or on a mesh, on WebGL 2 or WebGPU, with its buffers, its channels, its problems and a control for every uniform.',
-  version = '1.2.1',
+  version = '1.3.0',
   requires = {
     proteus = '>=0.2.0',
     features = { 'permissions', 'webview', 'grants' },
@@ -702,7 +702,8 @@ return {
           b:class ('on', s == scale)
         end
         lang_el:text (
-          d and (d.language == 'wgsl' and 'WGSL · WebGPU' or 'GLSL · WebGL 2')
+          d
+              and (d.language == 'wgsl' and 'WGSL · WebGPU' or d.language == 'gdshader' and 'Godot as GLSL · WebGL 2' or 'GLSL · WebGL 2')
             or ''
         )
       end
