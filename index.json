@@ -3536,7 +3536,7 @@
       "id": "proteus.code.explorer",
       "name": "Project Explorer",
       "description": "A file tree of the folder open in the Code Editor, read from disk as folders open.",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "author": "ProteusApp",
       "depends": [
         "proteus.lib.ui",
@@ -3572,9 +3572,48 @@
         "init.lua",
         "tests/file_nesting.test.lua"
       ],
-      "commit": "36d88ae1c160d20c18dbc8787aad53e5584285ae",
-      "updated": "2026-10-07T17:56:59-06:00",
+      "commit": "e69caeec4057d24100461fdf63137d9642fcc2e4",
+      "updated": "2026-10-08T17:02:05-06:00",
       "versions": [
+        {
+          "version": "1.4.0",
+          "depends": [
+            "proteus.lib.ui",
+            "proteus.ui.views",
+            "proteus.code.project",
+            "proteus.core.settings",
+            "proteus.core.icons"
+          ],
+          "optional": [
+            "proteus.core.keys",
+            "proteus.core.commands",
+            "proteus.ui.menus",
+            "proteus.ui.palette",
+            "proteus.ui.notify",
+            "proteus.ui.tabs",
+            "proteus.editor.core",
+            "proteus.terminal"
+          ],
+          "permissions": [
+            "files"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions",
+              "file-tree"
+            ]
+          },
+          "files": [
+            "README.md",
+            "file_nesting.lua",
+            "init.lua",
+            "tests/file_nesting.test.lua"
+          ],
+          "commit": "36d88ae1c160d20c18dbc8787aad53e5584285ae",
+          "updated": "2026-10-07T17:56:59-06:00"
+        },
         {
           "version": "1.3.1",
           "depends": [
@@ -5142,8 +5181,8 @@
         "tests/subgraph.test.lua",
         "types/shader.lua"
       ],
-      "commit": "cd45cafa8746b7eed35b7df48c8a55fe86bc97ad",
-      "updated": "2026-10-08T16:43:29-06:00",
+      "commit": "e69caeec4057d24100461fdf63137d9642fcc2e4",
+      "updated": "2026-10-08T17:02:05-06:00",
       "versions": [
         {
           "version": "1.4.0",
@@ -5476,8 +5515,8 @@
         "init.lua",
         "tests/docs.test.lua"
       ],
-      "commit": "cd45cafa8746b7eed35b7df48c8a55fe86bc97ad",
-      "updated": "2026-10-08T16:43:29-06:00",
+      "commit": "e69caeec4057d24100461fdf63137d9642fcc2e4",
+      "updated": "2026-10-08T17:02:05-06:00",
       "versions": [
         {
           "version": "1.4.0",
@@ -6155,7 +6194,7 @@
       "id": "shader.disk",
       "name": "Shaders on disk",
       "description": "Opens the shaders in the Code Editor folder in the Shader Builder, with a live preview.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "nanoqoi",
       "depends": [
         "lib.ui",
@@ -6167,9 +6206,11 @@
         "proteus.editor.core"
       ],
       "optional": [
+        "proteus.tools.diagnostics",
         "proteus.code.project",
         "proteus.code.explorer",
-        "ui.notify"
+        "ui.notify",
+        "ui.palette"
       ],
       "permissions": [
         "files"
@@ -6185,8 +6226,43 @@
         "README.md",
         "init.lua"
       ],
-      "commit": "cd45cafa8746b7eed35b7df48c8a55fe86bc97ad",
-      "updated": "2026-10-08T16:43:29-06:00"
+      "commit": "e69caeec4057d24100461fdf63137d9642fcc2e4",
+      "updated": "2026-10-08T17:02:05-06:00",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "depends": [
+            "lib.ui",
+            "shader.core",
+            "shader.docs",
+            "shader.canvas",
+            "shader.code",
+            "shader.preview",
+            "proteus.editor.core"
+          ],
+          "optional": [
+            "proteus.code.project",
+            "proteus.code.explorer",
+            "ui.notify"
+          ],
+          "permissions": [
+            "files"
+          ],
+          "folders": [],
+          "requires": {
+            "proteus": ">=0.3.1",
+            "features": [
+              "permissions"
+            ]
+          },
+          "files": [
+            "README.md",
+            "init.lua"
+          ],
+          "commit": "cd45cafa8746b7eed35b7df48c8a55fe86bc97ad",
+          "updated": "2026-10-08T16:43:29-06:00"
+        }
+      ]
     },
     {
       "id": "proteus.sheet",
