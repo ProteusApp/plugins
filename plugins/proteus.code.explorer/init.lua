@@ -108,6 +108,7 @@ local GIT_LETTER = {
 ---@field icon? string
 ---@field when? fun(path: string): boolean Shows the item only for files it is true for. `path` is the full path on disk.
 ---@field run fun(path: string) Gets the full path on disk.
+---@field folders? boolean Shows the item on folders instead, and on the tree's empty space, which stands for its root. `path` is then the folder's full path.
 
 ---The icon a plugin draws when no icon pack has one.
 ---@param entry FileTree.Entry
@@ -146,7 +147,7 @@ end
 return {
   name = 'Project Explorer',
   description = 'A file tree of the folder open in the Code Editor, read from disk as folders open.',
-  version = '1.4.0',
+  version = '1.5.0',
   depends = {
     'proteus.lib.ui',
     'proteus.ui.views',
@@ -877,7 +878,8 @@ return {
         for _, item in ipairs (plugin_items) do
           local spec = item.spec
           if
-            not shown[spec.label]
+            not spec.folders
+            and not shown[spec.label]
             and (not spec.when or app.try (spec.when, full) == true)
           then
             shown[spec.label] = true
@@ -906,6 +908,27 @@ return {
           tree.start_create ('folder', dir)
         end,
       })
+      if not entry or entry.dir then
+        local full = abs (dir)
+        local shown = {} ---@type table<string, boolean>
+        for _, item in ipairs (plugin_items) do
+          local spec = item.spec
+          if
+            spec.folders
+            and not shown[spec.label]
+            and (not spec.when or app.try (spec.when, full) == true)
+          then
+            shown[spec.label] = true
+            add ({
+              label = spec.label,
+              icon = spec.icon,
+              run = function ()
+                app.try (spec.run, full)
+              end,
+            })
+          end
+        end
+      end
       local search = app.kernel.plugin ('proteus.code.search')
       if search and search.status == 'active' and (not entry or entry.dir) then
         add ({
@@ -1342,6 +1365,7 @@ return {
               icon = spec.icon,
               when = spec.when,
               run = spec.run,
+              folders = spec.folders == true,
             },
           }
         end,

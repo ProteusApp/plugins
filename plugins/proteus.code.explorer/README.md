@@ -18,7 +18,7 @@ Other plugins add to the tree through the `code.explorer` service. What a plugin
 
 - `add_section (spec)` adds a section under the tree, as `proteus.code.plugins` does.
 - `add_nesting (rules)` adds files to nest, written the way `code.explorer.nest` writes them. A pattern the setting holds wins over the plugin's.
-- `add_menu_item (spec)` adds an item to a file's right-click menu. `when` gets the file's full path and says whether the item shows, and `run` gets it too. Since it hands out full paths, a restricted plugin needs `files`. When two plugins add an item with the same label, the first one shows.
+- `add_menu_item (spec)` adds an item to a file's right-click menu. `when` gets the file's full path and says whether the item shows, and `run` gets it too. Since it hands out full paths, a restricted plugin needs `files`. When two plugins add an item with the same label, the first one shows. With `folders = true` the item shows on a folder's right-click menu instead, and on the tree's empty space, and `when` and `run` get the folder's full path.
 
 The Godot plugins use the last two:
 

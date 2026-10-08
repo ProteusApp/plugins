@@ -544,6 +544,7 @@
 ---@field stage 'fragment'|'vertex' For code.
 ---@field title string
 ---@field text string For code: the text now.
+---@field follow? boolean True for a shader that another editor holds, which `follow` runs without a tab.
 ---@field saved string The file's text as last read or written.
 ---@field saved_doc? Shader.Doc For a graph: the document as last read or written.
 ---@field dirty boolean
@@ -586,6 +587,8 @@
 ---@field remove fun(path: string): boolean Deletes a shader's file and closes its tab. A changed example goes back to the original, and its tab shows that.
 ---@field rename fun(path: string, to: string): boolean, string? Renames a shader's file. An open shader moves to a new tab with its undo and unsaved changes. False and why when it cannot.
 ---@field new_graph fun(name?: string): Shader.OpenDoc?
+---@field follow fun(path: string, text: string) Runs a shader that another editor holds, such as the Code Editor's tab in front, without a tab of its own. Each call gives its text now.
+---@field unfollow fun(path: string) Stops running a shader `follow` gave.
 ---@field skip_reopen fun() Keeps the shaders open at the last close closed, for a profile that reopens its own files.
 ---@field attach_disk fun(writer: Shader.DiskWriter): fun() Lets shaders on disk save, through a plugin that may write there. Returns a function that takes it back.
 ---@field open_disk fun(path: string, texts: table<string, string>): Shader.OpenDoc? Opens a shader on disk by its full path. `texts` holds its text and its neighbours', such as its .vert file and buffers, by full path.

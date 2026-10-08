@@ -2,7 +2,7 @@
   "id": "shader.disk",
   "name": "Shaders on disk",
   "description": "Opens the shaders in the Code Editor folder in the Shader Builder, with a live preview.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "depends": [
     "lib.ui",
     "shader.core",
@@ -13,9 +13,11 @@
     "proteus.editor.core"
   ],
   "optional": [
+    "proteus.tools.diagnostics",
     "proteus.code.project",
     "proteus.code.explorer",
-    "ui.notify"
+    "ui.notify",
+    "ui.palette"
   ],
   "permissions": [
     "files"

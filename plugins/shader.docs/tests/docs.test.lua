@@ -451,3 +451,59 @@ test (
     eq (why, 'This shader has all four buffers.')
   end
 )
+
+local GODOT =
+  'shader_type canvas_item;\nvoid fragment() { COLOR = vec4(UV, 0.0, 1.0); }\n'
+
+test (
+  'a followed shader runs in front without a tab, and follows its text',
+  function ()
+    local run = start ()
+    local path = '/home/me/game/water.gdshader'
+    run.api.follow (path, GODOT)
+    local d = assert (run.api.active ())
+    eq (
+      { d.path, d.language, d.follow, d.dirty },
+      { path, 'gdshader', true, false }
+    )
+    eq (#run.api.list (), 0)
+    local program = assert (run.api.program (path))
+    eq (program.language, 'glsl')
+    local version = d.version
+    run.api.follow (path, GODOT:gsub ('UV', 'UV.yx') --[[@as string]])
+    ok (d.version > version)
+    ok (not d.dirty)
+    ok (d.text:find ('UV.yx', 1, true))
+    run.api.unfollow (path)
+    eq (run.api.active (), nil)
+    eq (run.api.get (path), nil)
+  end
+)
+
+test ('a builder tab of the same file wins over following it', function ()
+  local run, d = with_graph ()
+  run.api.follow (PATH, 'not a graph')
+  eq (run.api.active (), d)
+  ok (not d.follow)
+end)
+
+test (
+  'a shader on disk saves through the plugin that handed it over',
+  function ()
+    local run = start ()
+    local path = '/home/me/game/water.gdshader'
+    local wrote = {} ---@type table<string, string>
+    run.api.attach_disk (function (p, text, done)
+      wrote[p] = text
+      done (nil)
+    end)
+    local d = assert (run.api.open_disk (path, { [path] = GODOT }))
+    run.api.set_text (path, GODOT .. '// more\n')
+    ok (d.dirty)
+    ok (run.api.save (path))
+    eq (wrote[path], GODOT .. '// more\n')
+    ok (not d.dirty)
+    local renamed, why = run.api.rename (path, '/home/me/game/sea.gdshader')
+    eq ({ renamed, why }, { false, 'Rename it in the file tree.' })
+  end
+)

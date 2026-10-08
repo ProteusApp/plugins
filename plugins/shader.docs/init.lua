@@ -1136,6 +1136,49 @@ return {
         return true
       end,
 
+      follow = function (path, text)
+        local d = open[path]
+        if d and not d.follow then
+          -- A builder tab has the file, and its text is the one that runs.
+          set_active (path)
+          return
+        end
+        if on_disk (path) then
+          disk[path] = text
+        end
+        if d then
+          if d.text ~= text then
+            d.text = text
+            d.saved = text
+            changed (d)
+          end
+          set_active (path)
+          return
+        end
+        local made = make (path, text)
+        if not made or made.kind ~= 'code' then
+          return
+        end
+        made.follow = true
+        open[path] = made
+        app.emit ('shader:opened', path)
+        set_active (path)
+      end,
+
+      unfollow = function (path)
+        local d = open[path]
+        if not d or not d.follow then
+          return
+        end
+        open[path] = nil
+        cache[path] = nil
+        peeked[path] = nil
+        app.emit ('shader:closed', path)
+        if active_path == path then
+          set_active (nil)
+        end
+      end,
+
       skip_reopen = function ()
         skip_reopen = true
       end,
@@ -1219,6 +1262,14 @@ return {
     end)
 
     -- Commands ---------------------------------------------------------------------------------
+
+    ---The shader in front when it has a builder tab, rather than one `follow` runs for another
+    ---editor, which saves and renames it itself.
+    ---@return Shader.OpenDoc?
+    local function in_tab ()
+      local d = api.active ()
+      return d and not d.follow and d or nil
+    end
 
     ---@return boolean
     local function graph_in_front ()
@@ -1339,7 +1390,7 @@ return {
       order = 5,
       icon = 'triangle',
       when = function ()
-        local d = api.active ()
+        local d = in_tab ()
         return d ~= nil
           and d.kind == 'code'
           and d.language == 'glsl'
@@ -1372,7 +1423,7 @@ return {
       order = 6,
       icon = 'layers',
       when = function ()
-        return api.active () ~= nil
+        return in_tab () ~= nil
       end,
       run = function ()
         local d = api.active ()
@@ -1433,7 +1484,7 @@ return {
       icon = 'save',
       key = 'ctrl+s',
       when = function ()
-        return api.active () ~= nil
+        return in_tab () ~= nil
       end,
       run = function ()
         local d = api.active ()
@@ -1451,7 +1502,7 @@ return {
       icon = 'save-all',
       key = 'ctrl+shift+s',
       when = function ()
-        return api.active () ~= nil and picker ~= nil
+        return in_tab () ~= nil and picker ~= nil
       end,
       run = function ()
         local d = api.active ()
@@ -1494,7 +1545,7 @@ return {
       group = '3-save',
       icon = 'pencil',
       when = function ()
-        return api.active () ~= nil and picker ~= nil
+        return in_tab () ~= nil and picker ~= nil
       end,
       run = function ()
         local d = api.active ()
