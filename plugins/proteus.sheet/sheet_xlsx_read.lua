@@ -190,7 +190,7 @@ for name in
       .. 'NEGBINOM.DIST NETWORKDAYS.INTL NORM.DIST NORM.INV NORM.S.DIST NORM.S.INV '
       .. 'NUMBERVALUE PDURATION PERCENTILE.EXC PERCENTILE.INC PERCENTRANK.EXC '
       .. 'PERCENTRANK.INC PERMUTATIONA PHI POISSON.DIST QUARTILE.EXC QUARTILE.INC RANDARRAY '
-      .. 'RANK.AVG RANK.EQ RRI SEC SECH SEQUENCE SHEET SHEETS SKEW.P SORTBY STDEV.P STDEV.S '
+      .. 'RANK.AVG RANK.EQ REGEXEXTRACT REGEXREPLACE REGEXTEST RRI SEC SECH SEQUENCE SHEET SHEETS SKEW.P SORTBY STDEV.P STDEV.S '
       .. 'SWITCH T.DIST T.DIST.2T T.DIST.RT T.INV T.INV.2T T.TEST TAKE TEXTAFTER TEXTBEFORE '
       .. 'TEXTJOIN TEXTSPLIT TOCOL TOROW UNICHAR UNICODE UNIQUE VALUETOTEXT VAR.P VAR.S '
       .. 'VSTACK WEIBULL.DIST WORKDAY.INTL WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR Z.TEST',
@@ -574,6 +574,7 @@ local STYLE_FIELDS = {
   'border_bottom',
   'border_left',
   'border_color',
+  'unlocked',
 }
 
 ---@param style table
@@ -637,6 +638,10 @@ local function raw_style (xf, lists, theme)
     if align.attrs.wrapText and flag (align.attrs.wrapText) then
       out.wrap = true
     end
+  end
+  local protection = child (xf, 'protection')
+  if protection and protection.attrs.locked and not flag (protection.attrs.locked) then
+    out.unlocked = true
   end
   local id = int (xf.attrs.numFmtId) or 0
   local code = lists.formats[id] or BUILTIN_FORMATS[id]

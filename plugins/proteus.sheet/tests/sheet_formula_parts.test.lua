@@ -127,6 +127,7 @@ local MODULES = {
   sheet_fn_stats = { Statistics = true, Math = true },
   sheet_fn_logic_info = { Logic = true, Info = true },
   sheet_fn_text = { Text = true },
+  sheet_fn_regex = { Text = true },
   sheet_fn_lookup = { Lookup = true },
   sheet_fn_date = { Date = true },
   sheet_fn_finance = { Financial = true, Date = true },

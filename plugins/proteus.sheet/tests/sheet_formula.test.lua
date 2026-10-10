@@ -2015,6 +2015,65 @@ test ('TEXTSPLIT and NUMBERVALUE', function ()
   eq (calc ('=NUMBERVALUE("1.2.3")'), '#VALUE!')
 end)
 
+test ('REGEXTEST and REGEXMATCH say whether text matches', function ()
+  eq (calc ('=REGEXTEST("Order 1234", "\\d{4}")'), 'TRUE')
+  eq (calc ('=REGEXTEST("Order", "\\d")'), 'FALSE')
+  eq (calc ('=REGEXTEST("ABC", "abc")'), 'FALSE', 'case counts by default')
+  eq (calc ('=REGEXTEST("ABC", "abc", 1)'), 'TRUE')
+  eq (calc ('=REGEXTEST("ABC", "abc", 2)'), '#VALUE!')
+  eq (calc ('=REGEXMATCH("cat|dog", "^(cat|dog)\\|")'), 'TRUE')
+  eq (calc ('=REGEXTEST("x", "(")'), '#VALUE!', 'a pattern that does not read')
+  eq (
+    rows_of ('=REGEXTEST({"a1";"b";"c3"}, "[0-9]")'),
+    'TRUE;FALSE;TRUE',
+    'a list of texts gives a list of answers'
+  )
+end)
+
+test ('REGEXEXTRACT takes out a match, every match, or the groups', function ()
+  -- The modes from Excel's help page.
+  eq (calc ('=REGEXEXTRACT("DylanWilliams", "[A-Z][a-z]+")'), 'Dylan')
+  eq (
+    rows_of ('=REGEXEXTRACT("DylanWilliams", "[A-Z][a-z]+", 1)'),
+    'Dylan;Williams'
+  )
+  eq (
+    rows_of ('=REGEXEXTRACT("DylanWilliams", "([A-Z][a-z]+)([A-Z][a-z]+)", 2)'),
+    'Dylan,Williams'
+  )
+  eq (calc ('=REGEXEXTRACT("abc", "\\d")'), '#N/A')
+  eq (calc ('=REGEXEXTRACT("abc", "b", 2)'), '#N/A', 'mode 2 needs a group')
+  eq (calc ('=REGEXEXTRACT("abc", "b", 3)'), '#VALUE!')
+  eq (calc ('=REGEXEXTRACT("Size: XL", "size: (\\w+)", 2, 1)'), 'XL')
+  eq (calc ('=REGEXEXTRACT("a-b", "(x)?-", 2)'), '', 'a group that took no part')
+end)
+
+test (
+  'REGEXREPLACE replaces matches, with the groups in the replacement',
+  function ()
+    eq (
+      calc ('=REGEXREPLACE("2026-10-02", "(\\d+)-(\\d+)-(\\d+)", "$3/$2/$1")'),
+      '02/10/2026'
+    )
+    eq (calc ('=REGEXREPLACE("a1b22c333", "\\d+", "#")'), 'a#b#c#')
+    eq (calc ('=REGEXREPLACE("a1b22c333", "\\d+", "#", 2)'), 'a1b#c333')
+    eq (calc ('=REGEXREPLACE("a1b22c333", "\\d+", "#", -1)'), 'a1b22c#')
+    eq (calc ('=REGEXREPLACE("a1b2", "\\d", "#", 5)'), 'a1b2', 'no such match')
+    eq (calc ('=REGEXREPLACE("Cost", "c", "$$", 0, 1)'), '$ost')
+    eq (
+      calc ('=REGEXREPLACE("ab", "", "-")'),
+      '-a-b-',
+      'an empty match between every letter'
+    )
+    eq (calc ('=REGEXREPLACE("x", "[", "y")'), '#VALUE!')
+  end
+)
+
+test ('a pattern that backtracks without end gives #VALUE!', function ()
+  local long = string.rep ('a', 40)
+  eq (calc ('=REGEXTEST("' .. long .. 'b", "(a*)*c")'), '#VALUE!')
+end)
+
 ---------------------------------------------------------------------------------------------
 -- Every function
 ---------------------------------------------------------------------------------------------
@@ -2232,6 +2291,10 @@ local EVERY = {
   'RANK.EQ',
   'RATE',
   'REDUCE',
+  'REGEXEXTRACT',
+  'REGEXMATCH',
+  'REGEXREPLACE',
+  'REGEXTEST',
   'REPLACE',
   'REPT',
   'RIGHT',

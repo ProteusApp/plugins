@@ -144,10 +144,17 @@ function M.install (grid, K)
       end
       return 'prevent'
     end
-    if mod and string.lower (key) == 'v' and ev.shift then
-      G.paste_mode = { only = 'values' }
+    if mod and string.lower (key) == 'v' and not ev.alt then
+      local mode = ev.shift and { only = 'values' } or nil ---@type Sheet.PasteOptions?
+      -- Read the clipboard's HTML, so a table from another program keeps its look. Without
+      -- it, Ctrl+V pastes text into the waiting editor box.
+      if G.app.system.clipboard_read_html then
+        G.paste (mode)
+        return 'prevent'
+      end
+      G.paste_mode = mode
     end
-    -- Anything else types into the waiting editor box. Ctrl+V pastes into it.
+    -- Anything else types into the waiting editor box.
     return nil
   end
 end

@@ -674,10 +674,10 @@ function M.install (env)
       elseif ev.key == 'Escape' then
         close_bar ()
         return 'stop'
-      elseif ev.ctrl and (ev.key == 'f' or ev.key == 'F') then
+      elseif (ev.ctrl or ev.meta) and (ev.key == 'f' or ev.key == 'F') then
         q:select ()
         return 'stop'
-      elseif ev.ctrl and (ev.key == 'h' or ev.key == 'H') then
+      elseif (ev.ctrl or ev.meta) and (ev.key == 'h' or ev.key == 'H') then
         state.replace = true
         show_replace ()
         w:focus ()
@@ -691,7 +691,7 @@ function M.install (env)
     end)
     w:on ('keydown', function (ev)
       if ev.key == 'Enter' then
-        if ev.ctrl then
+        if ev.ctrl or ev.meta then
           replace_all ()
         else
           replace_one ()
@@ -700,7 +700,7 @@ function M.install (env)
       elseif ev.key == 'Escape' then
         close_bar ()
         return 'stop'
-      elseif ev.ctrl and (ev.key == 'f' or ev.key == 'F') then
+      elseif (ev.ctrl or ev.meta) and (ev.key == 'f' or ev.key == 'F') then
         q:focus ()
         q:select ()
         return 'stop'
@@ -1114,7 +1114,7 @@ function M.install (env)
       end)
     end
     box:on ('keydown', function (ev)
-      if ev.key == 'Enter' and ev.ctrl then
+      if ev.key == 'Enter' and (ev.ctrl or ev.meta) then
         pop.close (env)
         return 'stop'
       end
