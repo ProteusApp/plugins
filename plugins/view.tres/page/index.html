@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="inspector.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Resource Inspector</strong><button id="save">Save</button
+      ><button id="undo" disabled>Undo</button
+      ><button id="redo" disabled>Redo</button
+      ><button id="reload">Reload from disk</button
+      ><button id="text">Open as text</button>
+    </header>
+    <div id="status" role="status"></div>
+    <div class="layout">
+      <nav id="resources" aria-label="Resources"></nav>
+      <main>
+        <input
+          id="filter"
+          placeholder="Filter properties"
+          aria-label="Filter properties"
+        />
+        <h2 id="title"></h2>
+        <div id="properties"></div>
+      </main>
+    </div>
+    <script src="tres.js"></script>
+    <script src="inspector.js"></script>
+  </body>
+</html>

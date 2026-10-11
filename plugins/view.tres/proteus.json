@@ -1,0 +1,39 @@
+{
+  "id": "view.tres",
+  "name": "Godot resource inspector",
+  "description": "Edits Godot .tres files with fields for saved properties and subresources.",
+  "version": "1.0.0",
+  "depends": [
+    "proteus.lib.ui",
+    "proteus.ui.tabs",
+    "proteus.editor.core"
+  ],
+  "optional": [
+    "proteus.core.commands"
+  ],
+  "permissions": [
+    "files"
+  ],
+  "folders": [],
+  "requires": {
+    "proteus": ">=0.3.0",
+    "features": [
+      "permissions",
+      "webview"
+    ]
+  },
+  "author": {
+    "login": "nanoqoi",
+    "id": 29748817
+  },
+  "issue": null,
+  "files": [
+    "README.md",
+    "init.lua",
+    "page/index.html",
+    "page/inspector.css",
+    "page/inspector.js",
+    "page/tres.js",
+    "tests/editor.test.lua"
+  ]
+}

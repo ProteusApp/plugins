@@ -1,0 +1,125 @@
+:root {
+  color-scheme: dark;
+  font: 13px system-ui;
+  color: var(--fg, #dedee5);
+  background: var(--bg, #24262c);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 10px;
+  background: var(--bg-alt, #2d3038);
+  border-bottom: 1px solid var(--border, #444753);
+}
+header strong {
+  margin-right: auto;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-alt, #30333d);
+  border: 1px solid var(--border, #505363);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+button {
+  cursor: pointer;
+}
+button:hover,
+button.selected {
+  background: var(--bg-active, #414b63);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+:focus-visible {
+  outline: 2px solid #89b4fa;
+  outline-offset: 1px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+nav {
+  padding: 12px;
+  border-right: 1px solid var(--border, #444753);
+  min-height: calc(100vh - 90px);
+}
+nav button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+main {
+  padding: 16px;
+  max-width: 1000px;
+}
+#filter {
+  width: 100%;
+}
+h2 {
+  font-size: 16px;
+}
+#status {
+  padding: 8px 12px;
+  color: var(--fg-muted, #a8adbd);
+}
+.property {
+  display: grid;
+  grid-template-columns: minmax(130px, 35%) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, #3b3e48);
+  align-items: center;
+}
+.property > label {
+  overflow-wrap: anywhere;
+}
+.fields {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fields input {
+  width: 90px;
+  flex: 1;
+}
+textarea {
+  width: 100%;
+  min-height: 70px;
+  font-family: monospace;
+}
+.property > input,
+select {
+  width: 100%;
+}
+.property > input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+small {
+  color: var(--fg-muted, #a8adbd);
+}
+@media (max-width: 550px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  nav {
+    min-height: 0;
+    border-right: 0;
+  }
+}
